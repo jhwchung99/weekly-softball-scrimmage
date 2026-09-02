@@ -1,0 +1,9 @@
+planner/
+
+# dependencies
+node_modules/
+
+# Google service account key and any local data snapshots — never commit
+credentials/
+*.env
+.env.local
