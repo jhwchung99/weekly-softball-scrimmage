@@ -1,0 +1,16 @@
+{
+  "name": "weekly-softball-scrimmage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "read-sheet": "node scripts/readSheet.js",
+    "build-positions-sheet": "node scripts/createPositionsSheet.js",
+    "generate-scrimmage": "node scripts/generateScrimmage.js",
+    "generate-attendance": "node scripts/generateAttendanceHistory.js"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.14.1",
+    "googleapis": "^144.0.0"
+  }
+}
