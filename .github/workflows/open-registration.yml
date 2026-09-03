@@ -1,0 +1,21 @@
+name: Open registration
+
+# Monday 9am ET (Section 1). GitHub Actions cron is fixed UTC and doesn't
+# shift for DST, so both possible UTC offsets are scheduled here — the
+# endpoint itself checks whether it's actually ~9am ET before doing
+# anything, and no-ops on whichever of these two firings is the seasonal
+# mismatch. See src/lib/scheduling.ts and src/lib/time.ts.
+on:
+  schedule:
+    - cron: '0 13 * * 1' # 9am EDT (UTC-4)
+    - cron: '0 14 * * 1' # 9am EST (UTC-5)
+  workflow_dispatch: {} # manual trigger, for testing
+
+jobs:
+  open-registration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call open-registration endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.APP_URL }}/api/cron/open-registration" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
