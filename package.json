@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "setup:sheets": "tsx scripts/createDataTabs.ts"
+    "setup:sheets": "tsx scripts/createDataTabs.ts",
+    "authorize-gmail-sender": "tsx --env-file=.env.local scripts/authorizeGmailSender.ts"
   },
   "dependencies": {
     "google-auth-library": "^9.14.1",
