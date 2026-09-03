@@ -1,0 +1,20 @@
+name: Close registration
+
+# Wednesday 9pm ET (Section 1) — which is Thursday in UTC, since 9pm ET
+# crosses midnight UTC. Same DST-duplicate-firing pattern as
+# open-registration.yml; see that file's comment and
+# src/lib/scheduling.ts / src/lib/time.ts.
+on:
+  schedule:
+    - cron: '0 1 * * 4' # 9pm EDT Wednesday (UTC-4) = 1am UTC Thursday
+    - cron: '0 2 * * 4' # 9pm EST Wednesday (UTC-5) = 2am UTC Thursday
+  workflow_dispatch: {} # manual trigger, for testing
+
+jobs:
+  close-registration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call close-registration endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.APP_URL }}/api/cron/close-registration" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
