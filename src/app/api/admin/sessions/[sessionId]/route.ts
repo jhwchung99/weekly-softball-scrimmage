@@ -8,6 +8,20 @@ type Params = { params: Promise<{ sessionId: string }> };
 
 const VALID_STATUSES: SessionStatus[] = ['open', 'closed', 'cancelled'];
 
+/** Session details for any sessionId, not just the current week's — the
+ * admin dashboard's "am I admin" check doubles up on this call too. */
+export async function GET(request: Request, { params }: Params) {
+  try {
+    await requireAdmin();
+    const { sessionId } = await params;
+    const session = await getSession(sessionId);
+    if (!session) throw new ApiError(404, 'No such session.');
+    return NextResponse.json({ session });
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
 /**
  * Covers two of Section 8's controls at once, since both are just field
  * updates on the same Sessions row: "adjust session capacity" (capacity)
