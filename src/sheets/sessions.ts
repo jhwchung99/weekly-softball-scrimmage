@@ -1,4 +1,4 @@
-import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow } from './client';
+import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow, columnLetter } from './client';
 import { Session, SessionStatus, SESSION_HEADERS, parseSessionRow, serializeSessionRow } from './schema';
 
 const TAB = 'Sessions';
@@ -25,16 +25,21 @@ export async function createSession(session: Session): Promise<Session> {
     throw new Error(`A session with id "${session.sessionId}" already exists.`);
   }
   const row = serializeSessionRow(session);
-  await appendValues(SPREADSHEET_ID, `${TAB}!A:${'G'}`, [SESSION_HEADERS.map((h) => row[h])]);
+  await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(SESSION_HEADERS.length)}`, [SESSION_HEADERS.map((h) => row[h])]);
   return session;
 }
 
-export async function updateSessionStatus(sessionId: string, status: SessionStatus): Promise<void> {
+/** Partial update of any field(s) on an existing session row. */
+export async function updateSession(sessionId: string, updates: Partial<Session>): Promise<Session> {
   const rows = await getRowObjects<ReturnType<typeof serializeSessionRow>>(SPREADSHEET_ID, TAB, SESSION_HEADERS);
   const match = rows.find((r) => r.data.sessionId === sessionId);
   if (!match) throw new Error(`No session with id "${sessionId}".`);
 
-  const updated = parseSessionRow(match.data);
-  updated.status = status;
+  const updated: Session = { ...parseSessionRow(match.data), ...updates };
   await updateRow(SPREADSHEET_ID, TAB, match.rowNumber, SESSION_HEADERS, serializeSessionRow(updated));
+  return updated;
+}
+
+export async function updateSessionStatus(sessionId: string, status: SessionStatus): Promise<void> {
+  await updateSession(sessionId, { status });
 }
