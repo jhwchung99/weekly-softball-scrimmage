@@ -7,11 +7,16 @@ const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 const KEY_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS || 'credentials/service-account.json';
 
 export const SPREADSHEET_ID =
-  process.env.SPREADSHEET_ID || '1n4Hi_p_o9BtkMdracVUE6eAzAgfyIFXn1w31MCiuqJk';
+  process.env.SPREADSHEET_ID || '1KFLSMxqMcEa8z0kB8XIIrwr5H78GnP9n9NpbVUEI1UI';
 
 function loadKey(): Record<string, unknown> {
   try {
-    return JSON.parse(readFileSync(KEY_PATH, 'utf8'));
+    // The credentials file is local-dev-only (gitignored, never deployed —
+    // production will read a GOOGLE_SERVICE_ACCOUNT_KEY env var instead,
+    // see Step 14), so it's intentional that this path isn't statically
+    // traceable; opt Turbopack's deploy-bundle tracing out rather than
+    // having it pull in the whole project.
+    return JSON.parse(readFileSync(/* turbopackIgnore: true */ KEY_PATH, 'utf8'));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -92,7 +97,7 @@ export async function getOrCreateSheet(spreadsheetId: string, title: string): Pr
 // work in terms of "rows as objects keyed by header" instead of raw arrays.
 
 /** 1-indexed spreadsheet column letter for a 1-indexed column number. */
-function columnLetter(n: number): string {
+export function columnLetter(n: number): string {
   let s = '';
   let num = n;
   while (num > 0) {
