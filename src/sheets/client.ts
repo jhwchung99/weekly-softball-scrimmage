@@ -10,18 +10,32 @@ export const SPREADSHEET_ID =
   process.env.SPREADSHEET_ID || '1KFLSMxqMcEa8z0kB8XIIrwr5H78GnP9n9NpbVUEI1UI';
 
 function loadKey(): Record<string, unknown> {
+  // Production (Vercel): the key is set as a GOOGLE_SERVICE_ACCOUNT_KEY env
+  // var (the raw JSON key file's contents, as a single-line string) —
+  // there's no credentials/service-account.json file on Vercel at all,
+  // since it's gitignored and never deployed.
+  const inlineKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (inlineKey) {
+    try {
+      return JSON.parse(inlineKey);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`GOOGLE_SERVICE_ACCOUNT_KEY is set but isn't valid JSON. (${message})`);
+    }
+  }
+
+  // Local dev fallback: read the gitignored key file. Intentionally not
+  // statically traceable (see the turbopackIgnore comment) — this branch
+  // never runs in production, where GOOGLE_SERVICE_ACCOUNT_KEY is set and
+  // the code above returns before reaching this file read at all.
   try {
-    // The credentials file is local-dev-only (gitignored, never deployed —
-    // production will read a GOOGLE_SERVICE_ACCOUNT_KEY env var instead,
-    // see Step 14), so it's intentional that this path isn't statically
-    // traceable; opt Turbopack's deploy-bundle tracing out rather than
-    // having it pull in the whole project.
     return JSON.parse(readFileSync(/* turbopackIgnore: true */ KEY_PATH, 'utf8'));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Could not read service account key at "${KEY_PATH}". ` +
-        `Set GOOGLE_APPLICATION_CREDENTIALS or place the key at credentials/service-account.json. ` +
+      `Could not read service account key at "${KEY_PATH}", and GOOGLE_SERVICE_ACCOUNT_KEY isn't set. ` +
+        `For local dev, set GOOGLE_APPLICATION_CREDENTIALS or place the key at credentials/service-account.json. ` +
+        `For production, set GOOGLE_SERVICE_ACCOUNT_KEY to the key file's JSON contents. ` +
         `(${message})`
     );
   }
