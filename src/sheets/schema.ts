@@ -1,0 +1,114 @@
+// Types and Sheet<->object (de)serialization for the three data tabs
+// described in PROJECT_GUIDELINES.md Section 3. Sheets cells are always
+// strings, so every row type has a serialize/parse pair here rather than
+// scattering `String(x)` / `x === 'TRUE'` conversions through repository
+// code.
+
+export type SessionStatus = 'open' | 'closed' | 'cancelled';
+export type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
+export type MemberStatus = 'member' | 'guest';
+
+export interface Session {
+  sessionId: string;
+  gameDate: string; // ISO date, e.g. "2026-09-11"
+  gameTime: string; // e.g. "18:00"
+  registrationOpensAt: string; // ISO datetime
+  registrationClosesAt: string; // ISO datetime
+  capacity: number;
+  status: SessionStatus;
+}
+
+export interface Signup {
+  signupId: string;
+  sessionId: string;
+  email: string;
+  fullName: string;
+  gender: string;
+  age: number;
+  memberStatus: MemberStatus;
+  invitedByName: string; // '' when memberStatus === 'member'
+  willingToShare: boolean; // guest only; false when memberStatus === 'member'
+  pairId: string; // '' when not paired
+  status: SignupStatus;
+  timestamp: string; // ISO datetime, used for FIFO ordering
+  positions: string; // comma-separated, carried over from Player.savedPositions
+}
+
+export interface Player {
+  email: string;
+  fullName: string;
+  gender: string;
+  age: number;
+  savedPositions: string; // comma-separated
+}
+
+export const SESSION_HEADERS = [
+  'sessionId',
+  'gameDate',
+  'gameTime',
+  'registrationOpensAt',
+  'registrationClosesAt',
+  'capacity',
+  'status',
+] as const satisfies readonly (keyof Session)[];
+
+export const SIGNUP_HEADERS = [
+  'signupId',
+  'sessionId',
+  'email',
+  'fullName',
+  'gender',
+  'age',
+  'memberStatus',
+  'invitedByName',
+  'willingToShare',
+  'pairId',
+  'status',
+  'timestamp',
+  'positions',
+] as const satisfies readonly (keyof Signup)[];
+
+export const PLAYER_HEADERS = [
+  'email',
+  'fullName',
+  'gender',
+  'age',
+  'savedPositions',
+] as const satisfies readonly (keyof Player)[];
+
+// Raw row shape as read back from the sheet: same keys, every value a string.
+type RawRow<T> = { [K in keyof T]: string };
+
+export function parseSessionRow(row: RawRow<Session>): Session {
+  return {
+    ...row,
+    capacity: Number(row.capacity) || 0,
+    status: (row.status || 'open') as SessionStatus,
+  };
+}
+
+export function serializeSessionRow(session: Session): RawRow<Session> {
+  return { ...session, capacity: String(session.capacity) };
+}
+
+export function parseSignupRow(row: RawRow<Signup>): Signup {
+  return {
+    ...row,
+    age: Number(row.age) || 0,
+    willingToShare: row.willingToShare === 'TRUE' || row.willingToShare === 'true',
+    memberStatus: (row.memberStatus || 'guest') as MemberStatus,
+    status: (row.status || 'waitlisted') as SignupStatus,
+  };
+}
+
+export function serializeSignupRow(signup: Signup): RawRow<Signup> {
+  return { ...signup, age: String(signup.age), willingToShare: signup.willingToShare ? 'TRUE' : 'FALSE' };
+}
+
+export function parsePlayerRow(row: RawRow<Player>): Player {
+  return { ...row, age: Number(row.age) || 0 };
+}
+
+export function serializePlayerRow(player: Player): RawRow<Player> {
+  return { ...player, age: String(player.age) };
+}
