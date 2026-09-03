@@ -32,6 +32,9 @@ export interface Signup {
   status: SignupStatus;
   timestamp: string; // ISO datetime, used for FIFO ordering
   positions: string; // comma-separated, carried over from Player.savedPositions
+  waiverAcceptedAt: string; // ISO datetime — Section 9; every signup requires this
+  waiverText: string; // the exact wording accepted, not just a boolean —
+  // stronger evidence than a checkbox flag if the wording ever changes later
 }
 
 export interface Player {
@@ -66,6 +69,8 @@ export const SIGNUP_HEADERS = [
   'status',
   'timestamp',
   'positions',
+  'waiverAcceptedAt',
+  'waiverText',
 ] as const satisfies readonly (keyof Signup)[];
 
 export const PLAYER_HEADERS = [
@@ -76,8 +81,16 @@ export const PLAYER_HEADERS = [
   'savedPositions',
 ] as const satisfies readonly (keyof Player)[];
 
+// Admin allowlist (Section 8) — deliberately a Sheet tab, not an env var,
+// so admins can be added/removed without a redeploy.
+export interface Admin {
+  email: string;
+}
+
+export const ADMIN_HEADERS = ['email'] as const satisfies readonly (keyof Admin)[];
+
 // Raw row shape as read back from the sheet: same keys, every value a string.
-type RawRow<T> = { [K in keyof T]: string };
+export type RawRow<T> = { [K in keyof T]: string };
 
 export function parseSessionRow(row: RawRow<Session>): Session {
   return {
