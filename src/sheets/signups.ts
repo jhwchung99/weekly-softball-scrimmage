@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow, deleteRow, getOrCreateSheet } from './client';
+import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow, deleteRow, getOrCreateSheet, columnLetter } from './client';
 import { Signup, SignupStatus, SIGNUP_HEADERS, parseSignupRow, serializeSignupRow } from './schema';
 
 const TAB = 'Signups';
@@ -46,18 +46,57 @@ export async function createSignup(signup: Omit<Signup, 'signupId'>): Promise<Si
 
   const full: Signup = { ...signup, signupId: generateSignupId() };
   const row = serializeSignupRow(full);
-  await appendValues(SPREADSHEET_ID, `${TAB}!A:M`, [SIGNUP_HEADERS.map((h) => row[h])]);
+  await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(SIGNUP_HEADERS.length)}`, [SIGNUP_HEADERS.map((h) => row[h])]);
   return full;
 }
 
-export async function updateSignupStatus(signupId: string, status: SignupStatus): Promise<void> {
+/** Partial update of any field(s) on an existing signup row. */
+export async function updateSignup(signupId: string, updates: Partial<Signup>): Promise<Signup> {
   const all = await rows();
   const match = all.find((r) => r.data.signupId === signupId);
   if (!match) throw new Error(`No signup with id "${signupId}".`);
 
-  const updated = parseSignupRow(match.data);
-  updated.status = status;
+  const updated: Signup = { ...parseSignupRow(match.data), ...updates };
   await updateRow(SPREADSHEET_ID, TAB, match.rowNumber, SIGNUP_HEADERS, serializeSignupRow(updated));
+  return updated;
+}
+
+export async function updateSignupStatus(signupId: string, status: SignupStatus): Promise<void> {
+  await updateSignup(signupId, { status });
+}
+
+/**
+ * Section 5: a guest who named `memberFullName` as their inviter, is
+ * willing to share a slot, and isn't paired yet — i.e. someone the member
+ * should merge with if/when they sign up. FIFO if more than one guest
+ * named the same member (only the first pairs; see signupFlow.ts).
+ */
+export async function findPendingGuestInvite(sessionId: string, memberFullName: string): Promise<Signup | null> {
+  const signups = await listSignupsForSession(sessionId);
+  const candidates = signups
+    .filter(
+      (s) =>
+        s.memberStatus === 'guest' &&
+        s.willingToShare &&
+        !s.pairId &&
+        s.status !== 'cancelled' &&
+        s.invitedByName.trim().toLowerCase() === memberFullName.trim().toLowerCase()
+    )
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  return candidates[0] ?? null;
+}
+
+/** The named member's own (non-cancelled) signup for this session, if any. */
+export async function findMemberSignupByName(sessionId: string, memberFullName: string): Promise<Signup | null> {
+  const signups = await listSignupsForSession(sessionId);
+  return (
+    signups.find(
+      (s) =>
+        s.memberStatus === 'member' &&
+        s.status !== 'cancelled' &&
+        s.fullName.trim().toLowerCase() === memberFullName.trim().toLowerCase()
+    ) ?? null
+  );
 }
 
 /** Hard delete — for admin "remove a signup" (Section 8). Normal
