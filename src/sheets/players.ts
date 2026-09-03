@@ -1,4 +1,4 @@
-import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow } from './client';
+import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow, columnLetter } from './client';
 import { Player, PLAYER_HEADERS, parsePlayerRow, serializePlayerRow } from './schema';
 
 const TAB = 'Players';
@@ -21,6 +21,6 @@ export async function upsertPlayer(player: Player): Promise<void> {
   if (match) {
     await updateRow(SPREADSHEET_ID, TAB, match.rowNumber, PLAYER_HEADERS, row);
   } else {
-    await appendValues(SPREADSHEET_ID, `${TAB}!A:E`, [PLAYER_HEADERS.map((h) => row[h])]);
+    await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(PLAYER_HEADERS.length)}`, [PLAYER_HEADERS.map((h) => row[h])]);
   }
 }
