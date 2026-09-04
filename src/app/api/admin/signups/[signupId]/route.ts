@@ -24,11 +24,24 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!existing) throw new ApiError(404, 'No such signup.');
 
     const body = await request.json().catch(() => ({}));
-    if (!VALID_STATUSES.includes(body?.status)) {
-      throw new ApiError(400, `status must be one of: ${VALID_STATUSES.join(', ')}.`);
+    const updates: { status?: SignupStatus; paid?: boolean } = {};
+
+    if (body?.status !== undefined) {
+      if (!VALID_STATUSES.includes(body.status)) {
+        throw new ApiError(400, `status must be one of: ${VALID_STATUSES.join(', ')}.`);
+      }
+      updates.status = body.status;
     }
 
-    const signup = await updateSignup(signupId, { status: body.status });
+    if (body?.paid !== undefined) {
+      updates.paid = Boolean(body.paid);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new ApiError(400, 'Provide at least one of: status, paid.');
+    }
+
+    const signup = await updateSignup(signupId, updates);
     return NextResponse.json({ signup });
   } catch (err) {
     return handleApiError(err);
