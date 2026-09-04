@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../../../lib/auth';
-import { signUpForSession, signUpAsGuestForSession, getMySignupForSession } from '../../../../../lib/signupFlow';
+import { signUpForSession, signUpAsGuestForSession, getMyStatusForSession } from '../../../../../lib/signupFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 import { validateInvitedByName } from '../../../../../lib/validation';
 
@@ -39,15 +39,17 @@ export async function POST(request: Request, { params }: Params) {
   }
 }
 
-/** "My status for this session" — Step 5's third API route. */
+/** "My status for this session" — Step 5's third API route. Also
+ * carries incoming sub requests and this caller's cost share, so the
+ * homepage can render everything from one call. */
 export async function GET(request: Request, { params }: Params) {
   try {
     const email = await getSessionEmail();
     if (!email) throw new ApiError(401, 'Not signed in.');
 
     const { sessionId } = await params;
-    const signup = await getMySignupForSession(sessionId, email);
-    return NextResponse.json({ signup });
+    const { signup, incomingSubRequests, costOwed } = await getMyStatusForSession(sessionId, email);
+    return NextResponse.json({ signup, incomingSubRequests, costOwed });
   } catch (err) {
     return handleApiError(err);
   }
