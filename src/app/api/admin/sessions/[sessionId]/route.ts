@@ -3,6 +3,7 @@ import { requireAdmin } from '../../../../../lib/auth';
 import { getSession, updateSession } from '../../../../../sheets/sessions';
 import { SessionStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { validateCost } from '../../../../../lib/validation';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
@@ -41,7 +42,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!existing) throw new ApiError(404, 'No such session.');
 
     const body = await request.json().catch(() => ({}));
-    const updates: { capacity?: number; status?: SessionStatus } = {};
+    const updates: { capacity?: number; status?: SessionStatus; cost?: number } = {};
 
     if (body?.capacity !== undefined) {
       const capacity = Number(body.capacity);
@@ -56,8 +57,12 @@ export async function PATCH(request: Request, { params }: Params) {
       updates.status = body.status;
     }
 
+    if (body?.cost !== undefined) {
+      updates.cost = validateCost(body.cost);
+    }
+
     if (Object.keys(updates).length === 0) {
-      throw new ApiError(400, 'Provide at least one of: capacity, status.');
+      throw new ApiError(400, 'Provide at least one of: capacity, status, cost.');
     }
 
     const session = await updateSession(sessionId, updates);
