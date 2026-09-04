@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getSession } from '../sheets/sessions';
-import { getSignup, listSignupsForSession, updateSignup } from '../sheets/signups';
+import { getSignup, getSignupWithSessionSignups, updateSignup, batchUpdateSignups } from '../sheets/signups';
 import { Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { sendSubRequestEmail, sendSubRequestAcceptedEmail } from './notifications';
@@ -17,7 +17,10 @@ const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, s
  * unlike a normal signup.
  */
 export async function requestSub(signupId: string, requesterEmail: string, targetEmail: string): Promise<Signup> {
-  const signup = await getSignup(signupId);
+  // One tab read serving both "find my own signup" and "find the
+  // target within this session" — previously two separate full-tab
+  // reads (getSignup, then listSignupsForSession).
+  const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
   if (!signup) throw new ApiError(404, 'No such signup.');
   if (signup.email !== requesterEmail) throw new ApiError(403, 'You can only request a sub for your own signup.');
   if (signup.status !== 'waitlisted') throw new ApiError(409, 'Only a waitlisted signup can request to sub in.');
@@ -35,8 +38,7 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     throw new ApiError(400, "You can't request to sub with yourself.");
   }
 
-  const allSignups = await listSignupsForSession(signup.sessionId);
-  const target = allSignups.find((s) => s.email.toLowerCase() === normalizedTarget && s.status !== 'cancelled');
+  const target = sessionSignups.find((s) => s.email.toLowerCase() === normalizedTarget && s.status !== 'cancelled');
   if (!target) throw new ApiError(400, "That email isn't signed up for this session.");
   if (target.pairId) throw new ApiError(400, 'That person is already sharing a slot with someone else.');
 
@@ -84,7 +86,8 @@ export async function cancelSubRequest(signupId: string, requesterEmail: string)
  * the app, instead of a separate request-id resource.
  */
 export async function respondToSubRequest(signupId: string, responderEmail: string, accept: boolean): Promise<Signup> {
-  const requester = await getSignup(signupId);
+  // Same one-read-serves-both pattern as requestSub above.
+  const { signup: requester, sessionSignups: allSignups } = await getSignupWithSessionSignups(signupId);
   if (!requester) throw new ApiError(404, 'No such signup.');
   if (requester.subRequestStatus !== 'pending') throw new ApiError(409, 'This request is no longer pending.');
 
@@ -97,7 +100,6 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     return updateSignup(signupId, { subRequestStatus: 'declined' });
   }
 
-  const allSignups = await listSignupsForSession(requester.sessionId);
   const target = allSignups.find((s) => s.email.toLowerCase() === normalizedResponder && s.status !== 'cancelled');
   if (!target) throw new ApiError(409, 'Your own signup for this session is no longer active.');
   if (requester.status === 'cancelled') throw new ApiError(409, 'That signup is no longer active.');
@@ -108,13 +110,6 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
   if (!session) throw new ApiError(404, 'No such session.');
 
   const pairId = randomUUID();
-  await updateSignup(target.signupId, { pairId });
-  const updatedRequester = await updateSignup(signupId, {
-    pairId,
-    status: target.status,
-    ...NO_REQUEST,
-  });
-
   // Accepting one request makes every other pending request targeting
   // the same person moot — decline them explicitly (not silently
   // cleared) so those requesters see what happened rather than their
@@ -125,9 +120,17 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
       s.subRequestStatus === 'pending' &&
       s.subRequestTargetEmail.toLowerCase() === normalizedResponder
   );
-  for (const other of others) {
-    await updateSignup(other.signupId, { subRequestStatus: 'declined' });
-  }
+
+  // Every write this acceptance needs — pairing both sides, clearing the
+  // requester's own request fields, and declining everyone else's
+  // pending request to the same target — happens in one Sheets API call
+  // instead of one call per row.
+  const results = await batchUpdateSignups([
+    { signupId: target.signupId, updates: { pairId } },
+    { signupId, updates: { pairId, status: target.status, ...NO_REQUEST } },
+    ...others.map((o) => ({ signupId: o.signupId, updates: { subRequestStatus: 'declined' as const } })),
+  ]);
+  const updatedRequester = results.find((r) => r.signupId === signupId)!;
 
   try {
     await sendSubRequestAcceptedEmail(updatedRequester, target, session);
@@ -160,7 +163,6 @@ export async function clearPendingRequestsTargeting(
   const targeting = signupsForSession.filter(
     (s) => s.signupId !== excludeSignupId && s.subRequestStatus === 'pending' && s.subRequestTargetEmail.toLowerCase() === normalized
   );
-  for (const s of targeting) {
-    await updateSignup(s.signupId, { ...NO_REQUEST });
-  }
+  if (targeting.length === 0) return;
+  await batchUpdateSignups(targeting.map((s) => ({ signupId: s.signupId, updates: { ...NO_REQUEST } })));
 }
