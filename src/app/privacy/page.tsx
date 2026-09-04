@@ -7,11 +7,6 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 text-slate-800">
-      <p className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-        Draft — not legal advice. Written to satisfy Google&apos;s OAuth verification requirements and to honestly
-        describe what this app does. Please review before treating it as final.
-      </p>
-
       <h1 className="text-2xl font-bold text-slate-900">Privacy Policy</h1>
       <p className="mt-1 text-sm text-slate-500">
         New Hope Fellowship Weekly Softball Scrimmage signup web app
