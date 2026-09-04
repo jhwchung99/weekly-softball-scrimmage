@@ -3,6 +3,7 @@ import { getSessionEmail } from '../../../../../lib/auth';
 import { signUpForSession, signUpAsGuestForSession, getMyStatusForSession } from '../../../../../lib/signupFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 import { validateInvitedByName } from '../../../../../lib/validation';
+import { withMutationLock } from '../../../../../lib/lock';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
@@ -23,15 +24,17 @@ export async function POST(request: Request, { params }: Params) {
     const rawInvitedByName = typeof body?.invitedByName === 'string' ? body.invitedByName : '';
     const waiverAccepted = Boolean(body?.waiverAccepted);
 
-    const signup = rawInvitedByName
-      ? await signUpAsGuestForSession(
-          sessionId,
-          email,
-          validateInvitedByName(rawInvitedByName),
-          Boolean(body?.willingToShare),
-          waiverAccepted
-        )
-      : await signUpForSession(sessionId, email, waiverAccepted);
+    const signup = await withMutationLock(() =>
+      rawInvitedByName
+        ? signUpAsGuestForSession(
+            sessionId,
+            email,
+            validateInvitedByName(rawInvitedByName),
+            Boolean(body?.willingToShare),
+            waiverAccepted
+          )
+        : signUpForSession(sessionId, email, waiverAccepted)
+    );
 
     return NextResponse.json({ signup }, { status: 201 });
   } catch (err) {
