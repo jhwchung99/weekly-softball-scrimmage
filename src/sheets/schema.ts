@@ -16,6 +16,10 @@ export interface Session {
   registrationClosesAt: string; // ISO datetime
   capacity: number;
   status: SessionStatus;
+  cost: number; // total session cost (e.g. permit fee), admin-set; 0 = not
+  // priced yet. Split across confirmed slots at display time
+  // (computeCostShare in signupFlow.ts) — never stored per-person, so it
+  // can't drift if headcount or cost changes before payment happens.
 }
 
 export interface Signup {
@@ -35,6 +39,15 @@ export interface Signup {
   waiverAcceptedAt: string; // ISO datetime — Section 9; every signup requires this
   waiverText: string; // the exact wording accepted, not just a boolean —
   // stronger evidence than a checkbox flag if the wording ever changes later
+  paid: boolean; // admin-tracked, per session — a person who owes for one
+  // week still owes it even after paying for a later week (no cross-week
+  // ledger; see planner/2026-09-04-sub-requests-roster-cost-plan.md)
+  subRequestTargetEmail: string; // who this signup is asking to share a
+  // slot with; '' when no request is outstanding
+  subRequestStatus: '' | 'pending' | 'declined'; // '' = no active request.
+  // No 'accepted' value: on acceptance the pair is formed via pairId (the
+  // permanent record) and these three fields reset back to ''/empty.
+  subRequestedAt: string; // ISO datetime, '' when no request is outstanding
 }
 
 export interface Player {
@@ -53,6 +66,7 @@ export const SESSION_HEADERS = [
   'registrationClosesAt',
   'capacity',
   'status',
+  'cost',
 ] as const satisfies readonly (keyof Session)[];
 
 export const SIGNUP_HEADERS = [
@@ -71,6 +85,10 @@ export const SIGNUP_HEADERS = [
   'positions',
   'waiverAcceptedAt',
   'waiverText',
+  'paid',
+  'subRequestTargetEmail',
+  'subRequestStatus',
+  'subRequestedAt',
 ] as const satisfies readonly (keyof Signup)[];
 
 export const PLAYER_HEADERS = [
@@ -97,11 +115,12 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     ...row,
     capacity: Number(row.capacity) || 0,
     status: (row.status || 'open') as SessionStatus,
+    cost: Number(row.cost) || 0,
   };
 }
 
 export function serializeSessionRow(session: Session): RawRow<Session> {
-  return { ...session, capacity: String(session.capacity) };
+  return { ...session, capacity: String(session.capacity), cost: String(session.cost) };
 }
 
 export function parseSignupRow(row: RawRow<Signup>): Signup {
@@ -111,11 +130,18 @@ export function parseSignupRow(row: RawRow<Signup>): Signup {
     willingToShare: row.willingToShare === 'TRUE' || row.willingToShare === 'true',
     memberStatus: (row.memberStatus || 'guest') as MemberStatus,
     status: (row.status || 'waitlisted') as SignupStatus,
+    paid: row.paid === 'TRUE' || row.paid === 'true',
+    subRequestStatus: (row.subRequestStatus || '') as Signup['subRequestStatus'],
   };
 }
 
 export function serializeSignupRow(signup: Signup): RawRow<Signup> {
-  return { ...signup, age: String(signup.age), willingToShare: signup.willingToShare ? 'TRUE' : 'FALSE' };
+  return {
+    ...signup,
+    age: String(signup.age),
+    willingToShare: signup.willingToShare ? 'TRUE' : 'FALSE',
+    paid: signup.paid ? 'TRUE' : 'FALSE',
+  };
 }
 
 export function parsePlayerRow(row: RawRow<Player>): Player {
