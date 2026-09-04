@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../../lib/auth';
 import { getPlayer, upsertPlayer } from '../../../../sheets/players';
 import { ApiError, handleApiError } from '../../../../lib/apiErrors';
+import { validatePlayerProfile } from '../../../../lib/validation';
 
 export async function GET() {
   try {
@@ -21,18 +22,9 @@ export async function PUT(request: NextRequest) {
     if (!email) throw new ApiError(401, 'Not signed in.');
 
     const body = await request.json();
-    const { fullName, gender, age, savedPositions } = body ?? {};
-    if (!fullName || !gender || !Number.isFinite(age)) {
-      throw new ApiError(400, 'fullName, gender, and age are required.');
-    }
+    const profile = validatePlayerProfile(body ?? {});
 
-    await upsertPlayer({
-      email,
-      fullName: String(fullName),
-      gender: String(gender),
-      age: Number(age),
-      savedPositions: typeof savedPositions === 'string' ? savedPositions : '',
-    });
+    await upsertPlayer({ email, ...profile });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
