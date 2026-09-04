@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { ApiError } from './apiErrors';
 
 /**
@@ -10,6 +11,12 @@ export function requireCronSecret(request: Request): void {
   const expected = process.env.CRON_SECRET;
   if (!expected) throw new ApiError(500, 'CRON_SECRET is not configured on the server.');
 
-  const provided = request.headers.get('x-cron-secret');
-  if (provided !== expected) throw new ApiError(401, 'Invalid or missing cron secret.');
+  const provided = request.headers.get('x-cron-secret') ?? '';
+  // Constant-time comparison — a plain !== leaks how many leading bytes
+  // matched via response timing. timingSafeEqual throws on a length
+  // mismatch, so that's checked separately first.
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(provided);
+  const matches = expectedBuf.length === providedBuf.length && timingSafeEqual(expectedBuf, providedBuf);
+  if (!matches) throw new ApiError(401, 'Invalid or missing cron secret.');
 }
