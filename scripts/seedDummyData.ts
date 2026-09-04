@@ -37,6 +37,7 @@ async function main() {
     registrationClosesAt: new Date(y, m - 2, d - 1, 21).toISOString(),
     capacity: CAPACITY,
     status: 'open',
+    cost: 0,
   });
 
   for (const player of PLAYERS) {
