@@ -22,7 +22,23 @@ function getGmailClient() {
   return gmailClient;
 }
 
+/**
+ * `to`/`subject` are interpolated directly into raw RFC822 header lines
+ * below, so a CR/LF in either would let a caller inject arbitrary extra
+ * headers or smuggle content — not exploitable today (every current
+ * caller passes the OAuth-verified session email and a system-built
+ * subject, never raw user text) but this guards against that becoming
+ * true later. `text` is body content, not a header, so it's unaffected.
+ */
+function assertNoHeaderInjection(value: string, fieldName: string): void {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`Refusing to send email: ${fieldName} contains a CR/LF character.`);
+  }
+}
+
 function encodeMimeMessage(to: string, from: string, subject: string, text: string): string {
+  assertNoHeaderInjection(to, 'to');
+  assertNoHeaderInjection(subject, 'subject');
   const message = [`To: ${to}`, `From: ${from}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8', '', text].join(
     '\r\n'
   );
