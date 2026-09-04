@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../../../../lib/auth';
 import { respondToSubRequest } from '../../../../../../lib/subRequestFlow';
 import { ApiError, handleApiError } from '../../../../../../lib/apiErrors';
+import { withMutationLock } from '../../../../../../lib/lock';
 
 type Params = { params: Promise<{ signupId: string }> };
 
@@ -20,7 +21,7 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
     const accept = Boolean(body?.accept);
 
-    const signup = await respondToSubRequest(signupId, email, accept);
+    const signup = await withMutationLock(() => respondToSubRequest(signupId, email, accept));
     return NextResponse.json({ signup });
   } catch (err) {
     return handleApiError(err);
