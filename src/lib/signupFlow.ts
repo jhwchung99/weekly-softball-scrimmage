@@ -11,17 +11,27 @@ import {
   updateSignupStatus,
 } from '../sheets/signups';
 import { getPlayer } from '../sheets/players';
-import { Signup } from '../sheets/schema';
+import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { isWithinPromotionCutoff } from './time';
 import { sendPromotionEmail, sendLateCancellationAlert } from './notifications';
 import { WAIVER_TEXT } from './waiver';
+import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
 
 function requireWaiver(waiverAccepted: boolean) {
   if (!waiverAccepted) {
     throw new ApiError(400, 'You must accept the waiver to sign up.');
   }
 }
+
+/** Every new signup starts with no payment tracked and no sub request
+ * outstanding — spread into every createSignup call below. */
+const NEW_SIGNUP_EXTRAS = {
+  paid: false,
+  subRequestTargetEmail: '',
+  subRequestStatus: '' as const,
+  subRequestedAt: '',
+};
 
 /**
  * A pair (linked via pairId) occupies exactly ONE slot combined (Section
@@ -94,6 +104,7 @@ export async function signUpForSession(sessionId: string, email: string, waiverA
     positions: player.savedPositions,
     waiverAcceptedAt: new Date().toISOString(),
     waiverText: WAIVER_TEXT,
+    ...NEW_SIGNUP_EXTRAS,
   });
 
   // Section 5: if a guest already named this member as their inviter and
@@ -153,6 +164,7 @@ export async function signUpAsGuestForSession(
         timestamp: new Date().toISOString(),
         positions: player.savedPositions,
         ...waiverFields,
+        ...NEW_SIGNUP_EXTRAS,
       });
     }
     // Member hasn't signed up yet (or is already paired with someone
@@ -177,6 +189,7 @@ export async function signUpAsGuestForSession(
     timestamp: new Date().toISOString(),
     positions: player.savedPositions,
     ...waiverFields,
+    ...NEW_SIGNUP_EXTRAS,
   });
 }
 
@@ -233,22 +246,30 @@ function groupWaitlistUnits(allSignupsForSession: Signup[]): WaitlistUnit[] {
   return units;
 }
 
-/** Promotes the single highest-priority waitlisted unit to 'confirmed', if any. */
-async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Signup | null> {
+/**
+ * Promotes the single highest-priority waitlisted unit to 'confirmed', if
+ * any, and returns every signup in that unit — a promoted pair is 1-2
+ * rows, and every one of them needs to actually get the "you're in"
+ * email, not just the first (a real gap found while building sub
+ * requests: this used to return only winner.signupIds[0], so the second
+ * member of any promoted pair never got notified).
+ */
+async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Signup[]> {
   const units = groupWaitlistUnits(allSignupsForSession);
-  if (units.length === 0) return null;
+  if (units.length === 0) return [];
 
   units.sort((a, b) => a.tier - b.tier || a.timestamp.localeCompare(b.timestamp));
   const winner = units[0];
   for (const id of winner.signupIds) {
     await updateSignupStatus(id, 'confirmed');
   }
-  return getSignup(winner.signupIds[0]);
+  const promoted = await Promise.all(winner.signupIds.map((id) => getSignup(id)));
+  return promoted.filter((s): s is Signup => s !== null);
 }
 
 export interface CancelResult {
-  /** Who got promoted as a result of this cancellation, if anyone. */
-  promoted: Signup | null;
+  /** Everyone promoted as a result of this cancellation — empty if no one was. */
+  promoted: Signup[];
 }
 
 /**
@@ -277,7 +298,7 @@ export async function cancelMySignup(
   if (signup.email !== requesterEmail && !requesterIsAdmin) {
     throw new ApiError(403, 'You can only cancel your own signup.');
   }
-  if (signup.status === 'cancelled') return { promoted: null }; // already cancelled, nothing to do
+  if (signup.status === 'cancelled') return { promoted: [] }; // already cancelled, nothing to do
 
   const session = await getSession(signup.sessionId);
   if (!session) throw new ApiError(404, 'No such session.');
@@ -287,7 +308,13 @@ export async function cancelMySignup(
   const afterSignups = await listSignupsForSession(signup.sessionId);
   const after = countConfirmedSlots(afterSignups);
 
-  if (after >= before) return { promoted: null }; // no slot actually freed
+  // Sub-request cleanup: this signup's own outgoing request (if any) and
+  // anyone else's pending request that was targeting this now-cancelled
+  // signup's email both become moot.
+  await clearOwnPendingRequest(signup);
+  await clearPendingRequestsTargeting(signup.email, afterSignups, signupId);
+
+  if (after >= before) return { promoted: [] }; // no slot actually freed
   if (isWithinPromotionCutoff(session.gameDate, session.gameTime)) {
     // Section 6/7: no auto-promotion this close to game time, but the
     // organizer needs to know a slot just opened so they can personally
@@ -298,11 +325,14 @@ export async function cancelMySignup(
     } catch (err) {
       console.error(`Failed to send organizer alert for cancelled signup ${signup.signupId}:`, err);
     }
-    return { promoted: null };
+    return { promoted: [] };
   }
 
-  const promoted = await promoteNextWaitlisted(afterSignups);
-  if (promoted) {
+  const promotedSignups = await promoteNextWaitlisted(afterSignups);
+  for (const promoted of promotedSignups) {
+    // A promoted signup's own outstanding outgoing sub request is moot —
+    // it just got its own slot.
+    await clearOwnPendingRequest(promoted);
     // Awaited, not fire-and-forget: on Vercel's serverless runtime, an
     // unawaited promise can get killed once the response is sent, so
     // "don't block on this" has to mean "swallow the error," not "don't
@@ -315,9 +345,69 @@ export async function cancelMySignup(
       console.error(`Failed to send promotion email to ${promoted.email}:`, err);
     }
   }
-  return { promoted };
+  return { promoted: promotedSignups };
 }
 
-export async function getMySignupForSession(sessionId: string, email: string): Promise<Signup | null> {
-  return findActiveSignup(sessionId, email);
+/**
+ * Splits session.cost across confirmed slots (pair-aware, same dedup as
+ * countConfirmedSlots), then splits each slot's share across however
+ * many people share that slot's pairId — 1 for a solo confirmed player,
+ * 2 for a pair. Not stored — computed on every read, so it can't drift
+ * from reality if headcount or cost changes before payment happens.
+ * Rounded to the nearest cent; per-person shares won't always sum to
+ * exactly session.cost (e.g. $100 split 13 ways) — accepted, not
+ * reconciled, for a casual weekly game.
+ */
+export function computeCostShare(session: Session, signups: Signup[]): Record<string, number> {
+  if (!session.cost) return {};
+
+  const confirmed = signups.filter((s) => s.status === 'confirmed');
+  const slots = countConfirmedSlots(signups);
+  if (slots === 0) return {};
+
+  const perSlot = session.cost / slots;
+  const pairSizes = new Map<string, number>();
+  for (const s of confirmed) {
+    if (s.pairId) pairSizes.set(s.pairId, (pairSizes.get(s.pairId) ?? 0) + 1);
+  }
+
+  const perPerson: Record<string, number> = {};
+  for (const s of confirmed) {
+    const shareOf = s.pairId ? pairSizes.get(s.pairId) ?? 1 : 1;
+    perPerson[s.signupId] = Math.round((perSlot / shareOf) * 100) / 100;
+  }
+  return perPerson;
+}
+
+export interface MyStatus {
+  signup: Signup | null;
+  /** Other players' pending requests to share a slot with this caller. */
+  incomingSubRequests: { fromSignupId: string; fromFullName: string }[];
+  /** This caller's own share of session.cost, or null if not priced yet
+   * or the caller isn't confirmed. */
+  costOwed: number | null;
+}
+
+/**
+ * Everything the player homepage needs about "me" for this session in
+ * one read: reuses a single listSignupsForSession call for both finding
+ * the caller's own signup and scanning for incoming sub requests, rather
+ * than two separate Sheets reads.
+ */
+export async function getMyStatusForSession(sessionId: string, email: string): Promise<MyStatus> {
+  const normalized = email.trim().toLowerCase();
+  const [allSignups, session] = await Promise.all([listSignupsForSession(sessionId), getSession(sessionId)]);
+
+  const signup = allSignups.find((s) => s.email.toLowerCase() === normalized && s.status !== 'cancelled') ?? null;
+
+  const incomingSubRequests = allSignups
+    .filter((s) => s.subRequestStatus === 'pending' && s.subRequestTargetEmail.toLowerCase() === normalized)
+    .map((s) => ({ fromSignupId: s.signupId, fromFullName: s.fullName }));
+
+  let costOwed: number | null = null;
+  if (signup && signup.status === 'confirmed' && session) {
+    costOwed = computeCostShare(session, allSignups)[signup.signupId] ?? null;
+  }
+
+  return { signup, incomingSubRequests, costOwed };
 }
