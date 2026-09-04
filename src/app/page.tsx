@@ -16,6 +16,13 @@ interface SignupInfo {
   signupId: string;
   status: 'confirmed' | 'waitlisted' | 'cancelled';
   memberStatus: 'member' | 'guest';
+  subRequestTargetEmail: string;
+  subRequestStatus: '' | 'pending' | 'declined';
+}
+
+interface IncomingSubRequest {
+  fromSignupId: string;
+  fromFullName: string;
 }
 
 interface PlayerInfo {
@@ -23,6 +30,17 @@ interface PlayerInfo {
   gender: string;
   age: number;
   savedPositions: string;
+}
+
+interface RosterEntry {
+  fullName: string;
+  positions: string;
+  pairedWith: string | null;
+}
+
+interface Roster {
+  confirmed: RosterEntry[];
+  waitlisted: RosterEntry[];
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -37,8 +55,11 @@ export default function Home() {
   const [scrimmage, setScrimmage] = useState<SessionInfo | null>(null);
   const [scrimmageLoaded, setScrimmageLoaded] = useState(false);
   const [mySignup, setMySignup] = useState<SignupInfo | null>(null);
+  const [incomingSubRequests, setIncomingSubRequests] = useState<IncomingSubRequest[]>([]);
+  const [costOwed, setCostOwed] = useState<number | null>(null);
   const [myPlayer, setMyPlayer] = useState<PlayerInfo | null>(null);
   const [waiverText, setWaiverText] = useState('');
+  const [roster, setRoster] = useState<Roster | null>(null);
   const [playerDataLoaded, setPlayerDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,14 +76,20 @@ export default function Home() {
     if (!scrimmage) return;
     setError(null);
     try {
-      const [signupRes, playerRes, waiverRes] = await Promise.all([
-        fetchJson<{ signup: SignupInfo | null }>(`/api/sessions/${scrimmage.sessionId}/signup`),
+      const [signupRes, playerRes, waiverRes, rosterRes] = await Promise.all([
+        fetchJson<{ signup: SignupInfo | null; incomingSubRequests: IncomingSubRequest[]; costOwed: number | null }>(
+          `/api/sessions/${scrimmage.sessionId}/signup`
+        ),
         fetchJson<{ player: PlayerInfo | null }>('/api/players/me'),
         fetchJson<{ text: string }>('/api/waiver'),
+        fetchJson<Roster>(`/api/sessions/${scrimmage.sessionId}/roster`),
       ]);
       setMySignup(signupRes.signup);
+      setIncomingSubRequests(signupRes.incomingSubRequests);
+      setCostOwed(signupRes.costOwed);
       setMyPlayer(playerRes.player);
       setWaiverText(waiverRes.text);
+      setRoster(rosterRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -88,6 +115,58 @@ export default function Home() {
     try {
       const res = await fetch(`/api/signups/${mySignup.signupId}/cancel`, { method: 'POST' });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Cancel failed');
+      await loadPlayerData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRequestSub(targetEmail: string) {
+    if (!mySignup) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/signups/${mySignup.signupId}/sub-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetEmail }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Request failed');
+      await loadPlayerData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancelSubRequest() {
+    if (!mySignup) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/signups/${mySignup.signupId}/sub-request`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Cancel failed');
+      await loadPlayerData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRespondToSubRequest(fromSignupId: string, accept: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/signups/${fromSignupId}/sub-request/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accept }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Response failed');
       await loadPlayerData();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -143,44 +222,125 @@ export default function Home() {
               Scrimmage — {scrimmage.gameDate} at {scrimmage.gameTime}
             </h2>
             {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s scrimmage has been cancelled.</p>}
-            {scrimmage.status === 'closed' && <p className="mt-1 text-slate-600">Registration is currently closed.</p>}
-            {scrimmage.status === 'open' && authStatus === 'authenticated' && (
+            {scrimmage.status !== 'cancelled' && authStatus === 'authenticated' && (
               <PlayerArea
                 scrimmage={scrimmage}
+                registrationClosed={scrimmage.status === 'closed'}
                 mySignup={mySignup}
                 myPlayer={myPlayer}
                 waiverText={waiverText}
+                costOwed={costOwed}
                 loaded={playerDataLoaded}
                 busy={busy}
                 setBusy={setBusy}
                 setError={setError}
                 onCancel={handleCancel}
                 onRefresh={loadPlayerData}
+                onRequestSub={handleRequestSub}
+                onCancelSubRequest={handleCancelSubRequest}
               />
             )}
-            {scrimmage.status === 'open' && authStatus === 'unauthenticated' && (
+            {scrimmage.status !== 'cancelled' && authStatus === 'unauthenticated' && (
               <p className="mt-2 text-slate-600">Sign in above to see your status or sign up.</p>
             )}
           </>
         )}
       </section>
+
+      {authStatus === 'authenticated' && incomingSubRequests.length > 0 && (
+        <section className="mt-4 rounded border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-semibold text-slate-900">Sub requests for you</h2>
+          <ul className="mt-2 space-y-2">
+            {incomingSubRequests.map((r) => (
+              <li key={r.fromSignupId} className="flex items-center justify-between gap-2 text-sm text-slate-700">
+                <span>{r.fromFullName} would like to sub with you.</span>
+                <span className="flex gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={() => handleRespondToSubRequest(r.fromSignupId, true)}
+                    className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => handleRespondToSubRequest(r.fromSignupId, false)}
+                    className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {authStatus === 'authenticated' && roster && (
+        <section className="mt-4 rounded border border-slate-200 p-4">
+          <h2 className="font-semibold text-slate-900">Who&apos;s playing</h2>
+          <div className="mt-2">
+            <h3 className="text-sm font-medium text-slate-700">Confirmed ({roster.confirmed.length})</h3>
+            <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+              {roster.confirmed.map((p, i) => (
+                <li key={i}>
+                  {p.fullName}
+                  {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
+                </li>
+              ))}
+              {roster.confirmed.length === 0 && <li className="text-slate-400">No one confirmed yet.</li>}
+            </ul>
+          </div>
+          <div className="mt-3">
+            <h3 className="text-sm font-medium text-slate-700">Waitlist ({roster.waitlisted.length})</h3>
+            <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+              {roster.waitlisted.map((p, i) => (
+                <li key={i}>
+                  {i + 1}. {p.fullName}
+                  {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
+                </li>
+              ))}
+              {roster.waitlisted.length === 0 && <li className="text-slate-400">No one on the waitlist.</li>}
+            </ul>
+          </div>
+        </section>
+      )}
     </main>
   );
 }
 
 function PlayerArea(props: {
   scrimmage: SessionInfo;
+  registrationClosed: boolean;
   mySignup: SignupInfo | null;
   myPlayer: PlayerInfo | null;
   waiverText: string;
+  costOwed: number | null;
   loaded: boolean;
   busy: boolean;
   setBusy: (b: boolean) => void;
   setError: (e: string | null) => void;
   onCancel: () => void;
   onRefresh: () => void;
+  onRequestSub: (targetEmail: string) => void;
+  onCancelSubRequest: () => void;
 }) {
-  const { scrimmage, mySignup, myPlayer, waiverText, loaded, busy, setBusy, setError, onCancel, onRefresh } = props;
+  const {
+    scrimmage,
+    registrationClosed,
+    mySignup,
+    myPlayer,
+    waiverText,
+    costOwed,
+    loaded,
+    busy,
+    setBusy,
+    setError,
+    onCancel,
+    onRefresh,
+    onRequestSub,
+    onCancelSubRequest,
+  } = props;
 
   if (!loaded) return <p className="mt-2 text-slate-500">Loading your status...</p>;
 
@@ -192,7 +352,8 @@ function PlayerArea(props: {
           <span className={mySignup.status === 'confirmed' ? 'font-semibold text-green-700' : 'font-semibold text-amber-700'}>
             {mySignup.status === 'confirmed' ? 'confirmed to play' : 'on the waitlist'}
           </span>
-          {mySignup.memberStatus === 'guest' ? ' (as a guest)' : ''}.
+          {mySignup.memberStatus === 'guest' ? ' (as a guest)' : ''}
+          {mySignup.status === 'confirmed' && costOwed !== null ? ` — your share: $${costOwed.toFixed(2)}` : ''}.
         </p>
         <button
           onClick={onCancel}
@@ -201,8 +362,24 @@ function PlayerArea(props: {
         >
           Cancel my spot
         </button>
+
+        {mySignup.status === 'waitlisted' && (
+          <SubRequestPanel
+            subRequestTargetEmail={mySignup.subRequestTargetEmail}
+            subRequestStatus={mySignup.subRequestStatus}
+            busy={busy}
+            setBusy={setBusy}
+            setError={setError}
+            onRequestSub={onRequestSub}
+            onCancelSubRequest={onCancelSubRequest}
+          />
+        )}
       </div>
     );
+  }
+
+  if (registrationClosed) {
+    return <p className="mt-2 text-slate-600">Registration is currently closed.</p>;
   }
 
   if (!myPlayer) {
@@ -226,6 +403,69 @@ function PlayerArea(props: {
       setError={setError}
       onSignedUp={onRefresh}
     />
+  );
+}
+
+function SubRequestPanel(props: {
+  subRequestTargetEmail: string;
+  subRequestStatus: '' | 'pending' | 'declined';
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  setError: (e: string | null) => void;
+  onRequestSub: (targetEmail: string) => void;
+  onCancelSubRequest: () => void;
+}) {
+  const { subRequestTargetEmail, subRequestStatus, busy, onRequestSub, onCancelSubRequest } = props;
+  const [targetEmail, setTargetEmail] = useState('');
+
+  if (subRequestStatus === 'pending') {
+    return (
+      <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+        <p className="text-slate-700">Waiting on {subRequestTargetEmail} to respond.</p>
+        <button
+          disabled={busy}
+          onClick={onCancelSubRequest}
+          className="mt-2 rounded border border-slate-300 px-2 py-1 text-xs hover:bg-white disabled:opacity-50"
+        >
+          Cancel request
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+      {subRequestStatus === 'declined' && (
+        <p className="mb-2 text-slate-600">{subRequestTargetEmail} declined your last request.</p>
+      )}
+      <p className="text-xs text-slate-500">
+        Know someone confirmed (or waitlisted) who might sub with you? Please try reaching out to them outside the
+        app first, out of politeness, before sending a request below.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (targetEmail.trim()) onRequestSub(targetEmail.trim());
+        }}
+        className="mt-2 flex gap-2"
+      >
+        <input
+          required
+          type="email"
+          placeholder="Their email"
+          value={targetEmail}
+          onChange={(e) => setTargetEmail(e.target.value)}
+          className="flex-1 rounded border border-slate-300 px-2 py-1"
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          Request to sub
+        </button>
+      </form>
+    </div>
   );
 }
 
