@@ -1,6 +1,7 @@
 import { upsertPlayer } from '../sheets/players';
 import { Signup } from '../sheets/schema';
 import { signUpForSession, signUpAsGuestForSession } from './signupFlow';
+import { validatePlayerProfile, validateInvitedByName } from './validation';
 
 export interface AdminAddSignupInput {
   sessionId: string;
@@ -34,20 +35,15 @@ export interface AdminAddSignupInput {
  */
 export async function adminAddSignup(input: AdminAddSignupInput): Promise<Signup> {
   if (input.profile) {
-    await upsertPlayer({
-      email: input.email,
-      fullName: input.profile.fullName,
-      gender: input.profile.gender,
-      age: input.profile.age,
-      savedPositions: input.profile.savedPositions ?? '',
-    });
+    const profile = validatePlayerProfile(input.profile);
+    await upsertPlayer({ email: input.email, ...profile });
   }
 
   if (input.invitedByName) {
     return signUpAsGuestForSession(
       input.sessionId,
       input.email,
-      input.invitedByName,
+      validateInvitedByName(input.invitedByName),
       Boolean(input.willingToShare),
       input.waiverAccepted
     );
