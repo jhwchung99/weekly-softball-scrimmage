@@ -33,3 +33,35 @@ export async function sendLateCancellationAlert(signup: Signup, session: Session
 
   await sendPush(title, message);
 }
+
+/** A waitlisted player has asked a specific signed-up player to share
+ * their spot — notifies the target so they can log in and respond. */
+export async function sendSubRequestEmail(target: Signup, requester: Signup, session: Session): Promise<void> {
+  const subject = `Sub request for the ${session.gameDate} scrimmage`;
+  const text = [
+    `Hi ${target.fullName},`,
+    '',
+    `${requester.fullName} would like to know if you're willing to sub with them for the ${session.gameDate} scrimmage at ${session.gameTime}.`,
+    '',
+    'Log into the app to accept or decline.',
+  ].join('\n');
+
+  await sendEmail(target.email, subject, text);
+}
+
+/** Sent to both parties once a sub request is accepted and they're
+ * sharing a spot. */
+export async function sendSubRequestAcceptedEmail(a: Signup, b: Signup, session: Session): Promise<void> {
+  const subject = `You're set to share a spot for the ${session.gameDate} scrimmage`;
+  const build = (self: Signup, other: Signup) =>
+    [
+      `Hi ${self.fullName},`,
+      '',
+      `${other.fullName} and you are now sharing a spot for the ${session.gameDate} scrimmage at ${session.gameTime}.`,
+      '',
+      'See you on the field!',
+    ].join('\n');
+
+  await sendEmail(a.email, subject, build(a, b));
+  await sendEmail(b.email, subject, build(b, a));
+}
