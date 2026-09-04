@@ -56,6 +56,29 @@ export function validateInvitedByName(value: unknown): string {
   return requireTrimmedString(value, 'invitedByName', MAX_NAME_LENGTH);
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Basic shape check only — doesn't verify the address is a real Google
+ * account. That's guaranteed downstream instead: requestSub only accepts
+ * a targetEmail that already has an active signup for the session.
+ */
+export function validateEmail(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed || !EMAIL_PATTERN.test(trimmed)) {
+    throw new ApiError(400, 'A valid email address is required.');
+  }
+  return trimmed;
+}
+
+export function validateCost(value: unknown): number {
+  const cost = Number(value);
+  if (!Number.isFinite(cost) || cost < 0) {
+    throw new ApiError(400, 'cost must be a non-negative number.');
+  }
+  return cost;
+}
+
 export interface PlayerProfileInput {
   fullName: unknown;
   gender: unknown;
