@@ -40,6 +40,7 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
       registrationOpensAt: now.toISOString(),
       registrationClosesAt: '',
       capacity: DEFAULT_CAPACITY,
+      cost: 0,
       status: 'open',
     });
     return { sessionId, skipped: false };
