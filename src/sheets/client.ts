@@ -85,7 +85,12 @@ export async function appendValues(
   await sheets.spreadsheets.values.append({
     spreadsheetId,
     range,
-    valueInputOption: 'USER_ENTERED',
+    // RAW, not USER_ENTERED — values are stored literally, never parsed
+    // as formulas. Never change this back: user-supplied fields (names,
+    // etc.) flow straight into these rows, and USER_ENTERED lets a
+    // leading "=" turn a cell into a live formula. See the 2026-09-04
+    // security review / planner/2026-09-04-security-hardening-plan.md.
+    valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: rows },
   });
@@ -132,8 +137,8 @@ export interface SheetRow<T> {
  * Reads every data row (below the header) of `tab` and maps each one to an
  * object keyed by `headers`, in order. Filtering happens application-side
  * (`.filter()` on the result) — the Sheets API has no server-side WHERE
- * equivalent, which is fine at this scale (a league's signups are never
- * more than a few hundred rows).
+ * equivalent, which is fine at this scale (a weekly pickup game's signups
+ * are never more than a few hundred rows).
  */
 export async function getRowObjects<T extends Record<string, unknown>>(
   spreadsheetId: string,
@@ -170,7 +175,8 @@ export async function updateRow<T extends Record<string, unknown>>(
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${tab}!A${rowNumber}:${lastCol}${rowNumber}`,
-    valueInputOption: 'USER_ENTERED',
+    // RAW, not USER_ENTERED — see the comment in appendValues above.
+    valueInputOption: 'RAW',
     requestBody: { values: [values as (string | number | boolean)[]] },
   });
 }
