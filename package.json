@@ -8,10 +8,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "setup:sheets": "tsx scripts/createDataTabs.ts",
     "authorize-gmail-sender": "tsx --env-file=.env.local scripts/authorizeGmailSender.ts"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.4",
     "google-auth-library": "^9.14.1",
     "googleapis": "^144.0.0",
     "next": "^16.3.4",
@@ -21,13 +25,20 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.4",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   }
 }
