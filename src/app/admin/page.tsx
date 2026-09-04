@@ -13,6 +13,7 @@ interface SessionInfo {
   gameTime: string;
   capacity: number;
   status: SessionStatus;
+  cost: number;
 }
 
 interface AdminSignup {
@@ -24,6 +25,7 @@ interface AdminSignup {
   pairId: string;
   status: SignupStatus;
   positions: string;
+  paid: boolean;
 }
 
 class HttpError extends Error {
@@ -53,6 +55,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [capacityInput, setCapacityInput] = useState('');
+  const [costInput, setCostInput] = useState('');
 
   async function loadCurrentSessionId() {
     const { session } = await fetchJson<{ session: SessionInfo | null }>('/api/sessions/current');
@@ -71,6 +74,7 @@ export default function AdminPage() {
       ]);
       setScrimmage(sessionRes.session);
       setCapacityInput(String(sessionRes.session.capacity));
+      setCostInput(String(sessionRes.session.cost));
       setRoster(rosterRes.signups);
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
@@ -116,13 +120,21 @@ export default function AdminPage() {
   }
 
   async function updateSignupStatus(signupId: string, status: SignupStatus) {
+    await updateSignupFields(signupId, { status });
+  }
+
+  async function updateSignupPaid(signupId: string, paid: boolean) {
+    await updateSignupFields(signupId, { paid });
+  }
+
+  async function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
     setBusy(true);
     setError(null);
     try {
       const res = await fetch(`/api/admin/signups/${signupId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(updates),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Update failed');
       await loadRoster(sessionId);
@@ -208,6 +220,22 @@ export default function AdminPage() {
                 >
                   Save
                 </button>
+                <label className="ml-3 text-sm text-slate-700">Cost ($)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={costInput}
+                  onChange={(e) => setCostInput(e.target.value)}
+                  className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                />
+                <button
+                  disabled={busy}
+                  onClick={() => updateSession({ cost: Number(costInput) })}
+                  className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Save
+                </button>
                 {scrimmage.status !== 'cancelled' && (
                   <button
                     disabled={busy}
@@ -232,6 +260,7 @@ export default function AdminPage() {
                       <th className="py-1 pr-2">Type</th>
                       <th className="py-1 pr-2">Positions</th>
                       <th className="py-1 pr-2">Status</th>
+                      <th className="py-1 pr-2">Paid</th>
                       <th className="py-1 pr-2"></th>
                     </tr>
                   </thead>
@@ -252,6 +281,14 @@ export default function AdminPage() {
                             <option value="waitlisted">waitlisted</option>
                             <option value="cancelled">cancelled</option>
                           </select>
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <input
+                            type="checkbox"
+                            checked={s.paid}
+                            disabled={busy}
+                            onChange={(e) => updateSignupPaid(s.signupId, e.target.checked)}
+                          />
                         </td>
                         <td className="py-1.5 pr-2">
                           <button
