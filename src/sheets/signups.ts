@@ -1,5 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow, deleteRow, getOrCreateSheet, columnLetter } from './client';
+import {
+  SPREADSHEET_ID,
+  getRowObjects,
+  appendValues,
+  updateRow,
+  deleteRow,
+  getOrCreateSheet,
+  columnLetter,
+  batchUpdateRows,
+} from './client';
 import { Signup, SignupStatus, SIGNUP_HEADERS, parseSignupRow, serializeSignupRow } from './schema';
 
 const TAB = 'Signups';
@@ -17,6 +26,34 @@ export async function getSignup(signupId: string): Promise<Signup | null> {
   const all = await rows();
   const match = all.find((r) => r.data.signupId === signupId);
   return match ? parseSignupRow(match.data) : null;
+}
+
+/**
+ * One signup plus every signup in its session, from a single tab read —
+ * for callers (requestSub, respondToSubRequest, cancelMySignup) that
+ * previously called getSignup then separately listSignupsForSession,
+ * doing two full-tab reads where one suffices. See
+ * planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md, Step 2.
+ */
+export async function getSignupWithSessionSignups(
+  signupId: string
+): Promise<{ signup: Signup | null; sessionSignups: Signup[] }> {
+  const all = await rows();
+  const match = all.find((r) => r.data.signupId === signupId);
+  if (!match) return { signup: null, sessionSignups: [] };
+  const signup = parseSignupRow(match.data);
+  const sessionSignups = all.filter((r) => r.data.sessionId === signup.sessionId).map((r) => parseSignupRow(r.data));
+  return { signup, sessionSignups };
+}
+
+/** Every signup matching the given ids, from a single tab read — used by
+ * promoteNextWaitlisted so fetching a promoted pair (1-2 ids) is one
+ * read instead of one per id. */
+export async function getSignupsByIds(signupIds: string[]): Promise<Signup[]> {
+  if (signupIds.length === 0) return [];
+  const idSet = new Set(signupIds);
+  const all = await rows();
+  return all.filter((r) => idSet.has(r.data.signupId)).map((r) => parseSignupRow(r.data));
 }
 
 /**
@@ -63,6 +100,33 @@ export async function updateSignup(signupId: string, updates: Partial<Signup>): 
 
 export async function updateSignupStatus(signupId: string, status: SignupStatus): Promise<void> {
   await updateSignup(signupId, { status });
+}
+
+/**
+ * Applies several signup updates in one Sheets API call instead of one
+ * updateRow per signup — e.g. respondToSubRequest's accept path writes
+ * the target's pairId, the requester's pairId/status/cleared-request
+ * fields, and any auto-declined other requests, all in one call. Order
+ * of the returned array matches `updates`, but callers should look up by
+ * signupId rather than rely on that, since it's an easy mistake to make.
+ */
+export async function batchUpdateSignups(updates: { signupId: string; updates: Partial<Signup> }[]): Promise<Signup[]> {
+  if (updates.length === 0) return [];
+  const all = await rows();
+  const lastCol = columnLetter(SIGNUP_HEADERS.length);
+
+  const results: Signup[] = [];
+  const rangeUpdates = updates.map(({ signupId, updates: partial }) => {
+    const match = all.find((r) => r.data.signupId === signupId);
+    if (!match) throw new Error(`No signup with id "${signupId}".`);
+    const updated: Signup = { ...parseSignupRow(match.data), ...partial };
+    results.push(updated);
+    const row = serializeSignupRow(updated);
+    return { range: `${TAB}!A${match.rowNumber}:${lastCol}${match.rowNumber}`, values: SIGNUP_HEADERS.map((h) => row[h]) };
+  });
+
+  await batchUpdateRows(SPREADSHEET_ID, rangeUpdates);
+  return results;
 }
 
 /**
