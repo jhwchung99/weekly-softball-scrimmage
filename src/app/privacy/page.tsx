@@ -14,15 +14,13 @@ export default function PrivacyPage() {
 
       <h1 className="text-2xl font-bold text-slate-900">Privacy Policy</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Weekly Softball Scrimmage — New Hope Fellowship softball league signup app
+        New Hope Fellowship Weekly Softball Scrimmage signup web app
       </p>
 
       <section className="mt-6 space-y-2">
-        <h2 className="font-semibold text-slate-900">Who we are</h2>
         <p className="text-sm">
-          Weekly Softball Scrimmage is a small, volunteer-run signup tool for New Hope Fellowship&apos;s weekly
-          pickup softball game. It is not a commercial product — it exists to manage capacity and waitlists for one
-          weekly event.
+          This web application is a small, volunteer-run signup tool for New Hope Fellowship&apos;s weekly pickup
+          softball game. It exists to manage capacity and waitlists for weekly events.
         </p>
       </section>
 
@@ -52,9 +50,9 @@ export default function PrivacyPage() {
           <li>To identify you and prevent duplicate signups for the same week</li>
           <li>To track capacity: confirming players up to that week&apos;s limit and waitlisting the rest, in signup order</li>
           <li>To automatically promote the next eligible person when a confirmed player cancels with enough notice</li>
-          <li>To email you (via the league&apos;s Gmail account) if you&apos;re promoted off the waitlist</li>
-          <li>To alert the league organizer, via a push notification (not email), when a cancellation happens too close to game time for automatic promotion</li>
-          <li>To let league admins view and manage that week&apos;s roster</li>
+          <li>To email you (via the scrimmage&apos;s Gmail account) if you&apos;re promoted off the waitlist</li>
+          <li>To alert the organizer, via a push notification (not email), when a cancellation happens too close to game time for automatic promotion</li>
+          <li>To let admins view and manage that week&apos;s roster</li>
         </ul>
         <p className="mt-2 text-sm">
           We do not use your information for advertising, and we do not build any kind of profile about you beyond
@@ -65,7 +63,7 @@ export default function PrivacyPage() {
       <section className="mt-6 space-y-2">
         <h2 className="font-semibold text-slate-900">Where it&apos;s stored, and who can see it</h2>
         <p className="text-sm">
-          Signup data lives in a Google Sheet accessible only to the league&apos;s organizer and designated admins —
+          Signup data lives in a Google Sheet accessible only to the organizer and designated admins —
           not the general public, and not other players beyond what they can see about their own status in the app.
         </p>
       </section>
@@ -96,7 +94,7 @@ export default function PrivacyPage() {
       <section className="mt-6 space-y-2">
         <h2 className="font-semibold text-slate-900">How long we keep it</h2>
         <p className="text-sm">
-          Signup records are kept as the league&apos;s ongoing operational history (e.g. for attendance tracking).
+          Signup records are kept as an ongoing operational history (e.g. for attendance tracking).
           You can ask to have your data corrected or deleted at any time — see Contact below.
         </p>
       </section>
@@ -112,7 +110,7 @@ export default function PrivacyPage() {
       <section className="mt-6 space-y-2">
         <h2 className="font-semibold text-slate-900">Children&apos;s privacy</h2>
         <p className="text-sm">
-          This app is intended for adult recreational league play and is not directed at children.
+          This app is intended for adult recreational play and is not directed at children.
         </p>
       </section>
 
