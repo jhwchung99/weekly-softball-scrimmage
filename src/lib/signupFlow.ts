@@ -5,10 +5,11 @@ import {
   findActiveSignup,
   findMemberSignupByName,
   findPendingGuestInvite,
-  getSignup,
+  getSignupWithSessionSignups,
   listSignupsForSession,
   updateSignup,
   updateSignupStatus,
+  batchUpdateSignups,
 } from '../sheets/signups';
 import { getPlayer } from '../sheets/players';
 import { Signup, Session } from '../sheets/schema';
@@ -260,11 +261,10 @@ async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Si
 
   units.sort((a, b) => a.tier - b.tier || a.timestamp.localeCompare(b.timestamp));
   const winner = units[0];
-  for (const id of winner.signupIds) {
-    await updateSignupStatus(id, 'confirmed');
-  }
-  const promoted = await Promise.all(winner.signupIds.map((id) => getSignup(id)));
-  return promoted.filter((s): s is Signup => s !== null);
+  // One batched call both confirms every row in the winning unit and
+  // returns the updated rows — previously a loop of individual writes
+  // followed by a loop of individual reads.
+  return batchUpdateSignups(winner.signupIds.map((id) => ({ signupId: id, updates: { status: 'confirmed' as const } })));
 }
 
 export interface CancelResult {
@@ -293,7 +293,10 @@ export async function cancelMySignup(
   requesterEmail: string,
   requesterIsAdmin: boolean
 ): Promise<CancelResult> {
-  const signup = await getSignup(signupId);
+  // One read serves both "find this signup" and "current session
+  // headcount" — previously a separate getSignup then
+  // listSignupsForSession, each a full-tab read.
+  const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
   if (!signup) throw new ApiError(404, 'No such signup.');
   if (signup.email !== requesterEmail && !requesterIsAdmin) {
     throw new ApiError(403, 'You can only cancel your own signup.');
@@ -303,7 +306,7 @@ export async function cancelMySignup(
   const session = await getSession(signup.sessionId);
   if (!session) throw new ApiError(404, 'No such session.');
 
-  const before = countConfirmedSlots(await listSignupsForSession(signup.sessionId));
+  const before = countConfirmedSlots(sessionSignups);
   await updateSignupStatus(signupId, 'cancelled');
   const afterSignups = await listSignupsForSession(signup.sessionId);
   const after = countConfirmedSlots(afterSignups);
