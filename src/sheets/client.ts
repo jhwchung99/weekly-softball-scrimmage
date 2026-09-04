@@ -41,6 +41,30 @@ function loadKey(): Record<string, unknown> {
   }
 }
 
+// The googleapis client already retries transient failures a few times
+// with a short backoff, but that wasn't enough to outlast a genuinely
+// exhausted per-minute read-request quota (hit live during 2026-09-04
+// testing — see planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md).
+// This adds a longer, targeted retry specifically for 429/rateLimitExceeded
+// on top of that, rather than replacing it.
+const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 5000];
+
+function isRateLimitError(err: unknown): boolean {
+  const status = (err as { status?: number; code?: number } | undefined)?.status ?? (err as { code?: number } | undefined)?.code;
+  return status === 429;
+}
+
+async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRateLimitError(err) || attempt >= RATE_LIMIT_RETRY_DELAYS_MS.length) throw err;
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
 let sheetsClient: sheets_v4.Sheets | undefined;
 
 export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
@@ -61,7 +85,7 @@ export interface SheetTab {
 
 export async function getSpreadsheetMeta(spreadsheetId: string): Promise<SheetTab[]> {
   const sheets = await getSheetsClient();
-  const { data } = await sheets.spreadsheets.get({ spreadsheetId });
+  const { data } = await withRateLimitRetry(() => sheets.spreadsheets.get({ spreadsheetId }));
   return (data.sheets ?? []).map((s) => ({
     title: s.properties?.title ?? '',
     sheetId: s.properties?.sheetId ?? 0,
@@ -72,7 +96,7 @@ export async function getSpreadsheetMeta(spreadsheetId: string): Promise<SheetTa
 
 export async function getValues(spreadsheetId: string, range: string): Promise<string[][]> {
   const sheets = await getSheetsClient();
-  const { data } = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  const { data } = await withRateLimitRetry(() => sheets.spreadsheets.values.get({ spreadsheetId, range }));
   return (data.values as string[][]) || [];
 }
 
@@ -82,18 +106,20 @@ export async function appendValues(
   rows: (string | number | boolean)[][]
 ): Promise<void> {
   const sheets = await getSheetsClient();
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range,
-    // RAW, not USER_ENTERED — values are stored literally, never parsed
-    // as formulas. Never change this back: user-supplied fields (names,
-    // etc.) flow straight into these rows, and USER_ENTERED lets a
-    // leading "=" turn a cell into a live formula. See the 2026-09-04
-    // security review / planner/2026-09-04-security-hardening-plan.md.
-    valueInputOption: 'RAW',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: rows },
-  });
+  await withRateLimitRetry(() =>
+    sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range,
+      // RAW, not USER_ENTERED — values are stored literally, never parsed
+      // as formulas. Never change this back: user-supplied fields (names,
+      // etc.) flow straight into these rows, and USER_ENTERED lets a
+      // leading "=" turn a cell into a live formula. See the 2026-09-04
+      // security review / planner/2026-09-04-security-hardening-plan.md.
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: rows },
+    })
+  );
 }
 
 export async function getOrCreateSheet(spreadsheetId: string, title: string): Promise<SheetTab> {
@@ -102,10 +128,12 @@ export async function getOrCreateSheet(spreadsheetId: string, title: string): Pr
   const existing = tabs.find((t) => t.title === title);
   if (existing) return existing;
 
-  const res = await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: { requests: [{ addSheet: { properties: { title } } }] },
-  });
+  const res = await withRateLimitRetry(() =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+    })
+  );
   const props = res.data.replies?.[0]?.addSheet?.properties;
   return { title: props?.title ?? title, sheetId: props?.sheetId ?? 0 };
 }
@@ -172,13 +200,42 @@ export async function updateRow<T extends Record<string, unknown>>(
     return value === undefined || value === null ? '' : value;
   });
   const lastCol = columnLetter(headers.length);
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${tab}!A${rowNumber}:${lastCol}${rowNumber}`,
-    // RAW, not USER_ENTERED — see the comment in appendValues above.
-    valueInputOption: 'RAW',
-    requestBody: { values: [values as (string | number | boolean)[]] },
-  });
+  await withRateLimitRetry(() =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tab}!A${rowNumber}:${lastCol}${rowNumber}`,
+      // RAW, not USER_ENTERED — see the comment in appendValues above.
+      valueInputOption: 'RAW',
+      requestBody: { values: [values as (string | number | boolean)[]] },
+    })
+  );
+}
+
+export interface RangeUpdate {
+  range: string;
+  values: (string | number | boolean)[];
+}
+
+/**
+ * Applies several single-row updates in one Sheets API call instead of
+ * one call per row — each call is its own quota unit, so a caller that
+ * already knows it's about to write several related rows (e.g. pairing
+ * two signups together, or declining several other pending requests at
+ * once) should batch them here rather than looping updateRow. See
+ * planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md, Step 2.
+ */
+export async function batchUpdateRows(spreadsheetId: string, updates: RangeUpdate[]): Promise<void> {
+  if (updates.length === 0) return;
+  const sheets = await getSheetsClient();
+  await withRateLimitRetry(() =>
+    sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: updates.map((u) => ({ range: u.range, values: [u.values] })),
+      },
+    })
+  );
 }
 
 /**
@@ -189,21 +246,23 @@ export async function updateRow<T extends Record<string, unknown>>(
  */
 export async function deleteRow(spreadsheetId: string, sheetId: number, rowNumber: number): Promise<void> {
   const sheets = await getSheetsClient();
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId,
-              dimension: 'ROWS',
-              startIndex: rowNumber - 1,
-              endIndex: rowNumber,
+  await withRateLimitRetry(() =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: 'ROWS',
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
             },
           },
-        },
-      ],
-    },
-  });
+        ],
+      },
+    })
+  );
 }
