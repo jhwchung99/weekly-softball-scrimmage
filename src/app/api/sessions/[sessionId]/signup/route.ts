@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../../../lib/auth';
 import { signUpForSession, signUpAsGuestForSession, getMySignupForSession } from '../../../../../lib/signupFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { validateInvitedByName } from '../../../../../lib/validation';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
@@ -17,11 +18,19 @@ export async function POST(request: Request, { params }: Params) {
 
     const { sessionId } = await params;
     const body = await request.json().catch(() => ({}));
-    const invitedByName = typeof body?.invitedByName === 'string' ? body.invitedByName : '';
+    // Presence (before validation) decides member vs. guest routing;
+    // once routed to the guest path, the value itself is validated.
+    const rawInvitedByName = typeof body?.invitedByName === 'string' ? body.invitedByName : '';
     const waiverAccepted = Boolean(body?.waiverAccepted);
 
-    const signup = invitedByName
-      ? await signUpAsGuestForSession(sessionId, email, invitedByName, Boolean(body?.willingToShare), waiverAccepted)
+    const signup = rawInvitedByName
+      ? await signUpAsGuestForSession(
+          sessionId,
+          email,
+          validateInvitedByName(rawInvitedByName),
+          Boolean(body?.willingToShare),
+          waiverAccepted
+        )
       : await signUpForSession(sessionId, email, waiverAccepted);
 
     return NextResponse.json({ signup }, { status: 201 });
