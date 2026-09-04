@@ -4,7 +4,7 @@ import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { POSITIONS } from '../lib/positions';
 
-interface SessionInfo {
+export interface SessionInfo {
   sessionId: string;
   gameDate: string;
   gameTime: string;
@@ -12,7 +12,7 @@ interface SessionInfo {
   status: 'open' | 'closed' | 'cancelled';
 }
 
-interface SignupInfo {
+export interface SignupInfo {
   signupId: string;
   status: 'confirmed' | 'waitlisted' | 'cancelled';
   memberStatus: 'member' | 'guest';
@@ -20,25 +20,25 @@ interface SignupInfo {
   subRequestStatus: '' | 'pending' | 'declined';
 }
 
-interface IncomingSubRequest {
+export interface IncomingSubRequest {
   fromSignupId: string;
   fromFullName: string;
 }
 
-interface PlayerInfo {
+export interface PlayerInfo {
   fullName: string;
   gender: string;
   age: number;
   savedPositions: string;
 }
 
-interface RosterEntry {
+export interface RosterEntry {
   fullName: string;
   positions: string;
   pairedWith: string | null;
 }
 
-interface Roster {
+export interface Roster {
   confirmed: RosterEntry[];
   waitlisted: RosterEntry[];
 }
@@ -209,6 +209,16 @@ export default function Home() {
         )}
       </div>
 
+      {authStatus === 'authenticated' && playerDataLoaded && myPlayer && (
+        <ProfileSection
+          myPlayer={myPlayer}
+          busy={busy}
+          setBusy={setBusy}
+          setError={setError}
+          onSaved={loadPlayerData}
+        />
+      )}
+
       {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <section className="mt-6 rounded border border-slate-200 p-4">
@@ -250,6 +260,7 @@ export default function Home() {
       {authStatus === 'authenticated' && incomingSubRequests.length > 0 && (
         <section className="mt-4 rounded border border-amber-300 bg-amber-50 p-4">
           <h2 className="font-semibold text-slate-900">Sub requests for you</h2>
+          {busy && <p className="mt-1 text-xs text-slate-500">Processing...</p>}
           <ul className="mt-2 space-y-2">
             {incomingSubRequests.map((r) => (
               <li key={r.fromSignupId} className="flex items-center justify-between gap-2 text-sm text-slate-700">
@@ -309,7 +320,7 @@ export default function Home() {
   );
 }
 
-function PlayerArea(props: {
+export function PlayerArea(props: {
   scrimmage: SessionInfo;
   registrationClosed: boolean;
   mySignup: SignupInfo | null;
@@ -360,7 +371,7 @@ function PlayerArea(props: {
           disabled={busy}
           className="mt-3 rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
         >
-          Cancel my spot
+          {busy ? 'Processing...' : 'Cancel my spot'}
         </button>
 
         {mySignup.status === 'waitlisted' && (
@@ -406,7 +417,7 @@ function PlayerArea(props: {
   );
 }
 
-function SubRequestPanel(props: {
+export function SubRequestPanel(props: {
   subRequestTargetEmail: string;
   subRequestStatus: '' | 'pending' | 'declined';
   busy: boolean;
@@ -427,7 +438,7 @@ function SubRequestPanel(props: {
           onClick={onCancelSubRequest}
           className="mt-2 rounded border border-slate-300 px-2 py-1 text-xs hover:bg-white disabled:opacity-50"
         >
-          Cancel request
+          {busy ? 'Processing...' : 'Cancel request'}
         </button>
       </div>
     );
@@ -452,6 +463,7 @@ function SubRequestPanel(props: {
         <input
           required
           type="email"
+          aria-label="Their email"
           placeholder="Their email"
           value={targetEmail}
           onChange={(e) => setTargetEmail(e.target.value)}
@@ -462,24 +474,73 @@ function SubRequestPanel(props: {
           disabled={busy}
           className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          Request to sub
+          {busy ? 'Processing...' : 'Request to sub'}
         </button>
       </form>
     </div>
   );
 }
 
-function ProfileForm(props: {
+export function ProfileSection(props: {
+  myPlayer: PlayerInfo;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  setError: (e: string | null) => void;
   onSaved: () => void;
+}) {
+  const { myPlayer, busy, setBusy, setError, onSaved } = props;
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <div className="mt-4 rounded border border-slate-200 p-4">
+        <ProfileForm
+          initialValues={myPlayer}
+          busy={busy}
+          setBusy={setBusy}
+          setError={setError}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3 rounded border border-slate-200 p-3 text-sm text-slate-700">
+      <span>
+        {myPlayer.fullName} — {myPlayer.gender}, {myPlayer.age} — positions: {myPlayer.savedPositions || 'none saved'}
+      </span>
+      <button onClick={() => setEditing(true)} className="shrink-0 text-blue-600 hover:underline">
+        Edit profile
+      </button>
+    </div>
+  );
+}
+
+export function ProfileForm(props: {
+  initialValues?: PlayerInfo;
+  onSaved: () => void;
+  onCancel?: () => void;
   busy: boolean;
   setBusy: (b: boolean) => void;
   setError: (e: string | null) => void;
 }) {
-  const { onSaved, busy, setBusy, setError } = props;
-  const [fullName, setFullName] = useState('');
-  const [gender, setGender] = useState('');
-  const [age, setAge] = useState('');
-  const [positions, setPositions] = useState<string[]>([]);
+  const { initialValues, onSaved, onCancel, busy, setBusy, setError } = props;
+  const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
+  const [gender, setGender] = useState(initialValues?.gender ?? '');
+  const [age, setAge] = useState(initialValues ? String(initialValues.age) : '');
+  const [positions, setPositions] = useState<string[]>(
+    initialValues?.savedPositions
+      ? initialValues.savedPositions
+          .split(',')
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : []
+  );
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -506,10 +567,15 @@ function ProfileForm(props: {
 
   return (
     <form onSubmit={handleSubmit} className="mt-3 space-y-3">
-      <p className="text-sm text-slate-600">First time here — tell us a bit about yourself (saved for future weeks).</p>
+      <p className="text-sm text-slate-600">
+        {initialValues
+          ? "Update your info — this won't change a signup you've already submitted for this week, only future ones."
+          : 'First time here — tell us a bit about yourself (saved for future weeks).'}
+      </p>
       <div>
-        <label className="block text-sm text-slate-700">Full name</label>
+        <label htmlFor="profile-full-name" className="block text-sm text-slate-700">Full name</label>
         <input
+          id="profile-full-name"
           required
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
@@ -518,8 +584,9 @@ function ProfileForm(props: {
       </div>
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="block text-sm text-slate-700">Gender</label>
+          <label htmlFor="profile-gender" className="block text-sm text-slate-700">Gender</label>
           <input
+            id="profile-gender"
             required
             value={gender}
             onChange={(e) => setGender(e.target.value)}
@@ -527,8 +594,9 @@ function ProfileForm(props: {
           />
         </div>
         <div className="w-24">
-          <label className="block text-sm text-slate-700">Age</label>
+          <label htmlFor="profile-age" className="block text-sm text-slate-700">Age</label>
           <input
+            id="profile-age"
             required
             type="number"
             min={0}
@@ -549,18 +617,30 @@ function ProfileForm(props: {
           ))}
         </div>
       </div>
-      <button
-        type="submit"
-        disabled={busy}
-        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        Save and continue
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {busy ? 'Processing...' : initialValues ? 'Save changes' : 'Save and continue'}
+        </button>
+        {onCancel && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="rounded border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }
 
-function SignupForm(props: {
+export function SignupForm(props: {
   sessionId: string;
   savedPositions: string;
   waiverText: string;
@@ -611,8 +691,9 @@ function SignupForm(props: {
       {isGuest && (
         <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
           <div>
-            <label className="block text-sm text-slate-700">Which member invited you?</label>
+            <label htmlFor="signup-invited-by" className="block text-sm text-slate-700">Which member invited you?</label>
             <input
+              id="signup-invited-by"
               required
               value={invitedByName}
               onChange={(e) => setInvitedByName(e.target.value)}
@@ -637,7 +718,7 @@ function SignupForm(props: {
         disabled={busy || !waiverAccepted}
         className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        Sign up
+        {busy ? 'Processing...' : 'Sign up'}
       </button>
     </form>
   );
