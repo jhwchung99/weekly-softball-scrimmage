@@ -10,7 +10,8 @@ vi.mock('../../sheets/players', () => fakePlayersModule(store));
 vi.mock('../../lib/gmail', () => ({ sendEmail: vi.fn() }));
 vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
-const { adminAddSignup } = await import('../adminFlow');
+const { adminAddSignup, adminCreateSession, adminRescheduleSession } = await import('../adminFlow');
+const { signUpForSession } = await import('../signupFlow');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -75,5 +76,79 @@ describe('adminAddSignup', () => {
         waiverAccepted: false,
       })
     ).rejects.toThrow(/waiver/);
+  });
+});
+
+// 2026-07-10/11/12 are the Friday/Saturday/Sunday of the same week;
+// 2026-07-06 is that week's Monday (see time.test.ts for the same dates).
+describe('adminCreateSession', () => {
+  it('creates a session with defaults filled in', async () => {
+    const session = await adminCreateSession({ gameDate: '2026-07-10' });
+    expect(session).toMatchObject({
+      sessionId: '2026-07-10',
+      gameDate: '2026-07-10',
+      gameTime: '18:00',
+      capacity: 20,
+      cost: 0,
+      status: 'open',
+    });
+    expect(store.sessions.get('2026-07-10')).toBeDefined();
+  });
+
+  it('accepts explicit gameTime/capacity/cost overrides, and a Saturday/Sunday date', () => {
+    return expect(adminCreateSession({ gameDate: '2026-07-11', gameTime: '10:00', capacity: 12, cost: 50 })).resolves.toMatchObject({
+      sessionId: '2026-07-11',
+      gameTime: '10:00',
+      capacity: 12,
+      cost: 50,
+    });
+  });
+
+  it('rejects a date that is not Friday/Saturday/Sunday', async () => {
+    await expect(adminCreateSession({ gameDate: '2026-07-06' })).rejects.toThrow(/Friday, Saturday, or Sunday/);
+  });
+
+  it('rejects creating a session that already exists', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10' }));
+    await expect(adminCreateSession({ gameDate: '2026-07-10' })).rejects.toThrow(/already exists/);
+  });
+});
+
+describe('adminRescheduleSession', () => {
+  it('updates gameTime in place when the date is unchanged — no rekey', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00' }));
+
+    const session = await adminRescheduleSession('2026-07-10', '2026-07-10', '19:30');
+
+    expect(session.gameTime).toBe('19:30');
+    expect(store.sessions.get('2026-07-10')?.gameTime).toBe('19:30');
+  });
+
+  it('rekeys the session and cascades sessionId to every signup when the date moves', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5 }));
+    store.players.set('a@dummy.test', { email: 'a@dummy.test', fullName: 'A', gender: 'Other', age: 30, savedPositions: '' });
+    const signup = await signUpForSession('2026-07-10', 'a@dummy.test', true);
+
+    const session = await adminRescheduleSession('2026-07-10', '2026-07-11', '20:00');
+
+    expect(session).toMatchObject({ sessionId: '2026-07-11', gameDate: '2026-07-11', gameTime: '20:00' });
+    expect(store.sessions.has('2026-07-10')).toBe(false);
+    expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-11');
+  });
+
+  it('rejects moving to a date that already has a session', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10' }));
+    store.sessions.set('2026-07-11', makeSession({ sessionId: '2026-07-11', gameDate: '2026-07-11' }));
+
+    await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '18:00')).rejects.toThrow(/already exists/);
+  });
+
+  it('rejects a date that is not Friday/Saturday/Sunday', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10' }));
+    await expect(adminRescheduleSession('2026-07-10', '2026-07-06', '18:00')).rejects.toThrow(/Friday, Saturday, or Sunday/);
+  });
+
+  it('rejects rescheduling a session that does not exist', async () => {
+    await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '18:00')).rejects.toThrow(/No such session/);
   });
 });
