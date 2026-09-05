@@ -195,6 +195,40 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     capacity: 1,
     status: 'open',
     cost: 0,
+    pricePerSpot: 0,
+    locationArea: '',
+    locationName: '',
+    locationUrl: '',
+    ...overrides,
+  };
+}
+
+/** Typed on purpose: an untyped local fixture in signupFlow.test.ts silently
+ * kept an `age` field for a day after the column was dropped, and wouldn't have
+ * flagged the columns added on 2026-09-05 either. */
+export function makeSignup(overrides: Partial<Signup> = {}): Signup {
+  return {
+    signupId: 'fixture',
+    sessionId: '2099-01-01',
+    email: 'fixture@dummy.test',
+    fullName: 'Fixture',
+    gender: 'Other',
+    memberStatus: 'member',
+    invitedByName: '',
+    willingToShare: false,
+    pairId: '',
+    status: 'waitlisted',
+    timestamp: '2026-01-01T00:00:00.000Z',
+    positions: '',
+    waiverAcceptedAt: '2026-01-01T00:00:00.000Z',
+    waiverText: '',
+    paid: false,
+    amountPaid: 0,
+    paidAt: '',
+    attended: false,
+    subRequestTargetEmail: '',
+    subRequestStatus: '',
+    subRequestedAt: '',
     ...overrides,
   };
 }
