@@ -125,6 +125,13 @@ export function currentWeekFridayEastern(now: Date = new Date(), timeZone: strin
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Today's date as read in Eastern time, YYYY-MM-DD. */
+export function todayEastern(now: Date = new Date(), timeZone: string = LEAGUE_TIME_ZONE): string {
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const parts = Object.fromEntries(dtf.formatToParts(now).map((p) => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 /**
  * The Friday, Saturday, and Sunday of the calendar week `now` falls in
  * (Eastern time), in that order. Game day can be any of the three (see
