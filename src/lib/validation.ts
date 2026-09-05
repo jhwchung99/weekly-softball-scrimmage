@@ -104,6 +104,47 @@ export function validateGameDate(value: unknown): string {
   return trimmed;
 }
 
+const MAX_LOCATION_LENGTH = 120;
+
+/** The general area, known at session creation — e.g. "Mississauga". Optional:
+ * an empty value just means no area has been decided yet. */
+export function validateLocationArea(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed.length > MAX_LOCATION_LENGTH) {
+    throw new ApiError(400, `locationArea must be ${MAX_LOCATION_LENGTH} characters or fewer.`);
+  }
+  return trimmed;
+}
+
+/** The specific field, filled in once the permit is booked. Optional. */
+export function validateLocationName(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed.length > MAX_LOCATION_LENGTH) {
+    throw new ApiError(400, `locationName must be ${MAX_LOCATION_LENGTH} characters or fewer.`);
+  }
+  return trimmed;
+}
+
+/**
+ * Optional map link. Restricted to http(s) because this value is rendered as
+ * an anchor href — without the check, a `javascript:` URL saved by an admin
+ * would execute for every player viewing the page.
+ */
+export function validateLocationUrl(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) return '';
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new ApiError(400, 'locationUrl must be a valid URL.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ApiError(400, 'locationUrl must start with http:// or https://.');
+  }
+  return trimmed;
+}
+
 const GAME_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function validateGameTime(value: unknown): string {
