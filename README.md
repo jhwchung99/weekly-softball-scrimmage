@@ -53,10 +53,10 @@ sequenceDiagram
     App->>Sheet: write Signups row (confirmed or waitlisted)
     Player->>App: Cancel signup (optional, any time)
     App->>Sheet: mark row cancelled
-    alt slot freed, more than 2h before game time
+    alt slot freed, more than 5h before game time
         App->>Sheet: promote next waitlisted person/pair
         App->>Gmail: send "you're in" email
-    else slot freed, within 2h of game time
+    else slot freed, within 5h of game time
         App->>Ntfy: push alert to organizer
     end
 
@@ -69,7 +69,8 @@ sequenceDiagram
 
     Note over Player,Admin: Tuesday close → game day
     Admin->>App: Books a permit sized to the headcount, sets the field + map link
-    Player->>App: Pays for their spot (outside the app); admin records it
+    Player->>App: Pays for their spot (outside the app)
+    Admin->>Sheet: record the payment
     Player->>App: Cancel signup (still allowed any time)
 
     Note over Cron,App: Game day, 9am ET
@@ -77,7 +78,7 @@ sequenceDiagram
     App->>Gmail: remind each confirmed player (time, field, amount owed)
 
     Note over Player,Admin: Game day — Friday, Saturday or Sunday
-    Note over Player,Admin: Scrimmage happens; admin records attendance
+    Note over Player,Admin: Scrimmage happens, admin records attendance
 ```
 
 ### As a player
