@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck } from 'lucide-react';
+import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck, Lock } from 'lucide-react';
 import { POSITIONS } from '../lib/positions';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -43,8 +43,12 @@ export interface RosterEntry {
 }
 
 export interface Roster {
-  confirmed: RosterEntry[];
-  waitlisted: RosterEntry[];
+  confirmedCount: number;
+  waitlistedCount: number;
+  /** Null when the viewer hasn't signed up for this session — counts are
+   * still shown, names are not. See the roster route for why. */
+  confirmed: RosterEntry[] | null;
+  waitlisted: RosterEntry[] | null;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -68,58 +72,64 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Public info: whether there's a scrimmage this week, regardless of login.
-  useEffect(() => {
-    fetchJson<{ session: SessionInfo | null }>('/api/sessions/current')
-      .then((d) => setScrimmage(d.session))
-      .catch((err) => setError(err.message))
-      .finally(() => setScrimmageLoaded(true));
-  }, []);
-
-  async function loadPlayerData() {
-    if (!scrimmage) return;
+  /**
+   * One request for the whole page. This used to be four (session, my status,
+   * profile, roster), which cost 5 Sheets reads because two tabs were each read
+   * twice — and the app's entire Sheets quota is 60 reads/minute across all
+   * users, hit hardest exactly when registration opens and everyone arrives at
+   * once. See the /api/home route for the full reasoning.
+   */
+  async function loadHome() {
     setError(null);
     try {
-      const [signupRes, playerRes, waiverRes, rosterRes] = await Promise.all([
-        fetchJson<{ signup: SignupInfo | null; incomingSubRequests: IncomingSubRequest[]; costOwed: number | null }>(
-          `/api/sessions/${scrimmage.sessionId}/signup`
-        ),
-        fetchJson<{ player: PlayerInfo | null }>('/api/players/me'),
-        fetchJson<{ text: string }>('/api/waiver'),
-        fetchJson<Roster>(`/api/sessions/${scrimmage.sessionId}/roster`),
-      ]);
-      setMySignup(signupRes.signup);
-      setIncomingSubRequests(signupRes.incomingSubRequests);
-      setCostOwed(signupRes.costOwed);
-      setMyPlayer(playerRes.player);
-      setWaiverText(waiverRes.text);
-      setRoster(rosterRes);
+      const d = await fetchJson<{
+        session: SessionInfo | null;
+        signedIn: boolean;
+        player: PlayerInfo | null;
+        signup: SignupInfo | null;
+        incomingSubRequests: IncomingSubRequest[];
+        costOwed: number | null;
+        roster: Roster | null;
+        waiverText: string;
+      }>('/api/home');
+
+      setScrimmage(d.session);
+      setMySignup(d.signup);
+      setIncomingSubRequests(d.incomingSubRequests);
+      setCostOwed(d.costOwed);
+      setMyPlayer(d.player);
+      setWaiverText(d.waiverText);
+      setRoster(d.roster);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      setScrimmageLoaded(true);
+      // Only meaningful once signed in, but harmless to set either way — the
+      // sections that read it are already gated on authStatus.
       setPlayerDataLoaded(true);
     }
   }
 
+  // Waits for authStatus so the request is made once, with the session cookie
+  // attached — fetching before it resolves would mean a second, redundant call
+  // (and a second set of Sheets reads) after signing in.
   useEffect(() => {
-    if (authStatus === 'authenticated' && scrimmageLoaded && scrimmage) {
-      // loadPlayerData is shared with the post-cancel/signup refresh calls
-      // below, so it can't be inlined as a effect-local promise chain; its
-      // setState calls only ever run after an await, same as any fetch.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadPlayerData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authStatus, scrimmageLoaded, scrimmage?.sessionId]);
+    if (authStatus === 'loading') return;
+    // loadHome is shared with the post-signup/cancel refresh calls below, so it
+    // can't be inlined as an effect-local promise chain; its setState calls
+    // only ever run after an await, same as any fetch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadHome();
+  }, [authStatus]);
 
   async function handleCancel() {
     if (!mySignup) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/signups/${mySignup.signupId}/cancel`, { method: 'POST' });
+      const res = await fetch(`/api/signups/${encodeURIComponent(mySignup.signupId)}/cancel`, { method: 'POST' });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Cancel failed');
-      await loadPlayerData();
+      await loadHome();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -132,13 +142,13 @@ export default function Home() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/signups/${mySignup.signupId}/sub-request`, {
+      const res = await fetch(`/api/signups/${encodeURIComponent(mySignup.signupId)}/sub-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetEmail }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Request failed');
-      await loadPlayerData();
+      await loadHome();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -151,9 +161,9 @@ export default function Home() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/signups/${mySignup.signupId}/sub-request`, { method: 'DELETE' });
+      const res = await fetch(`/api/signups/${encodeURIComponent(mySignup.signupId)}/sub-request`, { method: 'DELETE' });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Cancel failed');
-      await loadPlayerData();
+      await loadHome();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -165,13 +175,13 @@ export default function Home() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/signups/${fromSignupId}/sub-request/respond`, {
+      const res = await fetch(`/api/signups/${encodeURIComponent(fromSignupId)}/sub-request/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accept }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Response failed');
-      await loadPlayerData();
+      await loadHome();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -242,7 +252,7 @@ export default function Home() {
           busy={busy}
           setBusy={setBusy}
           setError={setError}
-          onSaved={loadPlayerData}
+          onSaved={loadHome}
         />
       )}
 
@@ -279,7 +289,7 @@ export default function Home() {
                 setBusy={setBusy}
                 setError={setError}
                 onCancel={handleCancel}
-                onRefresh={loadPlayerData}
+                onRefresh={loadHome}
                 onRequestSub={handleRequestSub}
                 onCancelSubRequest={handleCancelSubRequest}
               />
@@ -330,32 +340,42 @@ export default function Home() {
           </h2>
           <div className="mt-2">
             <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmed.length})
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount})
             </h3>
-            <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
-              {roster.confirmed.map((p, i) => (
-                <li key={i}>
-                  {p.fullName}
-                  {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
-                </li>
-              ))}
-              {roster.confirmed.length === 0 && <li className="text-slate-400">No one confirmed yet.</li>}
-            </ul>
+            {roster.confirmed && (
+              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                {roster.confirmed.map((p, i) => (
+                  <li key={i}>
+                    {p.fullName}
+                    {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
+                  </li>
+                ))}
+                {roster.confirmed.length === 0 && <li className="text-slate-400">No one confirmed yet.</li>}
+              </ul>
+            )}
           </div>
           <div className="mt-3">
             <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
-              <Clock3 className="h-3.5 w-3.5 text-amber-600" /> Waitlist ({roster.waitlisted.length})
+              <Clock3 className="h-3.5 w-3.5 text-amber-600" /> Waitlist ({roster.waitlistedCount})
             </h3>
-            <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
-              {roster.waitlisted.map((p, i) => (
-                <li key={i}>
-                  {i + 1}. {p.fullName}
-                  {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
-                </li>
-              ))}
-              {roster.waitlisted.length === 0 && <li className="text-slate-400">No one on the waitlist.</li>}
-            </ul>
+            {roster.waitlisted && (
+              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                {roster.waitlisted.map((p, i) => (
+                  <li key={i}>
+                    {i + 1}. {p.fullName}
+                    {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
+                  </li>
+                ))}
+                {roster.waitlisted.length === 0 && <li className="text-slate-400">No one on the waitlist.</li>}
+              </ul>
+            )}
           </div>
+          {!roster.confirmed && (
+            <p className="mt-3 flex items-start gap-1.5 border-t border-slate-100 pt-3 text-sm text-slate-500">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              To view the roster, please sign up.
+            </p>
+          )}
         </Card>
       )}
     </main>
@@ -679,7 +699,7 @@ export function SignupForm(props: {
         body.invitedByName = invitedByName;
         body.willingToShare = willingToShare;
       }
-      const res = await fetch(`/api/sessions/${sessionId}/signup`, {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
