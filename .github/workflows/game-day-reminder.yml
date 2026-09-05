@@ -1,0 +1,20 @@
+name: Game day reminder
+
+# 9am ET on Friday, Saturday and Sunday. Game day can be any of the three, so
+# the job fires on all of them and the endpoint no-ops unless the session's
+# gameDate is actually today. Same DST-duplicate-firing pattern as the other
+# workflows; see open-registration.yml and src/lib/scheduling.ts.
+on:
+  schedule:
+    - cron: '0 13 * * 5,6,0' # 9am EDT (UTC-4)
+    - cron: '0 14 * * 5,6,0' # 9am EST (UTC-5)
+  workflow_dispatch: {} # manual trigger, for testing
+
+jobs:
+  game-day-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call game-day-reminder endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.APP_URL }}/api/cron/game-day-reminder" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
