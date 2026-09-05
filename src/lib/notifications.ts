@@ -21,7 +21,7 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
 }
 
 /**
- * Step 9 (Section 7): a cancellation inside the 2-hour cutoff doesn't get
+ * Step 9 (Section 7): a cancellation inside the 5-hour cutoff doesn't get
  * auto-promotion (no time for an email chain), so the organizer gets a
  * push instead — "cancellation details (player name, position, etc.)"
  * about whoever just dropped, so they can personally text someone to
@@ -30,7 +30,7 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
 export async function sendLateCancellationAlert(signup: Signup, session: Session): Promise<void> {
   const title = `Late cancellation — ${session.gameDate} scrimmage`;
   const positions = signup.positions || 'no positions listed';
-  const message = `${signup.fullName} (${positions}) just cancelled within 2 hours of the ${session.gameDate} ${session.gameTime} scrimmage. No one was auto-promoted — their spot is open.`;
+  const message = `${signup.fullName} (${positions}) just cancelled within 5 hours of the ${session.gameDate} ${session.gameTime} scrimmage. No one was auto-promoted — their spot is open.`;
 
   await sendPush(title, message);
 }
