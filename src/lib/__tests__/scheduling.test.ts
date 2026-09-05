@@ -10,9 +10,10 @@ vi.mock('../../sheets/players', () => fakePlayersModule(store));
 
 const sendPush = vi.fn();
 vi.mock('../../lib/ntfy', () => ({ sendPush }));
-vi.mock('../../lib/gmail', () => ({ sendEmail: vi.fn() }));
+const sendEmail = vi.fn();
+vi.mock('../../lib/gmail', () => ({ sendEmail }));
 
-const { openRegistrationForUpcomingSession, closeRegistrationForCurrentSession } = await import('../scheduling');
+const { openRegistrationForUpcomingSession, closeRegistrationForCurrentSession, sendGameDayReminders } = await import('../scheduling');
 const { signUpForSession } = await import('../signupFlow');
 
 beforeEach(() => {
@@ -109,5 +110,83 @@ describe('closeRegistrationForCurrentSession', () => {
 
     expect(result).toEqual({ sessionId: '2026-07-10', skipped: false });
     expect(store.sessions.get('2026-07-10')?.status).toBe('closed');
+  });
+});
+
+describe('sendGameDayReminders', () => {
+  // 2026-07-10T13:00:00Z is 9:00am EDT on Friday 2026-07-10 — that week's
+  // Friday, i.e. an actual game day.
+  const GAME_DAY_9AM = new Date('2026-07-10T13:00:00.000Z');
+
+  it('emails every confirmed player, with what they owe', async () => {
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5, pricePerSpot: 10, status: 'open' })
+    );
+    for (const n of ['a', 'b']) {
+      store.players.set(`${n}@dummy.test`, makePlayer({ email: `${n}@dummy.test`, fullName: n.toUpperCase() }));
+      await signUpForSession('2026-07-10', `${n}@dummy.test`, true);
+    }
+
+    const result = await sendGameDayReminders(GAME_DAY_9AM);
+
+    expect(result).toMatchObject({ sessionId: '2026-07-10', skipped: false, sent: 2, failed: 0 });
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(sendEmail).toHaveBeenCalledWith('a@dummy.test', expect.stringContaining('2026-07-10'), expect.stringContaining('$10.00'));
+  });
+
+  it('skips when the game is later in the weekend, not today', async () => {
+    store.sessions.set(
+      '2026-07-12',
+      makeSession({ sessionId: '2026-07-12', gameDate: '2026-07-12', status: 'closed' })
+    );
+
+    // Friday 9am, but the game is Sunday — the cron fires all three days.
+    const result = await sendGameDayReminders(GAME_DAY_9AM);
+
+    expect(result.skipped).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('skips the DST-duplicate firing so nobody is emailed twice', async () => {
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5, status: 'open' })
+    );
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    await signUpForSession('2026-07-10', 'a@dummy.test', true);
+
+    const result = await sendGameDayReminders(new Date('2026-07-10T14:00:00.000Z')); // an hour off
+
+    expect(result.skipped).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing for a cancelled session', async () => {
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'cancelled' })
+    );
+
+    const result = await sendGameDayReminders(GAME_DAY_9AM);
+
+    expect(result.skipped).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('keeps going when one address fails', async () => {
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5, status: 'open' })
+    );
+    for (const n of ['a', 'b']) {
+      store.players.set(`${n}@dummy.test`, makePlayer({ email: `${n}@dummy.test` }));
+      await signUpForSession('2026-07-10', `${n}@dummy.test`, true);
+    }
+    sendEmail.mockRejectedValueOnce(new Error('bad address'));
+
+    const result = await sendGameDayReminders(GAME_DAY_9AM);
+
+    expect(result).toMatchObject({ sent: 1, failed: 1 });
   });
 });
