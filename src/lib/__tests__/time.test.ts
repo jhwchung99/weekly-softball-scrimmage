@@ -99,9 +99,9 @@ describe('getWeeklyMilestones', () => {
     expect(milestones.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
   });
 
-  it('computes registration closing as the preceding Wednesday 9pm ET', () => {
-    // 2026-07-08 is the Wednesday of that week; 9pm EDT = 01:00 UTC Thursday.
-    expect(milestones.registrationClosesAt.toISOString()).toBe('2026-07-09T01:00:00.000Z');
+  it('computes registration closing as the following Tuesday 12am ET', () => {
+    // 2026-07-07 is the Tuesday of that week; 12am EDT = 04:00 UTC same day.
+    expect(milestones.registrationClosesAt.toISOString()).toBe('2026-07-07T04:00:00.000Z');
   });
 
   it('computes game start from gameDate/gameTime directly', () => {
@@ -117,22 +117,22 @@ describe('getWeeklyMilestones', () => {
     const winter = getWeeklyMilestones('2026-01-09', '18:00');
     // Monday 2026-01-05, 9am EST = 14:00 UTC.
     expect(winter.registrationOpensAt.toISOString()).toBe('2026-01-05T14:00:00.000Z');
-    // Wednesday 2026-01-07, 9pm EST = 02:00 UTC Thursday.
-    expect(winter.registrationClosesAt.toISOString()).toBe('2026-01-08T02:00:00.000Z');
+    // Tuesday 2026-01-06, 12am EST = 05:00 UTC same day.
+    expect(winter.registrationClosesAt.toISOString()).toBe('2026-01-06T05:00:00.000Z');
   });
 
-  it('anchors registration to the same Monday/Wednesday for a Saturday game', () => {
+  it('anchors registration to the same Monday/Tuesday for a Saturday game', () => {
     // 2026-07-11 is the Saturday of the same week as 2026-07-10's Friday.
     const saturday = getWeeklyMilestones('2026-07-11', '18:00');
     expect(saturday.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
-    expect(saturday.registrationClosesAt.toISOString()).toBe('2026-07-09T01:00:00.000Z');
+    expect(saturday.registrationClosesAt.toISOString()).toBe('2026-07-07T04:00:00.000Z');
   });
 
-  it('anchors registration to the same Monday/Wednesday for a Sunday game', () => {
+  it('anchors registration to the same Monday/Tuesday for a Sunday game', () => {
     // 2026-07-12 is the Sunday of the same week as 2026-07-10's Friday.
     const sunday = getWeeklyMilestones('2026-07-12', '18:00');
     expect(sunday.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
-    expect(sunday.registrationClosesAt.toISOString()).toBe('2026-07-09T01:00:00.000Z');
+    expect(sunday.registrationClosesAt.toISOString()).toBe('2026-07-07T04:00:00.000Z');
   });
 });
 
