@@ -105,9 +105,9 @@ sequenceDiagram
 5. **Cancel any time** if plans change — from right after you sign up
    through game day itself. If your cancellation frees up a confirmed
    spot:
-   - More than 2 hours before game time: the next person (or pair) on
+   - More than 5 hours before game time: the next person (or pair) on
      the waitlist is automatically promoted and emailed.
-   - Within 2 hours of game time: no one is auto-promoted (too last
+   - Within 5 hours of game time: no one is auto-promoted (too last
      minute for an email to reach anyone in time) — the organizer gets a
      push alert instead so they can personally text someone.
 6. **Tuesday, 12am ET** — registration closes automatically. You can no
@@ -149,7 +149,7 @@ in addition to the regular player view. Across the same week:
   deliberately skips the automatic promotion/email side effects, since a
   manual admin action already is the explicit decision.
 - Gets the **late-cancellation push alert** described above whenever
-  anyone cancels within 2 hours of game time.
+  anyone cancels within 5 hours of game time.
 - Gets an **open-spots push alert** the moment registration closes
   Tuesday if the session still has room under capacity — a nudge to
   manually add someone rather than book a permit for an empty spot.
