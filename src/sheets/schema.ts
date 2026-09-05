@@ -28,7 +28,6 @@ export interface Signup {
   email: string;
   fullName: string;
   gender: string;
-  age: number;
   memberStatus: MemberStatus;
   invitedByName: string; // '' when memberStatus === 'member'
   willingToShare: boolean; // guest only; false when memberStatus === 'member'
@@ -54,7 +53,6 @@ export interface Player {
   email: string;
   fullName: string;
   gender: string;
-  age: number;
   savedPositions: string; // comma-separated
 }
 
@@ -75,7 +73,6 @@ export const SIGNUP_HEADERS = [
   'email',
   'fullName',
   'gender',
-  'age',
   'memberStatus',
   'invitedByName',
   'willingToShare',
@@ -95,7 +92,6 @@ export const PLAYER_HEADERS = [
   'email',
   'fullName',
   'gender',
-  'age',
   'savedPositions',
 ] as const satisfies readonly (keyof Player)[];
 
@@ -126,7 +122,6 @@ export function serializeSessionRow(session: Session): RawRow<Session> {
 export function parseSignupRow(row: RawRow<Signup>): Signup {
   return {
     ...row,
-    age: Number(row.age) || 0,
     willingToShare: row.willingToShare === 'TRUE' || row.willingToShare === 'true',
     memberStatus: (row.memberStatus || 'guest') as MemberStatus,
     status: (row.status || 'waitlisted') as SignupStatus,
@@ -138,16 +133,15 @@ export function parseSignupRow(row: RawRow<Signup>): Signup {
 export function serializeSignupRow(signup: Signup): RawRow<Signup> {
   return {
     ...signup,
-    age: String(signup.age),
     willingToShare: signup.willingToShare ? 'TRUE' : 'FALSE',
     paid: signup.paid ? 'TRUE' : 'FALSE',
   };
 }
 
 export function parsePlayerRow(row: RawRow<Player>): Player {
-  return { ...row, age: Number(row.age) || 0 };
+  return { ...row };
 }
 
 export function serializePlayerRow(player: Player): RawRow<Player> {
-  return { ...player, age: String(player.age) };
+  return { ...player };
 }
