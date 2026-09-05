@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Session, Signup, Player, SessionStatus } from '../sheets/schema';
+import { normalizeEmail } from '../lib/email';
 
 /**
  * A minimal in-memory stand-in for the Sheets-backed repository modules
@@ -86,7 +87,8 @@ export function fakeSignupsModule(store: FakeStore) {
       return [...store.signups.values()].filter((s) => idSet.has(s.signupId));
     }),
     findActiveSignup: vi.fn(async (sessionId: string, email: string) => {
-      return listForSession(sessionId).find((s) => s.email === email && s.status !== 'cancelled') ?? null;
+      const target = normalizeEmail(email);
+      return listForSession(sessionId).find((s) => normalizeEmail(s.email) === target && s.status !== 'cancelled') ?? null;
     }),
     findPendingGuestInvite: vi.fn(async (sessionId: string, memberFullName: string) => {
       const candidates = listForSession(sessionId)
@@ -112,11 +114,20 @@ export function fakeSignupsModule(store: FakeStore) {
       );
     }),
     createSignup: vi.fn(async (signup: Omit<Signup, 'signupId'>) => {
-      const existing = listForSession(signup.sessionId).find((s) => s.email === signup.email && s.status !== 'cancelled');
+      const target = normalizeEmail(signup.email);
+      const existing = listForSession(signup.sessionId).find(
+        (s) => normalizeEmail(s.email) === target && s.status !== 'cancelled'
+      );
       if (existing) {
         throw new Error(`"${signup.email}" is already signed up for session "${signup.sessionId}".`);
       }
-      const full: Signup = { ...signup, signupId: randomUUID() };
+      // Normalized on write, same as the real repository.
+      const full: Signup = {
+        ...signup,
+        email: target,
+        subRequestTargetEmail: signup.subRequestTargetEmail ? normalizeEmail(signup.subRequestTargetEmail) : '',
+        signupId: randomUUID(),
+      };
       store.signups.set(full.signupId, full);
       return full;
     }),
@@ -153,9 +164,21 @@ export function fakeSignupsModule(store: FakeStore) {
 
 export function fakePlayersModule(store: FakeStore) {
   return {
-    getPlayer: vi.fn(async (email: string) => store.players.get(email) ?? null),
+    // Mirrors the real repository's case-insensitive matching (lib/email.ts):
+    // the Map key is incidental, the row's own email field is the identity.
+    getPlayer: vi.fn(async (email: string) => {
+      const target = normalizeEmail(email);
+      return [...store.players.values()].find((p) => normalizeEmail(p.email) === target) ?? null;
+    }),
     upsertPlayer: vi.fn(async (player: Player) => {
-      store.players.set(player.email, player);
+      const normalized: Player = { ...player, email: normalizeEmail(player.email) };
+      for (const [key, existing] of store.players) {
+        if (normalizeEmail(existing.email) === normalized.email) {
+          store.players.set(key, normalized);
+          return;
+        }
+      }
+      store.players.set(normalized.email, normalized);
     }),
   };
 }
