@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, isWithinPromotionCutoff, currentWeekFridayEastern, isNearEasternTime } from '../time';
+import { zonedTimeToUtc, isWithinPromotionCutoff, currentWeekFridayEastern, isNearEasternTime, getWeeklyMilestones } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -80,5 +80,37 @@ describe('isNearEasternTime', () => {
     // real target (the seasonal EST/EDT duplicate) must not pass with a
     // 30-minute tolerance.
     expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T14:00:00.000Z'))).toBe(false);
+  });
+});
+
+describe('getWeeklyMilestones', () => {
+  // 2026-07-10 is a Friday, game at 18:00 EDT.
+  const milestones = getWeeklyMilestones('2026-07-10', '18:00');
+
+  it('computes registration opening as the preceding Monday 9am ET', () => {
+    // 2026-07-06 is the Monday of that week; 9am EDT = 13:00 UTC.
+    expect(milestones.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
+  });
+
+  it('computes registration closing as the preceding Wednesday 9pm ET', () => {
+    // 2026-07-08 is the Wednesday of that week; 9pm EDT = 01:00 UTC Thursday.
+    expect(milestones.registrationClosesAt.toISOString()).toBe('2026-07-09T01:00:00.000Z');
+  });
+
+  it('computes game start from gameDate/gameTime directly', () => {
+    expect(milestones.gameStart.toISOString()).toBe('2026-07-10T22:00:00.000Z');
+  });
+
+  it('computes the cutoff as exactly 2 hours before game start', () => {
+    expect(milestones.cutoffStart.toISOString()).toBe('2026-07-10T20:00:00.000Z');
+  });
+
+  it('holds up across the EST/EDT boundary (winter game date)', () => {
+    // 2026-01-09 is a Friday in EST (winter).
+    const winter = getWeeklyMilestones('2026-01-09', '18:00');
+    // Monday 2026-01-05, 9am EST = 14:00 UTC.
+    expect(winter.registrationOpensAt.toISOString()).toBe('2026-01-05T14:00:00.000Z');
+    // Wednesday 2026-01-07, 9pm EST = 02:00 UTC Thursday.
+    expect(winter.registrationClosesAt.toISOString()).toBe('2026-01-08T02:00:00.000Z');
   });
 });
