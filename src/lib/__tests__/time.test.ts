@@ -24,18 +24,18 @@ describe('zonedTimeToUtc', () => {
 
 describe('isWithinPromotionCutoff', () => {
   const gameDate = '2026-07-10';
-  const gameTime = '18:00'; // 22:00 UTC; cutoff starts at 20:00 UTC (2h before)
+  const gameTime = '18:00'; // 22:00 UTC; cutoff starts at 17:00 UTC (5h before)
 
   it('is false comfortably before the cutoff', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T19:59:59.000Z'))).toBe(false);
+    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T16:59:59.000Z'))).toBe(false);
   });
 
   it('is true exactly at the cutoff boundary', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T20:00:00.000Z'))).toBe(true);
+    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T17:00:00.000Z'))).toBe(true);
   });
 
   it('is true just after the cutoff boundary', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T20:00:01.000Z'))).toBe(true);
+    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T17:00:01.000Z'))).toBe(true);
   });
 
   it('is true well after game time too', () => {
@@ -108,8 +108,8 @@ describe('getWeeklyMilestones', () => {
     expect(milestones.gameStart.toISOString()).toBe('2026-07-10T22:00:00.000Z');
   });
 
-  it('computes the cutoff as exactly 2 hours before game start', () => {
-    expect(milestones.cutoffStart.toISOString()).toBe('2026-07-10T20:00:00.000Z');
+  it('computes the cutoff as exactly 5 hours before game start', () => {
+    expect(milestones.cutoffStart.toISOString()).toBe('2026-07-10T17:00:00.000Z');
   });
 
   it('holds up across the EST/EDT boundary (winter game date)', () => {
