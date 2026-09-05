@@ -20,7 +20,16 @@ import { ApiError } from './apiErrors';
 // with no change to request/response behavior at all.
 
 const LOCK_KEY = 'weekly-softball-scrimmage:mutation-lock';
-const LOCK_TTL_SECONDS = 15; // safety valve if a holder crashes before releasing
+// Safety valve if a holder crashes before releasing — but it MUST exceed the
+// worst-case duration of the work it protects, or the lock expires mid-flight
+// and a second request starts mutating alongside the first, losing the
+// mutual exclusion this exists for. Worst case here is roughly
+// (Sheets calls per mutation) x (rate-limit backoff per call): cancelMySignup
+// makes ~6 sequential calls, and withRateLimitRetry sleeps up to 7s on each
+// (client.ts, RATE_LIMIT_RETRY_DELAYS_MS) — so 15s was too tight in exactly
+// the rate-limited conditions the lock matters most. See
+// planner/2026-09-05-code-security-review.md, Bug 5.
+const LOCK_TTL_SECONDS = 60;
 const ACQUIRE_RETRY_DELAY_MS = 250;
 const ACQUIRE_TIMEOUT_MS = 10000;
 
