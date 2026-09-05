@@ -15,9 +15,9 @@ describe('WeeklyTimeline', () => {
 
   it('shows the "registration closes" status line while open', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z')); // Tuesday, before Wed 9pm close
+    vi.setSystemTime(new Date('2026-07-06T18:00:00.000Z')); // Monday afternoon, before Tuesday midnight close
     render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="open" />);
-    expect(screen.getByText(/registration closes wed/i)).toBeInTheDocument();
+    expect(screen.getByText(/registration closes tue/i)).toBeInTheDocument();
   });
 
   it('shows the "game starts" status line once closed, before the cutoff', () => {
@@ -49,6 +49,6 @@ describe('WeeklyTimeline', () => {
     // status is 'open' even though we're before the computed Monday —
     // the status line should reflect the real closing schedule, not
     // pretend registration hasn't opened.
-    expect(screen.getByText(/registration closes wed/i)).toBeInTheDocument();
+    expect(screen.getByText(/registration closes tue/i)).toBeInTheDocument();
   });
 });
