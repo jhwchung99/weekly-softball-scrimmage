@@ -98,8 +98,8 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
 
   return (
     <Card className="mt-4">
-      <div className="flex items-start">
-        <div className="flex flex-col items-center text-center">
+      <div className="flex items-start gap-1">
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <Dot state={openState} />
           <p className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-900">
             <CalendarClock className="h-3.5 w-3.5" /> Registration Opens
@@ -107,7 +107,7 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
           <p className="text-xs text-slate-500">{formatDateTime(registrationOpensAt)}</p>
         </div>
         <Line filled={openDone} />
-        <div className="flex flex-col items-center text-center">
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <Dot state={closeState} />
           <p className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-900">
             <CalendarX2 className="h-3.5 w-3.5" /> Registration Closes
@@ -115,7 +115,7 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
           <p className="text-xs text-slate-500">{formatDateTime(registrationClosesAt)}</p>
         </div>
         <Line filled={closeDone} />
-        <div className="flex flex-col items-center text-center">
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <Dot state={gameState} />
           <p className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-900">
             <Flag className="h-3.5 w-3.5" /> Game Day
