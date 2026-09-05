@@ -16,10 +16,19 @@ export interface Session {
   registrationClosesAt: string; // ISO datetime
   capacity: number;
   status: SessionStatus;
-  cost: number; // total session cost (e.g. permit fee), admin-set; 0 = not
-  // priced yet. Split across confirmed slots at display time
-  // (computeCostShare in signupFlow.ts) — never stored per-person, so it
-  // can't drift if headcount or cost changes before payment happens.
+  cost: number; // what the permit actually cost the organizer. Bookkeeping
+  // only as of 2026-09-05 — no longer divided among players (see
+  // pricePerSpot). 0 = not recorded yet.
+  pricePerSpot: number; // what a player pays for one spot, fixed and known up
+  // front so it can be shown at signup and paid before game day. A shared
+  // spot splits this between its two occupants (computeCostShare). 0 = free /
+  // not priced yet.
+  locationArea: string; // the general area, known at creation — e.g.
+  // "Mississauga". Shown as "<area> — specific field TBD" until the permit is
+  // actually booked.
+  locationName: string; // the specific field, filled in once booked — e.g.
+  // "Iceland Park Diamond 3". '' until then.
+  locationUrl: string; // optional map link for locationName; '' if none.
 }
 
 export interface Signup {
@@ -41,6 +50,15 @@ export interface Signup {
   paid: boolean; // admin-tracked, per session — a person who owes for one
   // week still owes it even after paying for a later week (no cross-week
   // ledger; see planner/2026-09-04-sub-requests-roster-cost-plan.md)
+  amountPaid: number; // what they actually handed over. Recorded because it's
+  // a fact, unlike the owed amount, which stays derived. Payment is not
+  // refunded or recalculated afterwards — including a late cancellation — so
+  // this is the settled figure. 0 when unpaid.
+  paidAt: string; // ISO datetime the payment was recorded, '' when unpaid —
+  // lets the organizer reconcile against an e-Transfer history by date.
+  attended: boolean; // admin-only record of who actually showed up. No
+  // player-facing display and no automatic consequence: repeat no-shows are a
+  // social problem, and the app's job is only to remember what happened.
   subRequestTargetEmail: string; // who this signup is asking to share a
   // slot with; '' when no request is outstanding
   subRequestStatus: '' | 'pending' | 'declined'; // '' = no active request.
@@ -65,6 +83,10 @@ export const SESSION_HEADERS = [
   'capacity',
   'status',
   'cost',
+  'pricePerSpot',
+  'locationArea',
+  'locationName',
+  'locationUrl',
 ] as const satisfies readonly (keyof Session)[];
 
 export const SIGNUP_HEADERS = [
@@ -86,6 +108,9 @@ export const SIGNUP_HEADERS = [
   'subRequestTargetEmail',
   'subRequestStatus',
   'subRequestedAt',
+  'amountPaid',
+  'paidAt',
+  'attended',
 ] as const satisfies readonly (keyof Signup)[];
 
 export const PLAYER_HEADERS = [
@@ -112,11 +137,17 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     capacity: Number(row.capacity) || 0,
     status: (row.status || 'open') as SessionStatus,
     cost: Number(row.cost) || 0,
+    pricePerSpot: Number(row.pricePerSpot) || 0,
   };
 }
 
 export function serializeSessionRow(session: Session): RawRow<Session> {
-  return { ...session, capacity: String(session.capacity), cost: String(session.cost) };
+  return {
+    ...session,
+    capacity: String(session.capacity),
+    cost: String(session.cost),
+    pricePerSpot: String(session.pricePerSpot),
+  };
 }
 
 export function parseSignupRow(row: RawRow<Signup>): Signup {
@@ -127,6 +158,8 @@ export function parseSignupRow(row: RawRow<Signup>): Signup {
     status: (row.status || 'waitlisted') as SignupStatus,
     paid: row.paid === 'TRUE' || row.paid === 'true',
     subRequestStatus: (row.subRequestStatus || '') as Signup['subRequestStatus'],
+    amountPaid: Number(row.amountPaid) || 0,
+    attended: row.attended === 'TRUE' || row.attended === 'true',
   };
 }
 
@@ -135,6 +168,8 @@ export function serializeSignupRow(signup: Signup): RawRow<Signup> {
     ...signup,
     willingToShare: signup.willingToShare ? 'TRUE' : 'FALSE',
     paid: signup.paid ? 'TRUE' : 'FALSE',
+    amountPaid: String(signup.amountPaid),
+    attended: signup.attended ? 'TRUE' : 'FALSE',
   };
 }
 
