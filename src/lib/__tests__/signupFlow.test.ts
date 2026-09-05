@@ -256,7 +256,7 @@ describe('cancelMySignup', () => {
     expect(sendEmail).toHaveBeenCalledWith('member@dummy.test', expect.any(String), expect.any(String));
   });
 
-  it('does not auto-promote within the 2-hour cutoff, and alerts the organizer instead', async () => {
+  it('does not auto-promote within the 5-hour cutoff, and alerts the organizer instead', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-10T21:00:00.000Z')); // 1h before game (22:00 UTC) — within cutoff
     store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00', capacity: 1 }));
