@@ -166,7 +166,9 @@ export async function sendGameDayReminders(now: Date = new Date()): Promise<Remi
   let failed = 0;
   for (const signup of confirmed) {
     try {
-      await sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0);
+      // `now` is threaded through so the email's "payment opens at …" wording is
+      // decided by the same clock the job is running against, not wall time.
+      await sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, now);
       sent += 1;
     } catch (err) {
       failed += 1;
