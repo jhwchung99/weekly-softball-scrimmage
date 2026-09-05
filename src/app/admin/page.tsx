@@ -61,6 +61,8 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [capacityInput, setCapacityInput] = useState('');
   const [costInput, setCostInput] = useState('');
+  const [gameDateInput, setGameDateInput] = useState('');
+  const [gameTimeInput, setGameTimeInput] = useState('');
 
   async function loadCurrentSessionId() {
     const { session } = await fetchJson<{ session: SessionInfo | null }>('/api/sessions/current');
@@ -80,6 +82,8 @@ export default function AdminPage() {
       setScrimmage(sessionRes.session);
       setCapacityInput(String(sessionRes.session.capacity));
       setCostInput(String(sessionRes.session.cost));
+      setGameDateInput(sessionRes.session.gameDate);
+      setGameTimeInput(sessionRes.session.gameTime);
       setRoster(rosterRes.signups);
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
@@ -115,8 +119,13 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Update failed');
-      await loadRoster(sessionId);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Update failed');
+      // A gameDate change rekeys the session (its id IS the date) — follow
+      // it to the new id rather than re-fetching the now-stale old one.
+      const newSessionId: string = data?.session?.sessionId || sessionId;
+      setSessionId(newSessionId);
+      await loadRoster(newSessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -209,12 +218,43 @@ export default function AdminPage() {
 
           {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
+          <CreateSessionForm busy={busy} setBusy={setBusy} setError={setError} onCreated={(id) => setSessionId(id)} />
+
           {scrimmage && (
             <Card className="mt-4">
               <h2 className="flex items-center gap-2 font-semibold text-slate-900">
                 {scrimmage.gameDate} at {scrimmage.gameTime}
                 <Badge status={scrimmage.status}>{scrimmage.status}</Badge>
               </h2>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label htmlFor="admin-game-date" className="text-sm text-slate-700">Date</label>
+                <input
+                  id="admin-game-date"
+                  type="date"
+                  value={gameDateInput}
+                  onChange={(e) => setGameDateInput(e.target.value)}
+                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                />
+                <label htmlFor="admin-game-time" className="text-sm text-slate-700">Time</label>
+                <input
+                  id="admin-game-time"
+                  type="time"
+                  value={gameTimeInput}
+                  onChange={(e) => setGameTimeInput(e.target.value)}
+                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => updateSession({ gameDate: gameDateInput, gameTime: gameTimeInput })}
+                >
+                  {busy ? 'Processing...' : 'Reschedule'}
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Game day must be a Friday, Saturday, or Sunday. Moving it — even to a different week — keeps every existing signup.
+              </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <label htmlFor="admin-capacity" className="text-sm text-slate-700">Capacity</label>
                 <input
@@ -336,6 +376,100 @@ export default function AdminPage() {
         </>
       )}
     </main>
+  );
+}
+
+function CreateSessionForm(props: {
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  setError: (e: string | null) => void;
+  onCreated: (sessionId: string) => void;
+}) {
+  const { busy, setBusy, setError, onCreated } = props;
+  const [gameDate, setGameDate] = useState('');
+  const [gameTime, setGameTime] = useState('18:00');
+  const [capacity, setCapacity] = useState('20');
+  const [cost, setCost] = useState('0');
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameDate, gameTime, capacity: Number(capacity), cost: Number(cost) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Create failed');
+      setGameDate('');
+      onCreated(data.session.sessionId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-4">
+      <form onSubmit={handleSubmit} className="space-y-2">
+        <h2 className="font-semibold text-slate-900">Create a new session</h2>
+        <p className="text-xs text-slate-500">Game day must be a Friday, Saturday, or Sunday.</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label htmlFor="create-session-date" className="block text-sm text-slate-700">Date</label>
+            <input
+              id="create-session-date"
+              required
+              type="date"
+              value={gameDate}
+              onChange={(e) => setGameDate(e.target.value)}
+              className="mt-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="create-session-time" className="block text-sm text-slate-700">Time</label>
+            <input
+              id="create-session-time"
+              required
+              type="time"
+              value={gameTime}
+              onChange={(e) => setGameTime(e.target.value)}
+              className="mt-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="create-session-capacity" className="block text-sm text-slate-700">Capacity</label>
+            <input
+              id="create-session-capacity"
+              required
+              type="number"
+              min={0}
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              className="mt-1 w-20 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="create-session-cost" className="block text-sm text-slate-700">Cost ($)</label>
+            <input
+              id="create-session-cost"
+              type="number"
+              min={0}
+              step="0.01"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              className="mt-1 w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <Button type="submit" size="sm" disabled={busy}>
+            {busy ? 'Creating...' : 'Create'}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }
 
