@@ -42,6 +42,9 @@ describe('POST /api/admin/sessions', () => {
       gameTime: '18:00',
       capacity: undefined,
       cost: undefined,
+      pricePerSpot: undefined,
+      locationArea: undefined,
+      openImmediately: false,
     });
   });
 
