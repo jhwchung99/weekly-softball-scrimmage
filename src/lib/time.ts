@@ -51,7 +51,10 @@ function pad(n: number): string {
 export interface WeeklyMilestones {
   /** Monday 9am ET — when registration is scheduled to open. */
   registrationOpensAt: Date;
-  /** Wednesday 9pm ET — when registration is scheduled to close. */
+  /** Tuesday 12am ET (midnight, i.e. right at the end of Monday) — when
+   * registration is scheduled to close. Deliberately short (~15 hours):
+   * gives the organizer the rest of the week to book a permit sized to
+   * the actual headcount before Friday's game. */
   registrationClosesAt: Date;
   /** The game's actual start instant. */
   gameStart: Date;
@@ -63,9 +66,9 @@ export interface WeeklyMilestones {
  * The four dates a player might want to see on a weekly timeline,
  * derived purely from the game date/time — not from the session's own
  * registrationOpensAt/registrationClosesAt fields, which are often
- * blank (closesAt stays '' until the Wednesday cron actually runs) or
- * reflect an admin manually opening things early rather than the
- * intended schedule. This computes the *schedule*, independent of
+ * blank (closesAt stays '' until the Tuesday-midnight cron actually
+ * runs) or reflect an admin manually opening things early rather than
+ * the intended schedule. This computes the *schedule*, independent of
  * whether it's actually been hit yet — pairs with the session's own
  * `status` field (the actual source of truth for whether signups are
  * currently accepted) rather than replacing it. No server-only APIs
@@ -73,8 +76,8 @@ export interface WeeklyMilestones {
  *
  * Game day can be Friday, Saturday, or Sunday (validateGameDate
  * enforces this) — registration always opens the Monday and closes the
- * Wednesday of that same calendar week, regardless of which of the
- * three days the game itself falls on.
+ * following Tuesday at midnight of that same calendar week, regardless
+ * of which of the three days the game itself falls on.
  */
 export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyMilestones {
   const [year, month, day] = gameDate.split('-').map(Number);
@@ -89,10 +92,10 @@ export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyM
   const isoWeekday = new Date(gameNoonUtc).getUTCDay() || 7; // Mon=1..Sun=7
   const daysSinceMonday = isoWeekday - 1; // Fri=4, Sat=5, Sun=6
   const mondayNoonUtc = gameNoonUtc - daysSinceMonday * 24 * 60 * 60 * 1000;
-  const wednesdayNoonUtc = mondayNoonUtc + 2 * 24 * 60 * 60 * 1000;
+  const tuesdayNoonUtc = mondayNoonUtc + 1 * 24 * 60 * 60 * 1000;
 
   const registrationOpensAt = zonedTimeToUtc(toDateStr(mondayNoonUtc), '09:00');
-  const registrationClosesAt = zonedTimeToUtc(toDateStr(wednesdayNoonUtc), '21:00');
+  const registrationClosesAt = zonedTimeToUtc(toDateStr(tuesdayNoonUtc), '00:00');
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
   const cutoffStart = new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
 
@@ -102,7 +105,7 @@ export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyM
 /**
  * The Friday of the calendar week `now` falls in, as read in Eastern
  * time — this is what makes "today" mean the right thing for a
- * Monday/Wednesday cron job regardless of what timezone the server
+ * Monday/Tuesday cron job regardless of what timezone the server
  * itself happens to run in (e.g. Vercel/GitHub Actions runners are UTC).
  * Weekday arithmetic on a Y/M/D triple is timezone-independent once the
  * triple itself is correctly the Eastern one, so a plain local Date is
