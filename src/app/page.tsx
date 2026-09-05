@@ -8,6 +8,7 @@ import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
+import { getWeeklyMilestones } from '../lib/time';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 
@@ -407,6 +408,52 @@ export default function Home() {
   );
 }
 
+/**
+ * What a confirmed player owes, and when it becomes payable.
+ *
+ * Payment deliberately does not open until the roster locks — 5 hours before
+ * game time, the same moment cancellations stop auto-promoting anyone. Before
+ * that the lineup can still change, so charging early would create cases where
+ * somebody has paid and is then replaced, leaving the organizer to work out
+ * who owes whom. Aligning the two timelines means that case cannot arise: no
+ * refunds, no transfers between players, nothing to reconcile.
+ */
+function PaymentPrompt({
+  amount,
+  gameDate,
+  gameTime,
+  instructions,
+}: {
+  amount: number;
+  gameDate: string;
+  gameTime: string;
+  instructions: string;
+}) {
+  const { cutoffStart } = getWeeklyMilestones(gameDate, gameTime);
+  const opensAt = cutoffStart.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  if (new Date() < cutoffStart) {
+    return (
+      <p className="mt-2 text-sm text-slate-500">
+        Your spot costs <strong>${amount.toFixed(2)}</strong>. Nothing to pay yet — payment opens {opensAt}, once the
+        roster is locked and the lineup can no longer change.
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-2 text-sm text-slate-700">
+      You owe <strong>${amount.toFixed(2)}</strong> — please send it before the game starts.
+      {instructions ? ` ${instructions}` : ''}
+    </p>
+  );
+}
+
 export function PlayerArea(props: {
   scrimmage: SessionInfo;
   registrationClosed: boolean;
@@ -464,10 +511,12 @@ export function PlayerArea(props: {
         </p>
 
         {mySignup.status === 'confirmed' && costOwed !== null && (
-          <p className="mt-2 text-sm text-slate-700">
-            You owe <strong>${costOwed.toFixed(2)}</strong> — please send it before game day.
-            {paymentInstructions ? ` ${paymentInstructions}` : ''}
-          </p>
+          <PaymentPrompt
+            amount={costOwed}
+            gameDate={scrimmage.gameDate}
+            gameTime={scrimmage.gameTime}
+            instructions={paymentInstructions}
+          />
         )}
 
         {mySignup.status === 'confirmed' && (
