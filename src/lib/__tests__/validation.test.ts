@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   validateFullName,
   validateGender,
-  validateAge,
   validateSavedPositions,
   validateInvitedByName,
   validateEmail,
@@ -37,30 +36,6 @@ describe('validateFullName / validateGender / validateInvitedByName', () => {
 
   it('rejects an empty invitedByName', () => {
     expect(() => validateInvitedByName('  ')).toThrow(/required/);
-  });
-});
-
-describe('validateAge', () => {
-  it('accepts values within range', () => {
-    expect(validateAge(1)).toBe(1);
-    expect(validateAge(120)).toBe(120);
-    expect(validateAge('42')).toBe(42);
-  });
-
-  it('rejects below the minimum', () => {
-    expect(() => validateAge(0)).toThrow(/between 1 and 120/);
-  });
-
-  it('rejects above the maximum', () => {
-    expect(() => validateAge(121)).toThrow(/between 1 and 120/);
-  });
-
-  it('rejects non-integer values', () => {
-    expect(() => validateAge(25.5)).toThrow(/whole number/);
-  });
-
-  it('rejects non-numeric input', () => {
-    expect(() => validateAge('not a number')).toThrow(/whole number/);
   });
 });
 
@@ -161,11 +136,11 @@ describe('validateGameTime', () => {
 
 describe('validatePlayerProfile', () => {
   it('validates every field together and returns a clean object', () => {
-    const result = validatePlayerProfile({ fullName: ' A ', gender: ' M ', age: '25', savedPositions: 'Catcher' });
-    expect(result).toEqual({ fullName: 'A', gender: 'M', age: 25, savedPositions: 'Catcher' });
+    const result = validatePlayerProfile({ fullName: ' A ', gender: ' M ', savedPositions: 'Catcher' });
+    expect(result).toEqual({ fullName: 'A', gender: 'M', savedPositions: 'Catcher' });
   });
 
   it('propagates the first validation failure', () => {
-    expect(() => validatePlayerProfile({ fullName: '', gender: 'M', age: 25 })).toThrow(/fullName/);
+    expect(() => validatePlayerProfile({ fullName: '', gender: 'M' })).toThrow(/fullName/);
   });
 });
