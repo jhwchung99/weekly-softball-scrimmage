@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/auth';
 import { getSignup, updateSignup, deleteSignup } from '../../../../../sheets/signups';
-import { SignupStatus } from '../../../../../sheets/schema';
+import { Signup, SignupStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ signupId: string }> };
@@ -24,13 +24,21 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!existing) throw new ApiError(404, 'No such signup.');
 
     const body = await request.json().catch(() => ({}));
-    const updates: { status?: SignupStatus; paid?: boolean } = {};
+    const updates: Partial<Pick<Signup, 'status' | 'paid' | 'subRequestTargetEmail' | 'subRequestStatus' | 'subRequestedAt'>> = {};
 
     if (body?.status !== undefined) {
       if (!VALID_STATUSES.includes(body.status)) {
         throw new ApiError(400, `status must be one of: ${VALID_STATUSES.join(', ')}.`);
       }
       updates.status = body.status;
+      // A status override invalidates any sub request on this row: the
+      // request only made sense while this person was waitlisted, and
+      // leaving it pending lets a later acceptance collapse an
+      // already-confirmed player into someone else's slot (see
+      // planner/2026-09-05-code-security-review.md, Bug 2).
+      if (body.status !== 'waitlisted' && existing.subRequestStatus === 'pending') {
+        Object.assign(updates, { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' });
+      }
     }
 
     if (body?.paid !== undefined) {
