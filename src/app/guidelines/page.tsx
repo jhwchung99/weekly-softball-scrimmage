@@ -54,11 +54,18 @@ export default function GuidelinesPage() {
         <li>If they accept, you both share their spot going forward (same as a member/guest pairing)</li>
       </Section>
 
+      <Section title="Where we play">
+        <li>The general area is set when the week opens — e.g. &quot;Mississauga&quot;</li>
+        <li>The exact field is booked after signups close, once the headcount is known</li>
+        <li>Once it&apos;s booked, the field and a map link show up on the homepage</li>
+      </Section>
+
       <Section title="Cost">
-        <li>Organizer sets a price for the week, covering the field/permit cost</li>
-        <li>Split evenly across every confirmed spot</li>
-        <li>Sharing a spot with someone? You each pay half that spot&apos;s share</li>
+        <li>A fixed price per spot, shown before you sign up — it doesn&apos;t change with headcount</li>
+        <li>Sharing a spot with someone? You each pay half</li>
+        <li><strong>Please pay before game day</strong></li>
         <li>Payment happens outside the app — the organizer tracks who&apos;s paid</li>
+        <li>Once you&apos;ve paid it&apos;s settled — cancelling later doesn&apos;t get you a refund</li>
       </Section>
 
       <Section title="A note on risk">
