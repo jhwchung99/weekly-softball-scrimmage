@@ -34,12 +34,12 @@ describe('PlayerArea', () => {
   });
 
   it('shows the signup form once a profile exists and registration is open', () => {
-    render(<PlayerArea {...baseProps} myPlayer={{ fullName: 'A', gender: 'M', age: 30, savedPositions: '' }} />);
+    render(<PlayerArea {...baseProps} myPlayer={{ fullName: 'A', gender: 'M', savedPositions: '' }} />);
     expect(screen.getByRole('button', { name: /^sign up$/i })).toBeInTheDocument();
   });
 
   it('shows a "registration closed" message instead of a signup form once closed, for a visitor with no signup', () => {
-    render(<PlayerArea {...baseProps} myPlayer={{ fullName: 'A', gender: 'M', age: 30, savedPositions: '' }} registrationClosed={true} />);
+    render(<PlayerArea {...baseProps} myPlayer={{ fullName: 'A', gender: 'M', savedPositions: '' }} registrationClosed={true} />);
     expect(screen.getByText(/registration is currently closed/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^sign up$/i })).not.toBeInTheDocument();
   });
