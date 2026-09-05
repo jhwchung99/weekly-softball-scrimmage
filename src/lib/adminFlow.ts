@@ -1,7 +1,18 @@
 import { upsertPlayer } from '../sheets/players';
-import { Signup } from '../sheets/schema';
+import { getSession, createSession, updateSession } from '../sheets/sessions';
+import { listSignupsForSession, batchUpdateSignups } from '../sheets/signups';
+import { Session, Signup } from '../sheets/schema';
 import { signUpForSession, signUpAsGuestForSession } from './signupFlow';
-import { validatePlayerProfile, validateInvitedByName } from './validation';
+import { DEFAULT_GAME_TIME, DEFAULT_CAPACITY } from './scheduling';
+import { ApiError } from './apiErrors';
+import {
+  validatePlayerProfile,
+  validateInvitedByName,
+  validateGameDate,
+  validateGameTime,
+  validateCapacity,
+  validateCost,
+} from './validation';
 
 export interface AdminAddSignupInput {
   sessionId: string;
@@ -49,4 +60,76 @@ export async function adminAddSignup(input: AdminAddSignupInput): Promise<Signup
     );
   }
   return signUpForSession(input.sessionId, input.email, input.waiverAccepted);
+}
+
+export interface AdminCreateSessionInput {
+  gameDate: unknown;
+  gameTime?: unknown;
+  capacity?: unknown;
+  cost?: unknown;
+}
+
+/**
+ * "Create a session" (Section 8) — sessionId doubles as gameDate (see
+ * sheets/sessions.ts), so this is really just createSession with
+ * defaults filled in and gameDate/gameTime validated. Mainly for
+ * scheduling a Saturday/Sunday game, or a Friday one ahead of the
+ * Monday-open cron so an admin can set a non-default capacity/cost from
+ * the start rather than editing it in right after.
+ */
+export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
+  const gameDate = validateGameDate(input.gameDate);
+  const gameTime = input.gameTime !== undefined ? validateGameTime(input.gameTime) : DEFAULT_GAME_TIME;
+  const capacity = input.capacity !== undefined ? validateCapacity(input.capacity) : DEFAULT_CAPACITY;
+  const cost = input.cost !== undefined ? validateCost(input.cost) : 0;
+
+  const existing = await getSession(gameDate);
+  if (existing) throw new ApiError(409, `A session for ${gameDate} already exists.`);
+
+  return createSession({
+    sessionId: gameDate,
+    gameDate,
+    gameTime,
+    registrationOpensAt: '',
+    registrationClosesAt: '',
+    capacity,
+    cost,
+    status: 'open',
+  });
+}
+
+/**
+ * Moving a session to a new date changes its identity — sessionId
+ * *is* gameDate, the lookup key the homepage and the weekly cron jobs
+ * use to find "this week's session" (see time.ts's
+ * currentWeekGameDayCandidates). Renaming the existing row in place
+ * (rather than create-new + delete-old) keeps this to one session-row
+ * write; every signup referencing the old sessionId is then repointed
+ * at the new one in the same pass so nothing orphans. Best-effort, not
+ * a real transaction — Sheets has no cross-tab atomicity, same
+ * trade-off already accepted throughout this codebase.
+ */
+export async function adminRescheduleSession(sessionId: string, newGameDate: unknown, newGameTime: unknown): Promise<Session> {
+  const gameDate = validateGameDate(newGameDate);
+  const gameTime = validateGameTime(newGameTime);
+
+  const existing = await getSession(sessionId);
+  if (!existing) throw new ApiError(404, 'No such session.');
+
+  if (gameDate === sessionId) {
+    // Same identity — a pure time change (or a no-op date), no rekey needed.
+    return updateSession(sessionId, { gameDate, gameTime });
+  }
+
+  const conflict = await getSession(gameDate);
+  if (conflict) throw new ApiError(409, `A session for ${gameDate} already exists.`);
+
+  const updated = await updateSession(sessionId, { sessionId: gameDate, gameDate, gameTime });
+
+  const signups = await listSignupsForSession(sessionId);
+  if (signups.length > 0) {
+    await batchUpdateSignups(signups.map((s) => ({ signupId: s.signupId, updates: { sessionId: gameDate } })));
+  }
+
+  return updated;
 }
