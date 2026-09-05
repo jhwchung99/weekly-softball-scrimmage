@@ -1,28 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../../../lib/auth';
 import { listSignupsForSession } from '../../../../../sheets/signups';
-import { Signup } from '../../../../../sheets/schema';
+import { buildRosterView } from '../../../../../lib/roster';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
-interface RosterEntry {
-  fullName: string;
-  positions: string;
-  pairedWith: string | null;
-}
-
-function toEntry(s: Signup, active: Signup[]): RosterEntry {
-  const pairedWith = s.pairId ? active.find((o) => o.pairId === s.pairId && o.signupId !== s.signupId)?.fullName ?? null : null;
-  return { fullName: s.fullName, positions: s.positions, pairedWith };
-}
-
 /**
- * Player-facing roster — who's confirmed and who's waitlisted, by name
- * only (no email — this deliberately doesn't hand out everyone's
- * address; a sub request assumes the requester already personally knows
- * who they'd ask). Any signed-in user can view, not just admins — this
- * is what makes a sub request possible in the first place.
+ * Player-facing roster. Two levels of visibility:
+ *
+ * - Anyone signed in gets the **counts**, so they can see how full the week is
+ *   before deciding whether to sign up.
+ * - Only someone with an active signup for this session gets the **names**.
+ *
+ * Emails are never returned at either level (a sub request assumes the
+ * requester already personally knows who they'd ask).
+ *
+ * The gate exists because sign-in is open to any Google account and session ids
+ * are just dates, so an ungated roster let anyone who found the URL enumerate
+ * the full membership of the group, week by week. Requiring skin in the game to
+ * see names keeps sub requests working — you have to be on the list to ask
+ * someone on the list — while closing that. See
+ * planner/2026-09-05-code-security-review.md, S1.
+ *
+ * The shaping itself lives in lib/roster.ts, shared with /api/home so the
+ * access-control rule has exactly one implementation.
  */
 export async function GET(request: Request, { params }: Params) {
   try {
@@ -31,15 +33,8 @@ export async function GET(request: Request, { params }: Params) {
 
     const { sessionId } = await params;
     const signups = await listSignupsForSession(sessionId);
-    const active = signups.filter((s) => s.status !== 'cancelled');
 
-    const confirmed = active.filter((s) => s.status === 'confirmed').map((s) => toEntry(s, active));
-    const waitlisted = active
-      .filter((s) => s.status === 'waitlisted')
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-      .map((s) => toEntry(s, active));
-
-    return NextResponse.json({ confirmed, waitlisted });
+    return NextResponse.json(buildRosterView(signups, email));
   } catch (err) {
     return handleApiError(err);
   }
