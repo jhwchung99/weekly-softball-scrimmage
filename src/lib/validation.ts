@@ -7,8 +7,6 @@ import { POSITIONS } from './positions';
 
 const MAX_NAME_LENGTH = 100;
 const MAX_GENDER_LENGTH = 30;
-const MIN_AGE = 1;
-const MAX_AGE = 120;
 
 function requireTrimmedString(value: unknown, fieldName: string, maxLength: number): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -23,14 +21,6 @@ export function validateFullName(value: unknown): string {
 
 export function validateGender(value: unknown): string {
   return requireTrimmedString(value, 'gender', MAX_GENDER_LENGTH);
-}
-
-export function validateAge(value: unknown): number {
-  const age = Number(value);
-  if (!Number.isInteger(age) || age < MIN_AGE || age > MAX_AGE) {
-    throw new ApiError(400, `age must be a whole number between ${MIN_AGE} and ${MAX_AGE}.`);
-  }
-  return age;
 }
 
 /**
@@ -123,14 +113,12 @@ export function validateGameTime(value: unknown): string {
 export interface PlayerProfileInput {
   fullName: unknown;
   gender: unknown;
-  age: unknown;
   savedPositions?: unknown;
 }
 
 export interface ValidatedPlayerProfile {
   fullName: string;
   gender: string;
-  age: number;
   savedPositions: string;
 }
 
@@ -138,7 +126,6 @@ export function validatePlayerProfile(input: PlayerProfileInput): ValidatedPlaye
   return {
     fullName: validateFullName(input.fullName),
     gender: validateGender(input.gender),
-    age: validateAge(input.age),
     savedPositions: validateSavedPositions(input.savedPositions ?? ''),
   };
 }
