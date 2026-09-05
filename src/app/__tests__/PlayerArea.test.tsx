@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PlayerArea } from '../page';
 
@@ -95,5 +95,52 @@ describe('PlayerArea', () => {
       />
     );
     expect(screen.getByText(/\$7\.50/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Payment deliberately doesn't open until the roster locks (5 hours before
+ * game time, the same moment auto-promotion stops). Before that the lineup can
+ * still change, so charging early would create paid-then-replaced cases the
+ * organizer would have to reconcile by hand.
+ *
+ * The fixture game is 2099-01-01 at 18:00 ET (EST, so 23:00 UTC), which puts
+ * the lock at 18:00 UTC.
+ */
+describe('PlayerArea payment timing', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const confirmed = {
+    signupId: 's1',
+    status: 'confirmed' as const,
+    memberStatus: 'member' as const,
+    subRequestTargetEmail: '',
+    subRequestStatus: '' as const,
+  };
+
+  it('does not ask for payment while the lineup can still change', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T12:00:00.000Z')); // 6 hours before the lock
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+
+    expect(screen.getByText(/nothing to pay yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/you owe/i)).not.toBeInTheDocument();
+  });
+
+  it('asks for payment once the roster is locked', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // an hour after the lock
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+
+    expect(screen.getByText(/you owe/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing to pay yet/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the payment instructions only once payment is open', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} paymentInstructions="e-Transfer to x@y.test" />);
+
+    expect(screen.getByText(/e-Transfer to x@y.test/)).toBeInTheDocument();
   });
 });
