@@ -46,15 +46,18 @@ export async function GET() {
         signup: null,
         incomingSubRequests: [],
         costOwed: null,
+        waitlistPosition: null,
         roster: null,
         waiverText: WAIVER_TEXT,
+        // Deliberately omitted when signed out — see the note below.
+        paymentInstructions: '',
       });
     }
 
     // Reads 2 and 3 — Signups and Players, once each, in parallel.
     const [allSignups, player] = await Promise.all([listSignupsForSession(session.sessionId), getPlayer(email)]);
 
-    const { signup, incomingSubRequests, costOwed } = buildMyStatus(session, allSignups, email);
+    const { signup, incomingSubRequests, costOwed, waitlistPosition } = buildMyStatus(session, allSignups, email);
 
     return NextResponse.json({
       session,
@@ -63,8 +66,19 @@ export async function GET() {
       signup,
       incomingSubRequests,
       costOwed,
+      waitlistPosition,
       roster: buildRosterView(allSignups, email),
       waiverText: WAIVER_TEXT,
+      /**
+       * Sent from the server, to signed-in callers only, rather than exposed
+       * as a NEXT_PUBLIC_ build-time constant. A NEXT_PUBLIC_ value is inlined
+       * into the JavaScript bundle, which is served to everyone — signed-out
+       * visitors and crawlers included — so the organizer's e-Transfer address
+       * would be publicly scrapable rather than merely visible to players.
+       * Nothing here is a credential, but there's no reason to publish a
+       * payment address to the open internet.
+       */
+      paymentInstructions: process.env.PAYMENT_INSTRUCTIONS ?? '',
     });
   } catch (err) {
     return handleApiError(err);
