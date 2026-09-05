@@ -138,6 +138,10 @@ export function serializeSignupRow(signup: Signup): RawRow<Signup> {
   };
 }
 
+// Player has no non-string fields left (age was removed 2026-09-05), so these
+// two are currently identity transforms. Kept rather than inlined so every tab
+// has the same parse/serialize pair — the day Player gains a number or boolean,
+// the conversion has an obvious home and no call site has to change.
 export function parsePlayerRow(row: RawRow<Player>): Player {
   return { ...row };
 }
