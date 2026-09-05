@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { Loader2, Users, CheckCircle2, Clock3, ListChecks } from 'lucide-react';
+import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck } from 'lucide-react';
 import { POSITIONS } from '../lib/positions';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -33,7 +33,6 @@ export interface IncomingSubRequest {
 export interface PlayerInfo {
   fullName: string;
   gender: string;
-  age: number;
   savedPositions: string;
 }
 
@@ -217,9 +216,15 @@ export default function Home() {
           </p>
         )}
         {authStatus === 'unauthenticated' && (
-          <Button onClick={() => signIn('google')} className="mt-4">
-            Sign in with Google
-          </Button>
+          <>
+            <Button onClick={() => signIn('google')} className="mt-4">
+              Sign in with Google
+            </Button>
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-500">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              We only see your name and email — never your password, inbox, or anything else in your Google account.
+            </p>
+          </>
         )}
         {authStatus === 'authenticated' && (
           <div className="mt-1 flex items-center justify-between text-sm text-slate-600">
@@ -545,7 +550,7 @@ export function ProfileSection(props: {
   return (
     <Card className="mt-4 flex items-center justify-between gap-3 text-sm text-slate-700">
       <span>
-        {myPlayer.fullName} — {myPlayer.gender}, {myPlayer.age} — positions: {myPlayer.savedPositions || 'none saved'}
+        {myPlayer.fullName} — {myPlayer.gender} — positions: {myPlayer.savedPositions || 'none saved'}
       </span>
       <button onClick={() => setEditing(true)} className="shrink-0 text-blue-600 hover:underline">
         Edit profile
@@ -565,7 +570,6 @@ export function ProfileForm(props: {
   const { initialValues, onSaved, onCancel, busy, setBusy, setError } = props;
   const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
   const [gender, setGender] = useState(initialValues?.gender ?? '');
-  const [age, setAge] = useState(initialValues ? String(initialValues.age) : '');
   const [positions, setPositions] = useState<string[]>(
     initialValues?.savedPositions
       ? initialValues.savedPositions
@@ -583,7 +587,7 @@ export function ProfileForm(props: {
       const res = await fetch('/api/players/me', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, gender, age: Number(age), savedPositions: positions.join(', ') }),
+        body: JSON.stringify({ fullName, gender, savedPositions: positions.join(', ') }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Could not save profile');
       onSaved();
@@ -615,29 +619,15 @@ export function ProfileForm(props: {
           className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
         />
       </div>
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label htmlFor="profile-gender" className="block text-sm text-slate-700">Gender</label>
-          <input
-            id="profile-gender"
-            required
-            value={gender}
-            onChange={(e) => setGender(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
-          />
-        </div>
-        <div className="w-24">
-          <label htmlFor="profile-age" className="block text-sm text-slate-700">Age</label>
-          <input
-            id="profile-age"
-            required
-            type="number"
-            min={0}
-            value={age}
-            onChange={(e) => setAge(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
-          />
-        </div>
+      <div>
+        <label htmlFor="profile-gender" className="block text-sm text-slate-700">Gender</label>
+        <input
+          id="profile-gender"
+          required
+          value={gender}
+          onChange={(e) => setGender(e.target.value)}
+          className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+        />
       </div>
       <div>
         <label className="block text-sm text-slate-700">Positions you&apos;re comfortable playing</label>
