@@ -1,6 +1,7 @@
 import { sendEmail } from './gmail';
 import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
+import { formatLocation } from './location';
 
 /**
  * The one email type Step 8 covers (Section 7): a promoted player is told
@@ -11,7 +12,7 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
   const text = [
     `Hi ${signup.fullName},`,
     '',
-    `A spot opened up and you've moved up from the waitlist — you're now scheduled to play in the ${session.gameDate} scrimmage at ${session.gameTime}.`,
+    `A spot opened up and you've moved up from the waitlist — you're now scheduled to play ${whenAndWhere(session)}.`,
     '',
     'See you on the field!',
   ].join('\n');
@@ -77,4 +78,43 @@ export async function sendSubRequestAcceptedEmail(a: Signup, b: Signup, session:
 
   await sendEmail(a.email, subject, build(a, b));
   await sendEmail(b.email, subject, build(b, a));
+}
+
+/** Where and when, in the one form every email should describe it. */
+function whenAndWhere(session: Session): string {
+  const location = formatLocation({
+    area: session.locationArea,
+    name: session.locationName,
+    url: session.locationUrl,
+  });
+  const base = `${session.gameDate} at ${session.gameTime}`;
+  return location ? `${base}, ${location}` : base;
+}
+
+/**
+ * Game-day reminder for a confirmed player: when, where, and what they still
+ * owe. The only bulk send in the app — see sendGameDayReminders in
+ * scheduling.ts for why that matters.
+ */
+export async function sendGameDayReminderEmail(signup: Signup, session: Session, amountOwed: number): Promise<void> {
+  const subject = `Softball this ${session.gameDate} — ${session.gameTime}`;
+  const lines = [
+    `Hi ${signup.fullName},`,
+    '',
+    `Reminder: you're confirmed to play ${whenAndWhere(session)}.`,
+  ];
+
+  if (session.locationUrl) {
+    lines.push('', `Field: ${session.locationUrl}`);
+  }
+
+  if (amountOwed > 0 && !signup.paid) {
+    lines.push('', `You still owe $${amountOwed.toFixed(2)} for your spot — please send it before the game.`);
+    const instructions = process.env.PAYMENT_INSTRUCTIONS;
+    if (instructions) lines.push(instructions);
+  }
+
+  lines.push('', "Can't make it? Cancel in the app so someone on the waitlist can take your spot.");
+
+  await sendEmail(signup.email, subject, lines.join('\n'));
 }
