@@ -37,6 +37,10 @@ async function main() {
     registrationClosesAt: new Date(y, m - 2, d - 1, 21).toISOString(),
     capacity: CAPACITY,
     status: 'open',
+    pricePerSpot: 0,
+    locationArea: '',
+    locationName: '',
+    locationUrl: '',
     cost: 0,
   });
 
