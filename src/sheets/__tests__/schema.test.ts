@@ -22,6 +22,10 @@ describe('Session row round-trip', () => {
       capacity: 20,
       status: 'open',
       cost: 12.5,
+      pricePerSpot: 10,
+      locationArea: 'Mississauga',
+      locationName: 'Iceland Park Diamond 3',
+      locationUrl: 'https://maps.example.com/iceland',
     };
     expect(parseSessionRow(serializeSessionRow(session))).toEqual(session);
   });
@@ -36,6 +40,10 @@ describe('Session row round-trip', () => {
       capacity: '',
       status: '',
       cost: '',
+      pricePerSpot: '',
+      locationArea: '',
+      locationName: '',
+      locationUrl: '',
     });
     expect(parsed.status).toBe('open');
     expect(parsed.capacity).toBe(0);
@@ -60,6 +68,9 @@ describe('Signup row round-trip', () => {
     waiverAcceptedAt: '2026-07-01T00:00:00.000Z',
     waiverText: 'I agree...',
     paid: true,
+    amountPaid: 10,
+    paidAt: '2026-07-02T00:00:00.000Z',
+    attended: false,
     subRequestTargetEmail: '',
     subRequestStatus: '',
     subRequestedAt: '',
