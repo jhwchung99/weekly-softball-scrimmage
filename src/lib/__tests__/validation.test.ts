@@ -7,6 +7,9 @@ import {
   validateInvitedByName,
   validateEmail,
   validateCost,
+  validateCapacity,
+  validateGameDate,
+  validateGameTime,
   validatePlayerProfile,
 } from '../validation';
 
@@ -103,6 +106,56 @@ describe('validateCost', () => {
 
   it('rejects non-finite input', () => {
     expect(() => validateCost('not a number')).toThrow(/non-negative/);
+  });
+});
+
+describe('validateCapacity', () => {
+  it('accepts a non-negative number', () => {
+    expect(validateCapacity(0)).toBe(0);
+    expect(validateCapacity('20')).toBe(20);
+  });
+
+  it('rejects a negative number', () => {
+    expect(() => validateCapacity(-1)).toThrow(/non-negative/);
+  });
+
+  it('rejects non-finite input', () => {
+    expect(() => validateCapacity('not a number')).toThrow(/non-negative/);
+  });
+});
+
+describe('validateGameDate', () => {
+  it('accepts a Friday, Saturday, or Sunday', () => {
+    expect(validateGameDate('2026-07-10')).toBe('2026-07-10'); // Friday
+    expect(validateGameDate('2026-07-11')).toBe('2026-07-11'); // Saturday
+    expect(validateGameDate('2026-07-12')).toBe('2026-07-12'); // Sunday
+  });
+
+  it('rejects a Monday-through-Thursday date', () => {
+    expect(() => validateGameDate('2026-07-06')).toThrow(/Friday, Saturday, or Sunday/); // Monday
+    expect(() => validateGameDate('2026-07-09')).toThrow(/Friday, Saturday, or Sunday/); // Thursday
+  });
+
+  it('rejects a malformed date string', () => {
+    expect(() => validateGameDate('07/10/2026')).toThrow(/ISO date/);
+    expect(() => validateGameDate('')).toThrow(/ISO date/);
+  });
+
+  it('rejects a date that does not really exist', () => {
+    expect(() => validateGameDate('2026-02-30')).toThrow(/real calendar date/);
+  });
+});
+
+describe('validateGameTime', () => {
+  it('accepts a valid 24-hour time', () => {
+    expect(validateGameTime('18:00')).toBe('18:00');
+    expect(validateGameTime('09:05')).toBe('09:05');
+  });
+
+  it('rejects an out-of-range or malformed time', () => {
+    expect(() => validateGameTime('24:00')).toThrow(/HH:MM/);
+    expect(() => validateGameTime('6:00 PM')).toThrow(/HH:MM/);
+    expect(() => validateGameTime('')).toThrow(/HH:MM/);
   });
 });
 
