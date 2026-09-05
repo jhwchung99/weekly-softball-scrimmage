@@ -2,6 +2,7 @@ import { sendEmail } from './gmail';
 import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
 import { formatLocation } from './location';
+import { getWeeklyMilestones } from './time';
 
 /**
  * The one email type Step 8 covers (Section 7): a promoted player is told
@@ -96,7 +97,12 @@ function whenAndWhere(session: Session): string {
  * owe. The only bulk send in the app — see sendGameDayReminders in
  * scheduling.ts for why that matters.
  */
-export async function sendGameDayReminderEmail(signup: Signup, session: Session, amountOwed: number): Promise<void> {
+export async function sendGameDayReminderEmail(
+  signup: Signup,
+  session: Session,
+  amountOwed: number,
+  now: Date = new Date()
+): Promise<void> {
   const subject = `Softball this ${session.gameDate} — ${session.gameTime}`;
   const lines = [
     `Hi ${signup.fullName},`,
@@ -109,7 +115,23 @@ export async function sendGameDayReminderEmail(signup: Signup, session: Session,
   }
 
   if (amountOwed > 0 && !signup.paid) {
-    lines.push('', `You still owe $${amountOwed.toFixed(2)} for your spot — please send it before the game.`);
+    // This email goes out on game-day morning, which for an evening game is
+    // before payment opens: the roster doesn't lock until 5 hours before the
+    // first pitch, and nothing is payable until it does (see PaymentPrompt in
+    // app/page.tsx for why the two are deliberately tied together).
+    const { cutoffStart } = getWeeklyMilestones(session.gameDate, session.gameTime);
+    const opensAt = cutoffStart.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    lines.push(
+      '',
+      now < cutoffStart
+        ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks — send it any time between then and the game.`
+        : `You still owe $${amountOwed.toFixed(2)} for your spot — please send it before the game.`
+    );
     const instructions = process.env.PAYMENT_INSTRUCTIONS;
     if (instructions) lines.push(instructions);
   }
