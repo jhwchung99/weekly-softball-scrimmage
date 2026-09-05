@@ -50,7 +50,6 @@ describe('Signup row round-trip', () => {
     email: 'a@dummy.test',
     fullName: 'A Player',
     gender: 'Other',
-    age: 30,
     memberStatus: 'guest',
     invitedByName: 'B Player',
     willingToShare: true,
@@ -98,7 +97,7 @@ describe('Signup row round-trip', () => {
 
 describe('Player row round-trip', () => {
   it('preserves every field through serialize -> parse', () => {
-    const player: Player = { email: 'a@dummy.test', fullName: 'A', gender: 'Other', age: 22, savedPositions: 'Rover' };
+    const player: Player = { email: 'a@dummy.test', fullName: 'A', gender: 'Other', savedPositions: 'Rover' };
     expect(parsePlayerRow(serializePlayerRow(player))).toEqual(player);
   });
 });
