@@ -1,5 +1,6 @@
 import { ApiError } from './apiErrors';
 import { POSITIONS } from './positions';
+import { normalizeEmail } from './email';
 
 // Added in the 2026-09-04 security hardening pass — these fields were
 // previously accepted as arbitrary, unbounded free text (see
@@ -52,13 +53,16 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * Basic shape check only — doesn't verify the address is a real Google
  * account. That's guaranteed downstream instead: requestSub only accepts
  * a targetEmail that already has an active signup for the session.
+ *
+ * Returns the normalized (lowercased) form, so a hand-typed address can't
+ * introduce a casing variant that later comparisons would miss.
  */
 export function validateEmail(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!trimmed || !EMAIL_PATTERN.test(trimmed)) {
     throw new ApiError(400, 'A valid email address is required.');
   }
-  return trimmed;
+  return normalizeEmail(trimmed);
 }
 
 export function validateCost(value: unknown): number {
