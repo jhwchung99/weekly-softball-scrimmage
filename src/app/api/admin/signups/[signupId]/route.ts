@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/auth';
-import { getSignup, updateSignup, deleteSignup } from '../../../../../sheets/signups';
+import { getSignup, updateSignup, deleteSignup, listSignupsForSession } from '../../../../../sheets/signups';
+import { getSession } from '../../../../../sheets/sessions';
+import { computeCostShare } from '../../../../../lib/signupFlow';
+import { validateCost } from '../../../../../lib/validation';
 import { Signup, SignupStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
@@ -24,7 +27,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!existing) throw new ApiError(404, 'No such signup.');
 
     const body = await request.json().catch(() => ({}));
-    const updates: Partial<Pick<Signup, 'status' | 'paid' | 'subRequestTargetEmail' | 'subRequestStatus' | 'subRequestedAt'>> = {};
+    const updates: Partial<Signup> = {};
 
     if (body?.status !== undefined) {
       if (!VALID_STATUSES.includes(body.status)) {
@@ -41,12 +44,40 @@ export async function PATCH(request: Request, { params }: Params) {
       }
     }
 
+    // Ticking "paid" records what was actually received and when, rather than
+    // just a flag — that's the fact the organizer reconciles against an
+    // e-Transfer history, and it survives the roster changing afterwards.
+    // `amountPaid` can be given explicitly (a partial or unusual payment);
+    // otherwise it defaults to what this person owed at the moment of ticking.
     if (body?.paid !== undefined) {
-      updates.paid = Boolean(body.paid);
+      const paid = Boolean(body.paid);
+      updates.paid = paid;
+      if (!paid) {
+        // Un-ticking clears the record — it was a mistake, not a refund.
+        updates.amountPaid = 0;
+        updates.paidAt = '';
+      } else {
+        const explicit = body?.amountPaid !== undefined ? validateCost(body.amountPaid) : undefined;
+        if (explicit !== undefined) {
+          updates.amountPaid = explicit;
+        } else {
+          const session = await getSession(existing.sessionId);
+          const signups = await listSignupsForSession(existing.sessionId);
+          updates.amountPaid = session ? computeCostShare(session, signups)[signupId] ?? 0 : 0;
+        }
+        updates.paidAt = new Date().toISOString();
+      }
+    } else if (body?.amountPaid !== undefined) {
+      // Correcting the amount on an already-recorded payment.
+      updates.amountPaid = validateCost(body.amountPaid);
+    }
+
+    if (body?.attended !== undefined) {
+      updates.attended = Boolean(body.attended);
     }
 
     if (Object.keys(updates).length === 0) {
-      throw new ApiError(400, 'Provide at least one of: status, paid.');
+      throw new ApiError(400, 'Provide at least one of: status, paid, amountPaid, attended.');
     }
 
     const signup = await updateSignup(signupId, updates);
