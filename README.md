@@ -44,7 +44,7 @@ sequenceDiagram
     Cron->>App: POST /api/cron/open-registration
     App->>Sheet: create/reopen this Friday's session (status: open)
 
-    Note over Player,App: Monday – Wednesday
+    Note over Player,App: Monday 9am – Tuesday 12am
     Player->>App: Sign up (member or guest) + accept waiver
     App->>Sheet: write Signups row (confirmed or waitlisted)
     Player->>App: Cancel signup (optional, any time)
@@ -59,13 +59,13 @@ sequenceDiagram
     Admin->>App: View full roster + waitlist (any time)
     Admin->>App: Adjust capacity / add or move a signup / cancel session
 
-    Note over Cron,App: Wednesday 9pm ET
+    Note over Cron,App: Tuesday 12am ET
     Cron->>App: POST /api/cron/close-registration
     App->>Sheet: session status: closed (self-serve signup now blocked)
 
-    Note over Player,Admin: Wednesday close → Friday
+    Note over Player,Admin: Tuesday close → Friday
     Player->>App: Cancel signup (still allowed any time)
-    Admin->>App: Manual roster adjustments as needed
+    Admin->>App: Books a permit sized to the confirmed headcount, manual roster adjustments as needed
 
     Note over Player,Admin: Friday — game time
     Note over Player,Admin: Scrimmage happens, cycle repeats next Monday
@@ -76,12 +76,15 @@ sequenceDiagram
 1. **Monday, 9am ET** — registration opens automatically for that
    week's Friday game. No action needed to make this happen; it's just
    when the app starts accepting signups.
-2. **Sign up any time before Wednesday 9pm ET.** First-time players fill
-   out a short profile (name, gender, age, positions) once — after that
-   it's remembered. Every signup requires accepting the waiver, every
-   time. You can sign up for yourself, or bring a guest (who answers two
-   extra questions: who invited them, and whether they're willing to
-   share a slot with that member rather than take a separate spot).
+2. **Sign up any time before Tuesday 12am ET (midnight).** First-time
+   players fill out a short profile (name, gender, age, positions) once
+   — after that it's remembered. Every signup requires accepting the
+   waiver, every time. You can sign up for yourself, or bring a guest
+   (who answers two extra questions: who invited them, and whether
+   they're willing to share a slot with that member rather than take a
+   separate spot). This window is intentionally short — it gives the
+   organizer the rest of the week to book a permit sized to the actual
+   headcount.
 3. **You're told immediately** whether you're confirmed or on the
    waitlist, based on the week's capacity.
 4. **Cancel any time** if plans change — from right after you sign up
@@ -92,11 +95,12 @@ sequenceDiagram
    - Within 2 hours of game time: no one is auto-promoted (too last
      minute for an email to reach anyone in time) — the organizer gets a
      push alert instead so they can personally text someone.
-5. **Wednesday, 9pm ET** — registration closes automatically. You can no
+5. **Tuesday, 12am ET** — registration closes automatically. You can no
    longer sign up fresh for that week, but you can still cancel an
    existing signup.
 6. **Friday** — game time, whatever the session's configured time is
-   (6pm ET by default).
+   (6pm ET by default; game day can also be moved to Saturday or Sunday
+   by an admin).
 
 ### As an admin
 
@@ -119,6 +123,9 @@ in addition to the regular player view. Across the same week:
   manual admin action already is the explicit decision.
 - Gets the **late-cancellation push alert** described above whenever
   anyone cancels within 2 hours of game time.
+- Gets an **open-spots push alert** the moment registration closes
+  Tuesday if the session still has room under capacity — a nudge to
+  manually add someone rather than book a permit for an empty spot.
 
 ## Setup
 
