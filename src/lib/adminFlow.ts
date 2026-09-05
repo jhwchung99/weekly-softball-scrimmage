@@ -18,7 +18,7 @@ export interface AdminAddSignupInput {
   sessionId: string;
   email: string;
   /** Only needed if this player has never signed up before (no Players row yet). */
-  profile?: { fullName: string; gender: string; age: number; savedPositions?: string };
+  profile?: { fullName: string; gender: string; savedPositions?: string };
   /** Presence of invitedByName routes through the guest path, same as the player-facing route. */
   invitedByName?: string;
   willingToShare?: boolean;
