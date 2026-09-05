@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer } from '../../test/fakeSheets';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer, makeSignup } from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 // See src/lib/__tests__/subRequestFlow.test.ts for notes on why the
@@ -17,7 +17,7 @@ const sendPush = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 vi.mock('../../lib/ntfy', () => ({ sendPush }));
 
-const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSlots, computeCostShare } = await import('../signupFlow');
+const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSlots, computeCostShare, computePaymentSummary } = await import('../signupFlow');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -31,63 +31,110 @@ afterEach(() => {
 describe('countConfirmedSlots', () => {
   it('counts each solo confirmed signup as one slot', () => {
     const signups = [
-      { ...makeSignupFixture(), signupId: '1', status: 'confirmed' as const, pairId: '' },
-      { ...makeSignupFixture(), signupId: '2', status: 'confirmed' as const, pairId: '' },
+      { ...makeSignup(), signupId: '1', status: 'confirmed' as const, pairId: '' },
+      { ...makeSignup(), signupId: '2', status: 'confirmed' as const, pairId: '' },
     ];
     expect(countConfirmedSlots(signups)).toBe(2);
   });
 
   it('counts a confirmed pair as one slot regardless of row count', () => {
     const signups = [
-      { ...makeSignupFixture(), signupId: '1', status: 'confirmed' as const, pairId: 'pair-a' },
-      { ...makeSignupFixture(), signupId: '2', status: 'confirmed' as const, pairId: 'pair-a' },
+      { ...makeSignup(), signupId: '1', status: 'confirmed' as const, pairId: 'pair-a' },
+      { ...makeSignup(), signupId: '2', status: 'confirmed' as const, pairId: 'pair-a' },
     ];
     expect(countConfirmedSlots(signups)).toBe(1);
   });
 
   it('ignores waitlisted and cancelled rows', () => {
     const signups = [
-      { ...makeSignupFixture(), signupId: '1', status: 'waitlisted' as const },
-      { ...makeSignupFixture(), signupId: '2', status: 'cancelled' as const },
+      { ...makeSignup(), signupId: '1', status: 'waitlisted' as const },
+      { ...makeSignup(), signupId: '2', status: 'cancelled' as const },
     ];
     expect(countConfirmedSlots(signups)).toBe(0);
   });
 });
 
 describe('computeCostShare', () => {
-  it('returns {} when cost is unset', () => {
-    expect(computeCostShare(makeSession({ cost: 0 }), [])).toEqual({});
+  it('returns {} when no price is set', () => {
+    expect(computeCostShare(makeSession({ pricePerSpot: 0 }), [])).toEqual({});
   });
 
-  it('splits evenly across solo confirmed slots', () => {
+  it('charges every solo confirmed player the same fixed price', () => {
     const signups = [
-      { ...makeSignupFixture(), signupId: '1', status: 'confirmed' as const, pairId: '' },
-      { ...makeSignupFixture(), signupId: '2', status: 'confirmed' as const, pairId: '' },
+      makeSignup({ signupId: '1', status: 'confirmed', pairId: '' }),
+      makeSignup({ signupId: '2', status: 'confirmed', pairId: '' }),
     ];
-    const shares = computeCostShare(makeSession({ cost: 10 }), signups);
+    const shares = computeCostShare(makeSession({ pricePerSpot: 10 }), signups);
+    expect(shares['1']).toBe(10);
+    expect(shares['2']).toBe(10);
+  });
+
+  it('does not change the price when the roster size changes', () => {
+    const two = [
+      makeSignup({ signupId: '1', status: 'confirmed' }),
+      makeSignup({ signupId: '2', status: 'confirmed' }),
+    ];
+    const five = [...two, ...['3', '4', '5'].map((id) => makeSignup({ signupId: id, status: 'confirmed' }))];
+    const session = makeSession({ pricePerSpot: 10 });
+
+    // The whole point of a fixed price: someone who paid on Wednesday still
+    // owes exactly what they paid on Friday.
+    expect(computeCostShare(session, two)['1']).toBe(10);
+    expect(computeCostShare(session, five)['1']).toBe(10);
+  });
+
+  it('splits one spot between the two people sharing it', () => {
+    const signups = [
+      makeSignup({ signupId: '1', status: 'confirmed', pairId: 'p' }),
+      makeSignup({ signupId: '2', status: 'confirmed', pairId: 'p' }),
+    ];
+    const shares = computeCostShare(makeSession({ pricePerSpot: 10 }), signups);
     expect(shares['1']).toBe(5);
     expect(shares['2']).toBe(5);
   });
 
-  it('splits a paired slot in half between its two members', () => {
+  it('rounds an odd split to the nearest cent', () => {
     const signups = [
-      { ...makeSignupFixture(), signupId: '1', status: 'confirmed' as const, pairId: 'p' },
-      { ...makeSignupFixture(), signupId: '2', status: 'confirmed' as const, pairId: 'p' },
+      makeSignup({ signupId: '1', status: 'confirmed', pairId: 'p' }),
+      makeSignup({ signupId: '2', status: 'confirmed', pairId: 'p' }),
     ];
-    const shares = computeCostShare(makeSession({ cost: 10 }), signups);
-    expect(shares['1']).toBe(5);
-    expect(shares['2']).toBe(5);
+    const shares = computeCostShare(makeSession({ pricePerSpot: 12.35 }), signups);
+    expect(shares['1']).toBe(6.18); // 6.175 -> 6.18
   });
 
-  it('rounds to the nearest cent', () => {
+  it('ignores waitlisted and cancelled players', () => {
     const signups = [
-      { ...makeSignupFixture(), signupId: '1', status: 'confirmed' as const, pairId: '' },
-      { ...makeSignupFixture(), signupId: '2', status: 'confirmed' as const, pairId: '' },
-      { ...makeSignupFixture(), signupId: '3', status: 'confirmed' as const, pairId: '' },
+      makeSignup({ signupId: '1', status: 'confirmed' }),
+      makeSignup({ signupId: '2', status: 'waitlisted' }),
+      makeSignup({ signupId: '3', status: 'cancelled' }),
     ];
-    const shares = computeCostShare(makeSession({ cost: 10 }), signups);
-    // 10 / 3 = 3.3333... -> 3.33, not exactly summing back to 10 (accepted, see plan doc)
-    expect(shares['1']).toBe(3.33);
+    const shares = computeCostShare(makeSession({ pricePerSpot: 10 }), signups);
+    expect(Object.keys(shares)).toEqual(['1']);
+  });
+});
+
+describe('computePaymentSummary', () => {
+  it('reports expected, collected, and surplus against the permit', () => {
+    const signups = [
+      makeSignup({ signupId: '1', status: 'confirmed', paid: true, amountPaid: 10 }),
+      makeSignup({ signupId: '2', status: 'confirmed', paid: true, amountPaid: 10 }),
+      makeSignup({ signupId: '3', status: 'confirmed', paid: false }),
+    ];
+    const summary = computePaymentSummary(makeSession({ pricePerSpot: 10, cost: 25 }), signups);
+
+    expect(summary).toEqual({ expected: 30, collected: 20, permitCost: 25, surplus: -5, unpaidCount: 1 });
+  });
+
+  it('still counts money from someone who paid and then cancelled', () => {
+    const signups = [
+      makeSignup({ signupId: '1', status: 'confirmed', paid: true, amountPaid: 10 }),
+      makeSignup({ signupId: '2', status: 'cancelled', paid: true, amountPaid: 10 }),
+    ];
+    const summary = computePaymentSummary(makeSession({ pricePerSpot: 10, cost: 15 }), signups);
+
+    expect(summary.collected).toBe(20); // payments are never refunded
+    expect(summary.expected).toBe(10); // but a cancelled player isn't owed against
+    expect(summary.surplus).toBe(5);
   });
 });
 
@@ -247,26 +294,3 @@ describe('cancelMySignup', () => {
   });
 });
 
-function makeSignupFixture() {
-  return {
-    signupId: 'fixture',
-    sessionId: '2099-01-01',
-    email: 'fixture@dummy.test',
-    fullName: 'Fixture',
-    gender: 'Other',
-    age: 30,
-    memberStatus: 'member' as const,
-    invitedByName: '',
-    willingToShare: false,
-    pairId: '',
-    status: 'waitlisted' as const,
-    timestamp: '2026-01-01T00:00:00.000Z',
-    positions: '',
-    waiverAcceptedAt: '2026-01-01T00:00:00.000Z',
-    waiverText: '',
-    paid: false,
-    subRequestTargetEmail: '',
-    subRequestStatus: '' as const,
-    subRequestedAt: '',
-  };
-}
