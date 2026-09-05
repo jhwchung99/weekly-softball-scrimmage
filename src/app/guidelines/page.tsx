@@ -77,9 +77,16 @@ export default function GuidelinesPage() {
       <Section title="Cost">
         <li>A fixed price per spot, shown before you sign up — it doesn&apos;t change with headcount</li>
         <li>Sharing a spot with someone? You each pay half</li>
-        <li><strong>Please pay before game day</strong></li>
+        <li>
+          <strong>Payment opens 5 hours before game time</strong>, when the roster locks — pay any time between then
+          and the start of the game
+        </li>
+        <li>
+          Nothing to pay before that. Cancel earlier and someone from the waitlist simply takes your spot, with no
+          money involved either way
+        </li>
+        <li>Once the roster locks, cancelling doesn&apos;t remove what you owe — nobody replaces you, and the field is booked regardless</li>
         <li>Payment happens outside the app — the organizer tracks who&apos;s paid</li>
-        <li>Once you&apos;ve paid it&apos;s settled — cancelling later doesn&apos;t get you a refund</li>
       </Section>
 
       <Section title="A note on risk">
