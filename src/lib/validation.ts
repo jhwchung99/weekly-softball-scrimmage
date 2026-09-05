@@ -79,6 +79,47 @@ export function validateCost(value: unknown): number {
   return cost;
 }
 
+export function validateCapacity(value: unknown): number {
+  const capacity = Number(value);
+  if (!Number.isFinite(capacity) || capacity < 0) {
+    throw new ApiError(400, 'capacity must be a non-negative number.');
+  }
+  return capacity;
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Also doubles as a session's id (see sheets/sessions.ts), so this checks
+ * the date is real, not just shaped like one — "2026-02-30" round-trips
+ * to a different date through the JS Date constructor otherwise. */
+export function validateGameDate(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!ISO_DATE_PATTERN.test(trimmed)) {
+    throw new ApiError(400, 'gameDate must be an ISO date (YYYY-MM-DD).');
+  }
+  const [year, month, day] = trimmed.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const isReal = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  if (!isReal) {
+    throw new ApiError(400, 'gameDate must be a real calendar date.');
+  }
+  const weekday = date.getUTCDay(); // 0 = Sunday, 5 = Friday, 6 = Saturday
+  if (weekday !== 5 && weekday !== 6 && weekday !== 0) {
+    throw new ApiError(400, 'gameDate must fall on a Friday, Saturday, or Sunday.');
+  }
+  return trimmed;
+}
+
+const GAME_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function validateGameTime(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!GAME_TIME_PATTERN.test(trimmed)) {
+    throw new ApiError(400, 'gameTime must be in 24-hour HH:MM format.');
+  }
+  return trimmed;
+}
+
 export interface PlayerProfileInput {
   fullName: unknown;
   gender: unknown;
