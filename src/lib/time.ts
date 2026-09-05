@@ -61,28 +61,38 @@ export interface WeeklyMilestones {
 
 /**
  * The four dates a player might want to see on a weekly timeline,
- * derived purely from the Friday game date/time — not from the
- * session's own registrationOpensAt/registrationClosesAt fields, which
- * are often blank (closesAt stays '' until the Wednesday cron actually
- * runs) or reflect an admin manually opening things early rather than
- * the intended schedule. This computes the *schedule*, independent of
+ * derived purely from the game date/time — not from the session's own
+ * registrationOpensAt/registrationClosesAt fields, which are often
+ * blank (closesAt stays '' until the Wednesday cron actually runs) or
+ * reflect an admin manually opening things early rather than the
+ * intended schedule. This computes the *schedule*, independent of
  * whether it's actually been hit yet — pairs with the session's own
  * `status` field (the actual source of truth for whether signups are
  * currently accepted) rather than replacing it. No server-only APIs
  * used, safe to import from a client component too.
+ *
+ * Game day can be Friday, Saturday, or Sunday (validateGameDate
+ * enforces this) — registration always opens the Monday and closes the
+ * Wednesday of that same calendar week, regardless of which of the
+ * three days the game itself falls on.
  */
 export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyMilestones {
   const [year, month, day] = gameDate.split('-').map(Number);
   // Anchored at noon UTC so subtracting whole days never crosses a
   // local-date boundary before the zone conversion happens below.
-  const fridayNoonUtc = Date.UTC(year, month - 1, day, 12);
+  const gameNoonUtc = Date.UTC(year, month - 1, day, 12);
   const toDateStr = (utcMs: number) => {
     const d = new Date(utcMs);
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   };
 
-  const registrationOpensAt = zonedTimeToUtc(toDateStr(fridayNoonUtc - 4 * 24 * 60 * 60 * 1000), '09:00');
-  const registrationClosesAt = zonedTimeToUtc(toDateStr(fridayNoonUtc - 2 * 24 * 60 * 60 * 1000), '21:00');
+  const isoWeekday = new Date(gameNoonUtc).getUTCDay() || 7; // Mon=1..Sun=7
+  const daysSinceMonday = isoWeekday - 1; // Fri=4, Sat=5, Sun=6
+  const mondayNoonUtc = gameNoonUtc - daysSinceMonday * 24 * 60 * 60 * 1000;
+  const wednesdayNoonUtc = mondayNoonUtc + 2 * 24 * 60 * 60 * 1000;
+
+  const registrationOpensAt = zonedTimeToUtc(toDateStr(mondayNoonUtc), '09:00');
+  const registrationClosesAt = zonedTimeToUtc(toDateStr(wednesdayNoonUtc), '21:00');
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
   const cutoffStart = new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
 
@@ -110,6 +120,25 @@ export function currentWeekFridayEastern(now: Date = new Date(), timeZone: strin
   const daysUntilFriday = (5 - d.getDay() + 7) % 7;
   d.setDate(d.getDate() + daysUntilFriday);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * The Friday, Saturday, and Sunday of the calendar week `now` falls in
+ * (Eastern time), in that order. Game day can be any of the three (see
+ * getWeeklyMilestones), so "this week's session" is a 3-way id lookup —
+ * whichever of these actually has a row — rather than the single fixed
+ * key a Friday-only schedule would allow. Built on top of
+ * currentWeekFridayEastern rather than re-deriving the Eastern-timezone
+ * weekday math a second time.
+ */
+export function currentWeekGameDayCandidates(now: Date = new Date(), timeZone: string = LEAGUE_TIME_ZONE): string[] {
+  const friday = currentWeekFridayEastern(now, timeZone);
+  const [year, month, day] = friday.split('-').map(Number);
+  const fridayNoonUtc = Date.UTC(year, month - 1, day, 12);
+  return [0, 1, 2].map((offset) => {
+    const d = new Date(fridayNoonUtc + offset * 24 * 60 * 60 * 1000);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  });
 }
 
 /**
