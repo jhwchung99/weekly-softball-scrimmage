@@ -17,7 +17,7 @@ describe('SubRequestPanel', () => {
         onCancelSubRequest={vi.fn()}
       />
     );
-    expect(screen.getByText(/reaching out to them outside the app first/i)).toBeInTheDocument();
+    expect(screen.getByText(/reach out outside the app first/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /request to sub/i })).toBeInTheDocument();
   });
 
