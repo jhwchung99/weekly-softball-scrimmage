@@ -15,6 +15,7 @@ import { getPlayer } from '../sheets/players';
 import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { isWithinPromotionCutoff } from './time';
+import { normalizeEmail } from './email';
 import { sendPromotionEmail, sendLateCancellationAlert } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
@@ -108,15 +109,27 @@ export async function signUpForSession(sessionId: string, email: string, waiverA
   });
 
   // Section 5: if a guest already named this member as their inviter and
-  // is willing to share, merge now. Neither row's status changes here —
-  // linking them via pairId is enough, since countConfirmedSlots treats a
-  // shared pairId as one slot regardless of which row(s) are 'confirmed'.
+  // is willing to share, merge now.
+  //
+  // Both rows must end on the SAME status. A pair occupies one slot, so a
+  // pair split across statuses leaves the waitlisted half in limbo: the
+  // homepage tells them they're waitlisted, groupWaitlistUnits skips them
+  // (their pairId already has a confirmed row, so they're never promotable),
+  // and computeCostShare never bills them. Reachable whenever the guest took
+  // the last individual slot and the member then signed up into a full
+  // session. See planner/2026-09-05-code-security-review.md, Bug 3.
+  //
+  // The pair keeps the better of the two statuses, since the guest's
+  // confirmed row already holds the slot — merging must never demote it.
   const pendingGuest = await findPendingGuestInvite(sessionId, player.fullName);
   if (pendingGuest) {
     const pairId = randomUUID();
-    await updateSignup(created.signupId, { pairId });
-    await updateSignup(pendingGuest.signupId, { pairId });
-    return { ...created, pairId };
+    const status = pendingGuest.status === 'confirmed' ? 'confirmed' : created.status;
+    await batchUpdateSignups([
+      { signupId: created.signupId, updates: { pairId, status } },
+      { signupId: pendingGuest.signupId, updates: { pairId, status } },
+    ]);
+    return { ...created, pairId, status };
   }
 
   return created;
@@ -295,7 +308,7 @@ export async function cancelMySignup(
   // listSignupsForSession, each a full-tab read.
   const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
   if (!signup) throw new ApiError(404, 'No such signup.');
-  if (signup.email !== requesterEmail && !requesterIsAdmin) {
+  if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail) && !requesterIsAdmin) {
     throw new ApiError(403, 'You can only cancel your own signup.');
   }
   if (signup.status === 'cancelled') return { promoted: [] }; // already cancelled, nothing to do
@@ -389,19 +402,18 @@ export interface MyStatus {
 }
 
 /**
- * Everything the player homepage needs about "me" for this session in
- * one read: reuses a single listSignupsForSession call for both finding
- * the caller's own signup and scanning for incoming sub requests, rather
- * than two separate Sheets reads.
+ * The computation behind getMyStatusForSession, with the fetching lifted out
+ * so a caller that already holds the session and its signups — the
+ * consolidated /api/home route — can reuse them instead of reading the same
+ * two tabs again. Pure.
  */
-export async function getMyStatusForSession(sessionId: string, email: string): Promise<MyStatus> {
-  const normalized = email.trim().toLowerCase();
-  const [allSignups, session] = await Promise.all([listSignupsForSession(sessionId), getSession(sessionId)]);
+export function buildMyStatus(session: Session | null, allSignups: Signup[], email: string): MyStatus {
+  const normalized = normalizeEmail(email);
 
-  const signup = allSignups.find((s) => s.email.toLowerCase() === normalized && s.status !== 'cancelled') ?? null;
+  const signup = allSignups.find((s) => normalizeEmail(s.email) === normalized && s.status !== 'cancelled') ?? null;
 
   const incomingSubRequests = allSignups
-    .filter((s) => s.subRequestStatus === 'pending' && s.subRequestTargetEmail.toLowerCase() === normalized)
+    .filter((s) => s.subRequestStatus === 'pending' && normalizeEmail(s.subRequestTargetEmail) === normalized)
     .map((s) => ({ fromSignupId: s.signupId, fromFullName: s.fullName }));
 
   let costOwed: number | null = null;
@@ -410,4 +422,13 @@ export async function getMyStatusForSession(sessionId: string, email: string): P
   }
 
   return { signup, incomingSubRequests, costOwed };
+}
+
+/**
+ * Everything the player homepage needs about "me" for this session, fetching
+ * the session and its signups once each.
+ */
+export async function getMyStatusForSession(sessionId: string, email: string): Promise<MyStatus> {
+  const [allSignups, session] = await Promise.all([listSignupsForSession(sessionId), getSession(sessionId)]);
+  return buildMyStatus(session, allSignups, email);
 }
