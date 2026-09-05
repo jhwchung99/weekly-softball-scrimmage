@@ -1,5 +1,8 @@
 import { getSessionByAnyId, createSession, updateSession } from '../sheets/sessions';
+import { listSignupsForSession } from '../sheets/signups';
 import { currentWeekGameDayCandidates, isNearEasternTime } from './time';
+import { countConfirmedSlots } from './signupFlow';
+import { sendOpenSpotsAlert } from './notifications';
 
 export const DEFAULT_GAME_TIME = process.env.SESSION_DEFAULT_GAME_TIME || '18:00';
 export const DEFAULT_CAPACITY = Number(process.env.SESSION_DEFAULT_CAPACITY) || 20;
@@ -52,13 +55,24 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
   return { sessionId: existing.sessionId, skipped: false };
 }
 
-/** Wednesday 9pm ET (Section 1): close registration for this week's session,
- * whichever of Friday/Saturday/Sunday it was scheduled on. */
+/**
+ * Tuesday 12am ET (Section 1): close registration for this week's
+ * session, whichever of Friday/Saturday/Sunday it was scheduled on.
+ * Short on purpose (~15 hours after Monday's open) — gives the organizer
+ * the rest of the week to book a permit sized to the actual headcount.
+ *
+ * If capacity still has room once registration closes, the organizer
+ * gets pushed an alert (not in the original guidelines) so an empty
+ * permit slot doesn't go unnoticed until game day — same
+ * awaited-but-swallowed pattern as the other organizer alerts in
+ * notifications.ts: a failed push shouldn't affect the close itself,
+ * which has already succeeded by that point.
+ */
 export async function closeRegistrationForCurrentSession(now: Date = new Date()): Promise<ScheduleResult> {
   const candidates = currentWeekGameDayCandidates(now);
 
-  if (!isNearEasternTime(21, 0, CRON_TOLERANCE_MINUTES, now)) {
-    return { sessionId: candidates[0], skipped: true, reason: 'Not currently ~9pm ET — likely the DST-offset duplicate cron firing.' };
+  if (!isNearEasternTime(0, 0, CRON_TOLERANCE_MINUTES, now)) {
+    return { sessionId: candidates[0], skipped: true, reason: 'Not currently ~12am ET — likely the DST-offset duplicate cron firing.' };
   }
 
   const existing = await getSessionByAnyId(candidates);
@@ -67,5 +81,16 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
   }
 
   await updateSession(existing.sessionId, { status: 'closed', registrationClosesAt: now.toISOString() });
+
+  const signups = await listSignupsForSession(existing.sessionId);
+  const openSpots = existing.capacity - countConfirmedSlots(signups);
+  if (openSpots > 0) {
+    try {
+      await sendOpenSpotsAlert(existing, openSpots);
+    } catch (err) {
+      console.error(`Failed to send open-spots alert for session ${existing.sessionId}:`, err);
+    }
+  }
+
   return { sessionId: existing.sessionId, skipped: false };
 }
