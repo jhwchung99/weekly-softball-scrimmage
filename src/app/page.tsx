@@ -224,7 +224,7 @@ export default function Home() {
         </h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
           <li>First-come, first-served — extra signups go to an automatic waitlist.</li>
-          <li>Cancel any time, but cancellations within 2 hours of game time won&apos;t trigger an auto-replacement.</li>
+          <li>Cancel any time, but cancellations within 5 hours of game time won&apos;t trigger an auto-replacement.</li>
           <li>Bringing a guest? They can optionally share your spot instead of taking a separate one.</li>
           <li>Once the week is priced, cost splits evenly across confirmed spots.</li>
         </ul>
