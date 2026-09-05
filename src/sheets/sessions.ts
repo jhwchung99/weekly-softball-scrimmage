@@ -14,6 +14,21 @@ export async function getSession(sessionId: string): Promise<Session | null> {
 }
 
 /**
+ * Whichever of the given ids has a session row, checked in order, from a
+ * single tab read — for "does this week's game exist under any of
+ * Friday/Saturday/Sunday" (see time.ts's currentWeekGameDayCandidates)
+ * without paying for a separate read per candidate.
+ */
+export async function getSessionByAnyId(sessionIds: string[]): Promise<Session | null> {
+  const sessions = await listSessions();
+  for (const id of sessionIds) {
+    const match = sessions.find((s) => s.sessionId === id);
+    if (match) return match;
+  }
+  return null;
+}
+
+/**
  * sessionId is the row-identity strategy for this tab: one scrimmage per
  * calendar date, so the ISO date (e.g. "2026-09-11") doubles as a
  * naturally-unique id — no separate id generator needed. Rejects a
