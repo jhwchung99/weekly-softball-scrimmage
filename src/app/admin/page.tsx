@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
+import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
+import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
+import { Card } from '../../components/Card';
+import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
 
 type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
 type SessionStatus = 'open' | 'closed' | 'cancelled';
@@ -164,9 +169,9 @@ export default function AdminPage() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="text-2xl font-bold text-slate-900">Admin</h1>
-        <button onClick={() => signIn('google')} className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+        <Button onClick={() => signIn('google')} className="mt-4">
           Sign in with Google
-        </button>
+        </Button>
       </main>
     );
   }
@@ -177,6 +182,10 @@ export default function AdminPage() {
         <h1 className="text-2xl font-bold text-slate-900">Admin</h1>
         <span className="text-sm text-slate-600">{authSession?.user?.email}</span>
       </div>
+
+      <Link href="/guidelines" className="mt-1 inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+        <BookOpen className="h-3.5 w-3.5" /> View player guidelines
+      </Link>
 
       {forbidden && (
         <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -201,11 +210,12 @@ export default function AdminPage() {
           {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
           {scrimmage && (
-            <section className="mt-4 rounded border border-slate-200 p-4">
-              <h2 className="font-semibold text-slate-900">
-                {scrimmage.gameDate} at {scrimmage.gameTime} — status: {scrimmage.status}
+            <Card className="mt-4">
+              <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+                {scrimmage.gameDate} at {scrimmage.gameTime}
+                <Badge status={scrimmage.status}>{scrimmage.status}</Badge>
               </h2>
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <label htmlFor="admin-capacity" className="text-sm text-slate-700">Capacity</label>
                 <input
                   id="admin-capacity"
@@ -215,13 +225,14 @@ export default function AdminPage() {
                   onChange={(e) => setCapacityInput(e.target.value)}
                   className="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
                 />
-                <button
+                <Button
+                  size="sm"
+                  variant="secondary"
                   disabled={busy}
                   onClick={() => updateSession({ capacity: Number(capacityInput) })}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
                 >
                   {busy ? 'Processing...' : 'Save'}
-                </button>
+                </Button>
                 <label htmlFor="admin-cost" className="ml-3 text-sm text-slate-700">Cost ($)</label>
                 <input
                   id="admin-cost"
@@ -232,28 +243,31 @@ export default function AdminPage() {
                   onChange={(e) => setCostInput(e.target.value)}
                   className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
                 />
-                <button
+                <Button
+                  size="sm"
+                  variant="secondary"
                   disabled={busy}
                   onClick={() => updateSession({ cost: Number(costInput) })}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
                 >
                   {busy ? 'Processing...' : 'Save'}
-                </button>
+                </Button>
                 {scrimmage.status !== 'cancelled' && (
-                  <button
+                  <Button
+                    size="sm"
+                    variant="danger"
                     disabled={busy}
                     onClick={() => updateSession({ status: 'cancelled' })}
-                    className="ml-auto rounded border border-red-300 px-2 py-1 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    className="ml-auto"
                   >
                     Cancel session (rainout)
-                  </button>
+                  </Button>
                 )}
               </div>
-            </section>
+            </Card>
           )}
 
           {roster && (
-            <section className="mt-4">
+            <Card className="mt-4">
               <h2 className="font-semibold text-slate-900">Roster ({roster.length})</h2>
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full min-w-[640px] border-collapse text-sm">
@@ -307,7 +321,7 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-            </section>
+            </Card>
           )}
 
           {sessionId && (
@@ -378,90 +392,88 @@ function AddSignupForm(props: {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 space-y-2 rounded border border-slate-200 p-4">
-      <h2 className="font-semibold text-slate-900">Manually add a signup</h2>
-      <p className="text-xs text-slate-500">By adding this signup, you&apos;re confirming this person consented to the waiver.</p>
-      <div>
-        <label htmlFor="admin-add-email" className="block text-sm text-slate-700">Email</label>
-        <input
-          id="admin-add-email"
-          required
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
-        />
-      </div>
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        <input type="checkbox" checked={needsProfile} onChange={(e) => setNeedsProfile(e.target.checked)} />
-        First time signing up (no saved profile yet)
-      </label>
-      {needsProfile && (
-        <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+    <Card className="mt-6">
+      <form onSubmit={handleSubmit} className="space-y-2">
+        <h2 className="font-semibold text-slate-900">Manually add a signup</h2>
+        <p className="text-xs text-slate-500">By adding this signup, you&apos;re confirming this person consented to the waiver.</p>
+        <div>
+          <label htmlFor="admin-add-email" className="block text-sm text-slate-700">Email</label>
           <input
+            id="admin-add-email"
             required
-            aria-label="Full name"
-            placeholder="Full name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="w-full rounded border border-slate-300 px-2 py-1.5"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
           />
-          <div className="flex gap-2">
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={needsProfile} onChange={(e) => setNeedsProfile(e.target.checked)} />
+          First time signing up (no saved profile yet)
+        </label>
+        {needsProfile && (
+          <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
             <input
               required
-              aria-label="Gender"
-              placeholder="Gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              className="flex-1 rounded border border-slate-300 px-2 py-1.5"
+              aria-label="Full name"
+              placeholder="Full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full rounded border border-slate-300 px-2 py-1.5"
             />
+            <div className="flex gap-2">
+              <input
+                required
+                aria-label="Gender"
+                placeholder="Gender"
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                className="flex-1 rounded border border-slate-300 px-2 py-1.5"
+              />
+              <input
+                required
+                type="number"
+                aria-label="Age"
+                placeholder="Age"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                className="w-24 rounded border border-slate-300 px-2 py-1.5"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {POSITIONS.map((p) => (
+                <label key={p} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs">
+                  <input type="checkbox" checked={positions.includes(p)} onChange={() => togglePosition(p)} />
+                  {p}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={isGuest} onChange={(e) => setIsGuest(e.target.checked)} />
+          Guest
+        </label>
+        {isGuest && (
+          <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
             <input
               required
-              type="number"
-              aria-label="Age"
-              placeholder="Age"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              className="w-24 rounded border border-slate-300 px-2 py-1.5"
+              aria-label="Invited by (member name)"
+              placeholder="Invited by (member name)"
+              value={invitedByName}
+              onChange={(e) => setInvitedByName(e.target.value)}
+              className="w-full rounded border border-slate-300 px-2 py-1.5"
             />
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={willingToShare} onChange={(e) => setWillingToShare(e.target.checked)} />
+              Willing to share a slot
+            </label>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {POSITIONS.map((p) => (
-              <label key={p} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs">
-                <input type="checkbox" checked={positions.includes(p)} onChange={() => togglePosition(p)} />
-                {p}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        <input type="checkbox" checked={isGuest} onChange={(e) => setIsGuest(e.target.checked)} />
-        Guest
-      </label>
-      {isGuest && (
-        <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-          <input
-            required
-            aria-label="Invited by (member name)"
-            placeholder="Invited by (member name)"
-            value={invitedByName}
-            onChange={(e) => setInvitedByName(e.target.value)}
-            className="w-full rounded border border-slate-300 px-2 py-1.5"
-          />
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" checked={willingToShare} onChange={(e) => setWillingToShare(e.target.checked)} />
-            Willing to share a slot
-          </label>
-        </div>
-      )}
-      <button
-        type="submit"
-        disabled={busy}
-        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        {busy ? 'Processing...' : 'Add'}
-      </button>
-    </form>
+        )}
+        <Button type="submit" disabled={busy}>
+          {busy ? 'Processing...' : 'Add'}
+        </Button>
+      </form>
+    </Card>
   );
 }
