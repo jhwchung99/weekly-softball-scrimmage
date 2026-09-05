@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, isWithinPromotionCutoff, currentWeekFridayEastern, isNearEasternTime, getWeeklyMilestones } from '../time';
+import {
+  zonedTimeToUtc,
+  isWithinPromotionCutoff,
+  currentWeekFridayEastern,
+  currentWeekGameDayCandidates,
+  isNearEasternTime,
+  getWeeklyMilestones,
+} from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -112,5 +119,40 @@ describe('getWeeklyMilestones', () => {
     expect(winter.registrationOpensAt.toISOString()).toBe('2026-01-05T14:00:00.000Z');
     // Wednesday 2026-01-07, 9pm EST = 02:00 UTC Thursday.
     expect(winter.registrationClosesAt.toISOString()).toBe('2026-01-08T02:00:00.000Z');
+  });
+
+  it('anchors registration to the same Monday/Wednesday for a Saturday game', () => {
+    // 2026-07-11 is the Saturday of the same week as 2026-07-10's Friday.
+    const saturday = getWeeklyMilestones('2026-07-11', '18:00');
+    expect(saturday.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
+    expect(saturday.registrationClosesAt.toISOString()).toBe('2026-07-09T01:00:00.000Z');
+  });
+
+  it('anchors registration to the same Monday/Wednesday for a Sunday game', () => {
+    // 2026-07-12 is the Sunday of the same week as 2026-07-10's Friday.
+    const sunday = getWeeklyMilestones('2026-07-12', '18:00');
+    expect(sunday.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
+    expect(sunday.registrationClosesAt.toISOString()).toBe('2026-07-09T01:00:00.000Z');
+  });
+});
+
+describe('currentWeekGameDayCandidates', () => {
+  it('returns Friday, Saturday, and Sunday of the current week in order', () => {
+    // 2026-07-06 is a Monday; that week's Fri/Sat/Sun are 07-10/11/12.
+    expect(currentWeekGameDayCandidates(new Date('2026-07-06T12:00:00.000Z'))).toEqual([
+      '2026-07-10',
+      '2026-07-11',
+      '2026-07-12',
+    ]);
+  });
+
+  it('still returns the upcoming week when today is already Sunday', () => {
+    // 2026-07-12 is a Sunday; currentWeekFridayEastern treats this as the
+    // end of the week, so the candidates are the *next* Fri/Sat/Sun.
+    expect(currentWeekGameDayCandidates(new Date('2026-07-12T12:00:00.000Z'))).toEqual([
+      '2026-07-17',
+      '2026-07-18',
+      '2026-07-19',
+    ]);
   });
 });
