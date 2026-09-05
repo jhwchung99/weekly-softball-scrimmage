@@ -9,7 +9,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <Card className="mt-4">
       <h2 className="font-semibold text-slate-900">{title}</h2>
-      <div className="mt-2 space-y-2 text-sm text-slate-700">{children}</div>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">{children}</ul>
     </Card>
   );
 }
@@ -21,65 +21,56 @@ export default function GuidelinesPage() {
       <p className="mt-1 text-sm text-slate-500">Everything about how weekly signups actually work.</p>
 
       <Section title="Signing up">
-        <p>
-          Spots are first-come, first-served. Once a week fills up, anyone who signs up after that goes on an
-          automatic waitlist, in the order they signed up.
-        </p>
-        <p>
-          The first time you sign up, you&apos;ll fill out a short profile (name, gender, age, positions) — saved for
-          every future week. You can update it any time from the homepage.
-        </p>
+        <li>First-come, first-served</li>
+        <li>Once capacity fills, new signups go on an automatic waitlist, in order</li>
+        <li>First time signing up: fill out a short profile (name, gender, age, positions)</li>
+        <li>Profile is saved for future weeks — update it any time from the homepage</li>
       </Section>
 
       <Section title="Bringing a guest">
-        <p>
-          Guests answer two extra questions: which member invited them, and whether they&apos;re willing to share a
-          roster slot with that member instead of taking a separate one. Sharing only actually happens if the named
-          member has also signed up (or signs up later that same week) and isn&apos;t already sharing with someone
-          else — otherwise the guest just gets their own slot as normal.
-        </p>
+        <li>Guests answer two extra questions: who invited them, and whether they&apos;re willing to share a roster slot with that member</li>
+        <li>Sharing only happens if the named member also signs up that week and isn&apos;t already sharing with someone else</li>
+        <li>Otherwise the guest just gets their own separate slot</li>
       </Section>
 
       <Section title="Cancelling">
-        <p>You can cancel your spot at any time, right up to game day, from the homepage.</p>
-        <p>
-          If your cancellation frees up a confirmed spot <strong>more than 2 hours before game time</strong>, the
-          next person (or pair) on the waitlist is automatically confirmed and emailed. Within 2 hours of game time,
-          there&apos;s no automatic replacement — the organizer gets a push alert instead so they can personally text
-          someone if they want to fill it.
-        </p>
+        <li>Cancel any time, right up to game day, from the homepage</li>
+        <li>
+          <strong>More than 2 hours before game time:</strong> the next person (or pair) on the waitlist is
+          automatically confirmed and emailed
+        </li>
+        <li>
+          <strong>Within 2 hours of game time:</strong> no automatic replacement — the organizer gets a push alert to
+          fill it manually
+        </li>
       </Section>
 
       <Section title="Requesting a sub">
-        <p>
-          If you&apos;re on the waitlist and know someone confirmed (or also waitlisted) who might share their spot
-          with you, you can send them a request from the homepage. <strong>Please reach out to them outside the app
-          first</strong>, out of politeness, before sending one.
-        </p>
-        <p>
-          You can only have one outstanding request at a time — cancel it if you want to try someone else instead of
-          waiting it out. If they accept, you both share their spot going forward, the same as a member/guest sharing
-          arrangement.
-        </p>
+        <li>Waitlisted? Ask someone confirmed (or also waitlisted) to share their spot with you, from the homepage</li>
+        <li>
+          <strong>Please reach out to them outside the app first</strong>, as a courtesy
+        </li>
+        <li>Only one outstanding request at a time — cancel it to try someone else instead</li>
+        <li>If they accept, you both share their spot going forward (same as a member/guest pairing)</li>
       </Section>
 
       <Section title="Cost">
-        <p>
-          Once the organizer sets a price for the week (covering the field/permit cost), it&apos;s split evenly
-          across every confirmed spot. If you&apos;re sharing a spot with someone, you each pay half of that spot&apos;s
-          share. Payment happens outside the app — the organizer tracks who&apos;s paid.
-        </p>
+        <li>Organizer sets a price for the week, covering the field/permit cost</li>
+        <li>Split evenly across every confirmed spot</li>
+        <li>Sharing a spot with someone? You each pay half that spot&apos;s share</li>
+        <li>Payment happens outside the app — the organizer tracks who&apos;s paid</li>
       </Section>
 
       <Section title="A note on risk">
-        <p>
-          Softball carries a real risk of injury. Every signup includes a plain acknowledgment of that — you&apos;re
-          choosing to play. See our{' '}
+        <li>Softball carries a real risk of injury</li>
+        <li>Every signup includes a plain acknowledgment of that — you&apos;re choosing to play</li>
+        <li>
+          See our{' '}
           <a href="/privacy" className="text-blue-600 hover:underline">
             privacy policy
           </a>{' '}
-          for how your information is used.
-        </p>
+          for how your information is used
+        </li>
       </Section>
     </main>
   );
