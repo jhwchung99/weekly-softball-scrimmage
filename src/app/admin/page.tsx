@@ -484,7 +484,6 @@ function AddSignupForm(props: {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [gender, setGender] = useState('');
-  const [age, setAge] = useState('');
   const [positions, setPositions] = useState<string[]>([]);
   const [isGuest, setIsGuest] = useState(false);
   const [invitedByName, setInvitedByName] = useState('');
@@ -502,7 +501,7 @@ function AddSignupForm(props: {
     try {
       const body: Record<string, unknown> = { email, waiverAccepted: true };
       if (needsProfile) {
-        body.profile = { fullName, gender, age: Number(age), savedPositions: positions.join(', ') };
+        body.profile = { fullName, gender, savedPositions: positions.join(', ') };
       }
       if (isGuest) {
         body.invitedByName = invitedByName;
@@ -555,25 +554,14 @@ function AddSignupForm(props: {
               onChange={(e) => setFullName(e.target.value)}
               className="w-full rounded border border-slate-300 px-2 py-1.5"
             />
-            <div className="flex gap-2">
-              <input
-                required
-                aria-label="Gender"
-                placeholder="Gender"
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="flex-1 rounded border border-slate-300 px-2 py-1.5"
-              />
-              <input
-                required
-                type="number"
-                aria-label="Age"
-                placeholder="Age"
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                className="w-24 rounded border border-slate-300 px-2 py-1.5"
-              />
-            </div>
+            <input
+              required
+              aria-label="Gender"
+              placeholder="Gender"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className="w-full rounded border border-slate-300 px-2 py-1.5"
+            />
             <div className="flex flex-wrap gap-2">
               {POSITIONS.map((p) => (
                 <label key={p} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs">
