@@ -36,7 +36,6 @@ export async function POST(request: Request, { params }: Params) {
         ? {
             fullName: String(body.profile.fullName ?? ''),
             gender: String(body.profile.gender ?? ''),
-            age: Number(body.profile.age ?? 0),
             savedPositions: typeof body.profile.savedPositions === 'string' ? body.profile.savedPositions : '',
           }
         : undefined;
