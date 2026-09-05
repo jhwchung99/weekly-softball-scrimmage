@@ -135,6 +135,23 @@ describe('sendGameDayReminders', () => {
     expect(sendEmail).toHaveBeenCalledWith('a@dummy.test', expect.stringContaining('2026-07-10'), expect.stringContaining('$10.00'));
   });
 
+  it('tells players when payment opens rather than asking for it early', async () => {
+    // The reminder goes out at 9am; for an 18:00 game the roster doesn't lock
+    // until 1pm, and nothing is payable before that.
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00', capacity: 5, pricePerSpot: 10, status: 'open' })
+    );
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    await signUpForSession('2026-07-10', 'a@dummy.test', true);
+
+    await sendGameDayReminders(GAME_DAY_9AM);
+
+    const body = sendEmail.mock.calls[0][2] as string;
+    expect(body).toMatch(/payment opens at 1:00\s?PM/i);
+    expect(body).not.toMatch(/you still owe/i);
+  });
+
   it('skips when the game is later in the weekend, not today', async () => {
     store.sessions.set(
       '2026-07-12',
