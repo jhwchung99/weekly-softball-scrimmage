@@ -19,3 +19,6 @@ next-env.d.ts
 
 # TypeScript
 *.tsbuildinfo
+
+# Test coverage output
+coverage/
