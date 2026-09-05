@@ -20,11 +20,25 @@ export default function GuidelinesPage() {
       <h1 className="text-2xl font-bold text-slate-900">Guidelines</h1>
       <p className="mt-1 text-sm text-slate-500">Everything about how weekly signups actually work.</p>
 
+      <Section title="When to sign up">
+        <li><strong>Signups open Monday at 9:00am ET</strong></li>
+        <li><strong>Signups close Tuesday at 12:00am ET</strong> (midnight, i.e. the end of Monday)</li>
+        <li>
+          That window is short on purpose — it lets the organizer book a field sized to the actual headcount for the
+          rest of the week
+        </li>
+        <li>Miss it and you&apos;re out for that week, so it&apos;s worth signing up Monday</li>
+        <li>Games are Friday, Saturday, or Sunday — check the homepage for which one this week is</li>
+      </Section>
+
       <Section title="Signing up">
         <li>First-come, first-served</li>
         <li>Once capacity fills, new signups go on an automatic waitlist, in order</li>
         <li>First time signing up: fill out a short profile (name, gender, positions)</li>
         <li>Profile is saved for future weeks — update it any time from the homepage</li>
+        <li>Waitlisted? The homepage shows where you are in line</li>
+        <li>You can see who else is playing once you&apos;re signed up for that week</li>
+        <li>Confirmed players get a reminder email on game-day morning, and can add the game to their calendar</li>
       </Section>
 
       <Section title="Bringing a guest">
