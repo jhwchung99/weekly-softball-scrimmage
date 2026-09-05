@@ -22,15 +22,15 @@ describe('WeeklyTimeline', () => {
 
   it('shows the "game starts" status line once closed, before the cutoff', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z')); // Friday morning, well before the 8pm cutoff
+    vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z')); // Friday morning, well before the 1pm ET cutoff
     render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="closed" />);
     expect(screen.getByText(/game starts/i)).toBeInTheDocument();
     expect(screen.queryByText(/won't trigger an auto-replacement/i)).not.toBeInTheDocument();
   });
 
-  it('warns that cancellations won\'t auto-replace once within the 2-hour cutoff', () => {
+  it('warns that cancellations won\'t auto-replace once within the 5-hour cutoff', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-10T21:00:00.000Z')); // 1h before 22:00 UTC game start
+    vi.setSystemTime(new Date('2026-07-10T21:00:00.000Z')); // 1h before 22:00 UTC game start, inside the 5h cutoff
     render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="closed" />);
     expect(screen.getByText(/won't trigger an auto-replacement/i)).toBeInTheDocument();
   });
