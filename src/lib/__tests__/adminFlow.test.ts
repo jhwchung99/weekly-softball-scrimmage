@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession } from '../../test/fakeSheets';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer } from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 const store = vi.hoisted((): FakeStore => ({ sessions: new Map(), signups: new Map(), players: new Map() }));
@@ -90,7 +90,7 @@ describe('adminCreateSession', () => {
       gameTime: '18:00',
       capacity: 20,
       cost: 0,
-      status: 'open',
+      status: 'closed', // created closed; the Monday cron opens it
     });
     expect(store.sessions.get('2026-07-10')).toBeDefined();
   });
@@ -150,5 +150,40 @@ describe('adminRescheduleSession', () => {
 
   it('rejects rescheduling a session that does not exist', async () => {
     await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '18:00')).rejects.toThrow(/No such session/);
+  });
+});
+
+/**
+ * Regression coverage for planner/2026-09-05-location-payments-qol-plan.md §1.
+ * adminCreateSession used to hardcode status 'open', and signups are gated on
+ * status alone with no date check — so a session created for any future date
+ * accepted signups immediately, months early, via a guessable date-shaped id.
+ */
+describe('a newly created session does not accept signups until it is opened', () => {
+  it('is created closed, and rejects a signup', async () => {
+    const created = await adminCreateSession({ gameDate: '2027-01-08' }); // a Friday
+    expect(created.status).toBe('closed');
+
+    store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/not currently open/);
+  });
+
+  it('still allows an admin to open one immediately on purpose', async () => {
+    const created = await adminCreateSession({ gameDate: '2027-01-08', openImmediately: true });
+    expect(created.status).toBe('open');
+
+    store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).resolves.toBeDefined();
+  });
+
+  it('carries through the price and area set at creation', async () => {
+    const created = await adminCreateSession({
+      gameDate: '2027-01-08',
+      pricePerSpot: 12,
+      locationArea: '  Mississauga  ',
+    });
+    expect(created.pricePerSpot).toBe(12);
+    expect(created.locationArea).toBe('Mississauga');
+    expect(created.locationName).toBe(''); // field itself not booked yet
   });
 });
