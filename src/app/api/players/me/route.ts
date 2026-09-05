@@ -21,7 +21,9 @@ export async function PUT(request: NextRequest) {
     const email = await getSessionEmail();
     if (!email) throw new ApiError(401, 'Not signed in.');
 
-    const body = await request.json();
+    // Guarded like every other mutation route — an unparseable body is a
+    // client error (400 from validatePlayerProfile), not a server fault.
+    const body = await request.json().catch(() => ({}));
     const profile = validatePlayerProfile(body ?? {});
 
     await upsertPlayer({ email, ...profile });
