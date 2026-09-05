@@ -67,6 +67,25 @@ describe('GET /api/home', () => {
     expect(getPlayer).not.toHaveBeenCalled();
   });
 
+  it('does not hand the payment address to a signed-out caller', async () => {
+    process.env.PAYMENT_INSTRUCTIONS = 'e-Transfer to organizer@example.com';
+    getSessionEmail.mockResolvedValue(null);
+
+    const body = await (await GET()).json();
+
+    expect(body.paymentInstructions).toBe('');
+    expect(JSON.stringify(body)).not.toMatch(/organizer@example\.com/);
+  });
+
+  it('sends the payment address to a signed-in caller', async () => {
+    process.env.PAYMENT_INSTRUCTIONS = 'e-Transfer to organizer@example.com';
+    getSessionEmail.mockResolvedValue('a@dummy.test');
+
+    const body = await (await GET()).json();
+
+    expect(body.paymentInstructions).toBe('e-Transfer to organizer@example.com');
+  });
+
   it('skips the extra reads when no session exists for the week', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
     getSessionByAnyId.mockResolvedValue(null);
@@ -79,7 +98,7 @@ describe('GET /api/home', () => {
 
   it('returns the caller\'s own signup, cost share and roster names', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getSessionByAnyId.mockResolvedValue({ ...SESSION, cost: 20 });
+    getSessionByAnyId.mockResolvedValue({ ...SESSION, pricePerSpot: 10 });
     getPlayer.mockResolvedValue({ email: 'a@dummy.test', fullName: 'A', gender: 'x', savedPositions: '' });
     listSignupsForSession.mockResolvedValue([
       signup({ email: 'a@dummy.test', fullName: 'A' }),
@@ -91,7 +110,7 @@ describe('GET /api/home', () => {
     expect(body.signedIn).toBe(true);
     expect(body.player.fullName).toBe('A');
     expect(body.signup.email).toBe('a@dummy.test');
-    expect(body.costOwed).toBe(10); // $20 across two confirmed slots
+    expect(body.costOwed).toBe(10); // the fixed price for one spot
     expect(body.roster.confirmedCount).toBe(2);
     expect(body.roster.confirmed.map((e: { fullName: string }) => e.fullName)).toEqual(['A', 'B']);
   });
