@@ -11,6 +11,7 @@ export default function PrivacyPage() {
       <p className="mt-1 text-sm text-slate-500">
         New Hope Fellowship Weekly Softball Scrimmage signup web app
       </p>
+      <p className="mt-1 text-sm text-slate-500">Last updated: September 5, 2026</p>
 
       <section className="mt-6 space-y-2">
         <p className="text-sm">
@@ -60,6 +61,74 @@ export default function PrivacyPage() {
         <p className="text-sm">
           Signup data lives in a Google Sheet accessible only to the organizer and designated admins —
           not the general public, and not other players beyond what they can see about their own status in the app.
+        </p>
+        <p className="text-sm">
+          Within the app, other players can see the roster of who is playing in a given week — first and last name
+          and the positions someone plays — and only if they are themselves signed up for that week. Your email
+          address is never shown to other players.
+        </p>
+      </section>
+
+      <section className="mt-6 space-y-2">
+        <h2 className="font-semibold text-slate-900">How we protect your information</h2>
+        <p className="text-sm">
+          We take reasonable and appropriate steps to protect your information against unauthorized access, use,
+          alteration, loss, or disclosure. Specifically:
+        </p>
+        <ul className="list-disc space-y-1 pl-5 text-sm">
+          <li>
+            <strong>Encryption in transit.</strong> The app is served exclusively over HTTPS, and all communication
+            with Google&apos;s APIs uses encrypted connections.
+          </li>
+          <li>
+            <strong>Encryption at rest.</strong> Your information is stored in Google Sheets and is encrypted at rest
+            by Google.
+          </li>
+          <li>
+            <strong>We never see your password.</strong> Sign-in is handled entirely by Google. This app never
+            receives, stores, or has access to your Google account password.
+          </li>
+          <li>
+            <strong>We request the minimum access needed.</strong> Signing in shares only your name and email
+            address. The app never requests access to your Gmail, Drive, Calendar, Contacts, or any other data in
+            your Google account.
+          </li>
+          <li>
+            <strong>Outgoing email only, from a separate account.</strong> Notification emails are sent from a
+            dedicated account belonging to the scrimmage organizer, using send-only permission on that account. The
+            app cannot read anyone&apos;s email — not yours, and not the sender account&apos;s.
+          </li>
+          <li>
+            <strong>Restricted access to stored data.</strong> The spreadsheet is private. It is reachable by the
+            organizer, a small explicit list of designated admins, and a dedicated service account whose access is
+            limited to that single spreadsheet.
+          </li>
+          <li>
+            <strong>Access controls within the app.</strong> You can only view and change your own signup.
+            Administrative functions are limited to an explicit allowlist of organizer accounts.
+          </li>
+          <li>
+            <strong>Credentials are kept out of the codebase.</strong> API keys and access tokens are stored as
+            encrypted environment variables in our hosting provider, never in source code.
+          </li>
+          <li>
+            <strong>We collect as little as possible.</strong> We ask only for what is needed to run weekly signups,
+            and we remove fields we no longer need — for example, we previously collected each player&apos;s age and
+            have since stopped, deleting it from our records.
+          </li>
+        </ul>
+        <p className="text-sm">
+          No service can promise perfect security, but this is a small, single-purpose app that deliberately holds
+          very little: a name, an email address, and who is playing softball this week.
+        </p>
+      </section>
+
+      <section className="mt-6 space-y-2">
+        <h2 className="font-semibold text-slate-900">Artificial intelligence and machine learning</h2>
+        <p className="text-sm">
+          We do not use your information, including any data obtained through Google APIs, to develop, improve, or
+          train generalized artificial intelligence or machine learning models. We do not sell your information, and
+          we do not share it with third parties for their own purposes.
         </p>
       </section>
 
