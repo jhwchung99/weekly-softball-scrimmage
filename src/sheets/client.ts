@@ -94,7 +94,7 @@ export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
 
   const credentials = loadKey();
   const auth = new GoogleAuth({ credentials, scopes: SCOPES });
-  sheetsClient = google.sheets({ version: 'v4', auth: auth as unknown as sheets_v4.Options['auth'] });
+  sheetsClient = google.sheets({ version: 'v4', auth });
   return sheetsClient;
 }
 
