@@ -25,7 +25,7 @@ describe('adminAddSignup', () => {
     const signup = await adminAddSignup({
       sessionId: '2099-01-01',
       email: 'new@dummy.test',
-      profile: { fullName: 'New Player', gender: 'Other', age: 25, savedPositions: 'Catcher' },
+      profile: { fullName: 'New Player', gender: 'Other', savedPositions: 'Catcher' },
       waiverAccepted: true,
     });
 
@@ -35,7 +35,7 @@ describe('adminAddSignup', () => {
 
   it('skips the profile upsert when the player already has one', async () => {
     store.sessions.set('2099-01-01', makeSession({ capacity: 5 }));
-    store.players.set('existing@dummy.test', { email: 'existing@dummy.test', fullName: 'Existing', gender: 'Other', age: 40, savedPositions: '' });
+    store.players.set('existing@dummy.test', { email: 'existing@dummy.test', fullName: 'Existing', gender: 'Other', savedPositions: '' });
 
     await adminAddSignup({ sessionId: '2099-01-01', email: 'existing@dummy.test', waiverAccepted: true });
     expect(store.players.get('existing@dummy.test')?.fullName).toBe('Existing');
@@ -46,7 +46,7 @@ describe('adminAddSignup', () => {
     const signup = await adminAddSignup({
       sessionId: '2099-01-01',
       email: 'guest@dummy.test',
-      profile: { fullName: 'Guest', gender: 'Other', age: 22, savedPositions: '' },
+      profile: { fullName: 'Guest', gender: 'Other', savedPositions: '' },
       invitedByName: 'Someone',
       waiverAccepted: true,
     });
@@ -60,7 +60,7 @@ describe('adminAddSignup', () => {
       adminAddSignup({
         sessionId: '2099-01-01',
         email: 'new@dummy.test',
-        profile: { fullName: 'New Player', gender: 'Other', age: 25, savedPositions: '' },
+        profile: { fullName: 'New Player', gender: 'Other', savedPositions: '' },
         waiverAccepted: true,
       })
     ).rejects.toThrow(/not currently open/);
@@ -72,7 +72,7 @@ describe('adminAddSignup', () => {
       adminAddSignup({
         sessionId: '2099-01-01',
         email: 'new@dummy.test',
-        profile: { fullName: 'New Player', gender: 'Other', age: 25, savedPositions: '' },
+        profile: { fullName: 'New Player', gender: 'Other', savedPositions: '' },
         waiverAccepted: false,
       })
     ).rejects.toThrow(/waiver/);
@@ -126,7 +126,7 @@ describe('adminRescheduleSession', () => {
 
   it('rekeys the session and cascades sessionId to every signup when the date moves', async () => {
     store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5 }));
-    store.players.set('a@dummy.test', { email: 'a@dummy.test', fullName: 'A', gender: 'Other', age: 30, savedPositions: '' });
+    store.players.set('a@dummy.test', { email: 'a@dummy.test', fullName: 'A', gender: 'Other', savedPositions: '' });
     const signup = await signUpForSession('2026-07-10', 'a@dummy.test', true);
 
     const session = await adminRescheduleSession('2026-07-10', '2026-07-11', '20:00');
