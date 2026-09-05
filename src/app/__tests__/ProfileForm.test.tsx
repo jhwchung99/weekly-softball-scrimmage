@@ -22,7 +22,7 @@ describe('ProfileForm', () => {
   it('pre-fills from initialValues when editing an existing profile', () => {
     render(
       <ProfileForm
-        initialValues={{ fullName: 'Jane Doe', gender: 'Female', age: 28, savedPositions: 'Catcher, SS' }}
+        initialValues={{ fullName: 'Jane Doe', gender: 'Female', savedPositions: 'Catcher, SS' }}
         onSaved={vi.fn()}
         busy={false}
         setBusy={vi.fn()}
@@ -31,7 +31,6 @@ describe('ProfileForm', () => {
     );
     expect(screen.getByLabelText('Full name')).toHaveValue('Jane Doe');
     expect(screen.getByLabelText('Gender')).toHaveValue('Female');
-    expect(screen.getByLabelText('Age')).toHaveValue(28);
     expect(screen.getByRole('checkbox', { name: 'Catcher' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'SS' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Outfield' })).not.toBeChecked();
@@ -54,7 +53,6 @@ describe('ProfileForm', () => {
 
     await userEvent.type(screen.getByLabelText('Full name'), 'New Player');
     await userEvent.type(screen.getByLabelText('Gender'), 'Male');
-    await userEvent.type(screen.getByLabelText('Age'), '22');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Rover' }));
     await userEvent.click(screen.getByRole('button', { name: /save and continue/i }));
 
@@ -63,7 +61,7 @@ describe('ProfileForm', () => {
       '/api/players/me',
       expect.objectContaining({
         method: 'PUT',
-        body: JSON.stringify({ fullName: 'New Player', gender: 'Male', age: 22, savedPositions: 'Rover' }),
+        body: JSON.stringify({ fullName: 'New Player', gender: 'Male', savedPositions: 'Rover' }),
       })
     );
   });
