@@ -35,9 +35,9 @@ export function zonedTimeToUtc(dateStr: string, timeStr: string, timeZone: strin
   return new Date(anchor - offsetMs);
 }
 
-const PROMOTION_CUTOFF_HOURS = 2;
+const PROMOTION_CUTOFF_HOURS = 5;
 
-/** Section 6: no auto-promotion within 2 hours of game time. */
+/** Section 6: no auto-promotion within 5 hours of game time. */
 export function isWithinPromotionCutoff(gameDate: string, gameTime: string, now: Date = new Date()): boolean {
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
   const cutoffStart = new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
@@ -58,7 +58,7 @@ export interface WeeklyMilestones {
   registrationClosesAt: Date;
   /** The game's actual start instant. */
   gameStart: Date;
-  /** 2 hours before gameStart — see isWithinPromotionCutoff. */
+  /** 5 hours before gameStart — see isWithinPromotionCutoff. */
   cutoffStart: Date;
 }
 
