@@ -4,6 +4,7 @@ import { getSignup, getSignupWithSessionSignups, updateSignup, batchUpdateSignup
 import { Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { sendSubRequestEmail, sendSubRequestAcceptedEmail } from './notifications';
+import { normalizeEmail } from './email';
 
 const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
 
@@ -22,7 +23,9 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
   // reads (getSignup, then listSignupsForSession).
   const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
   if (!signup) throw new ApiError(404, 'No such signup.');
-  if (signup.email !== requesterEmail) throw new ApiError(403, 'You can only request a sub for your own signup.');
+  if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail)) {
+    throw new ApiError(403, 'You can only request a sub for your own signup.');
+  }
   if (signup.status !== 'waitlisted') throw new ApiError(409, 'Only a waitlisted signup can request to sub in.');
   if (signup.pairId) throw new ApiError(409, "You're already sharing a slot with someone else.");
   // Anti-spam: only one outstanding outgoing request at a time. A prior
@@ -33,12 +36,12 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     throw new ApiError(409, 'You already have a pending sub request — cancel it before requesting someone else.');
   }
 
-  const normalizedTarget = targetEmail.trim().toLowerCase();
-  if (normalizedTarget === requesterEmail.trim().toLowerCase()) {
+  const normalizedTarget = normalizeEmail(targetEmail);
+  if (normalizedTarget === normalizeEmail(requesterEmail)) {
     throw new ApiError(400, "You can't request to sub with yourself.");
   }
 
-  const target = sessionSignups.find((s) => s.email.toLowerCase() === normalizedTarget && s.status !== 'cancelled');
+  const target = sessionSignups.find((s) => normalizeEmail(s.email) === normalizedTarget && s.status !== 'cancelled');
   if (!target) throw new ApiError(400, "That email isn't signed up for this session.");
   if (target.pairId) throw new ApiError(400, 'That person is already sharing a slot with someone else.');
 
@@ -72,7 +75,9 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
 export async function cancelSubRequest(signupId: string, requesterEmail: string): Promise<Signup> {
   const signup = await getSignup(signupId);
   if (!signup) throw new ApiError(404, 'No such signup.');
-  if (signup.email !== requesterEmail) throw new ApiError(403, 'You can only cancel your own sub request.');
+  if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail)) {
+    throw new ApiError(403, 'You can only cancel your own sub request.');
+  }
   if (signup.subRequestStatus !== 'pending') throw new ApiError(409, 'No pending sub request to cancel.');
 
   return updateSignup(signupId, { ...NO_REQUEST });
@@ -91,8 +96,8 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
   if (!requester) throw new ApiError(404, 'No such signup.');
   if (requester.subRequestStatus !== 'pending') throw new ApiError(409, 'This request is no longer pending.');
 
-  const normalizedResponder = responderEmail.trim().toLowerCase();
-  if (requester.subRequestTargetEmail.toLowerCase() !== normalizedResponder) {
+  const normalizedResponder = normalizeEmail(responderEmail);
+  if (normalizeEmail(requester.subRequestTargetEmail) !== normalizedResponder) {
     throw new ApiError(403, 'This request is not addressed to you.');
   }
 
@@ -100,9 +105,18 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     return updateSignup(signupId, { subRequestStatus: 'declined' });
   }
 
-  const target = allSignups.find((s) => s.email.toLowerCase() === normalizedResponder && s.status !== 'cancelled');
+  const target = allSignups.find((s) => normalizeEmail(s.email) === normalizedResponder && s.status !== 'cancelled');
   if (!target) throw new ApiError(409, 'Your own signup for this session is no longer active.');
   if (requester.status === 'cancelled') throw new ApiError(409, 'That signup is no longer active.');
+  // Re-check the same precondition requestSub enforced, because the
+  // requester's status can change between asking and answering (an admin
+  // status override doesn't clear pending requests). Without this, accepting
+  // folds an already-confirmed player into the target's slot, silently
+  // dropping the roster below capacity with no promotion cascade to refill
+  // it. See planner/2026-09-05-code-security-review.md, Bug 2.
+  if (requester.status !== 'waitlisted') {
+    throw new ApiError(409, 'That person already has their own spot — nothing to sub into.');
+  }
   if (target.pairId) throw new ApiError(409, "You're already sharing a slot with someone else.");
   if (requester.pairId) throw new ApiError(409, 'That signup is already sharing a slot with someone else.');
 
@@ -118,7 +132,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     (s) =>
       s.signupId !== signupId &&
       s.subRequestStatus === 'pending' &&
-      s.subRequestTargetEmail.toLowerCase() === normalizedResponder
+      normalizeEmail(s.subRequestTargetEmail) === normalizedResponder
   );
 
   // Every write this acceptance needs — pairing both sides, clearing the
@@ -159,9 +173,9 @@ export async function clearPendingRequestsTargeting(
   signupsForSession: Signup[],
   excludeSignupId?: string
 ): Promise<void> {
-  const normalized = email.toLowerCase();
+  const normalized = normalizeEmail(email);
   const targeting = signupsForSession.filter(
-    (s) => s.signupId !== excludeSignupId && s.subRequestStatus === 'pending' && s.subRequestTargetEmail.toLowerCase() === normalized
+    (s) => s.signupId !== excludeSignupId && s.subRequestStatus === 'pending' && normalizeEmail(s.subRequestTargetEmail) === normalized
   );
   if (targeting.length === 0) return;
   await batchUpdateSignups(targeting.map((s) => ({ signupId: s.signupId, updates: { ...NO_REQUEST } })));
