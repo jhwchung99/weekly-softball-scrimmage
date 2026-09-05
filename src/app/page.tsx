@@ -2,7 +2,12 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
+import { Loader2, Users, CheckCircle2, Clock3, ListChecks } from 'lucide-react';
 import { POSITIONS } from '../lib/positions';
+import { Card } from '../components/Card';
+import { Badge } from '../components/Badge';
+import { Button } from '../components/Button';
+import { WeeklyTimeline } from '../components/WeeklyTimeline';
 
 export interface SessionInfo {
   sessionId: string;
@@ -185,19 +190,36 @@ export default function Home() {
         below to see this week&apos;s status and sign up.
       </p>
       <p className="mt-2 text-sm text-slate-500">
-        Read our <a href="/privacy" className="text-blue-600 hover:underline">privacy policy</a> to see what
-        information we collect and how it&apos;s used.
+        Read our <a href="/privacy" className="text-blue-600 hover:underline">privacy policy</a> or see the{' '}
+        <a href="/guidelines" className="text-blue-600 hover:underline">full guidelines</a> for how signups, guests,
+        and cancellations work.
       </p>
 
+      <Card className="mt-4">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+          <ListChecks className="h-4 w-4" /> Quick guide
+        </h2>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+          <li>First-come, first-served — extra signups go to an automatic waitlist.</li>
+          <li>Cancel any time, but cancellations within 2 hours of game time won&apos;t trigger an auto-replacement.</li>
+          <li>Bringing a guest? They can optionally share your spot instead of taking a separate one.</li>
+          <li>Once the week is priced, cost splits evenly across confirmed spots.</li>
+        </ul>
+        <a href="/guidelines" className="mt-2 inline-block text-sm text-blue-600 hover:underline">
+          Full guidelines →
+        </a>
+      </Card>
+
       <div className="mt-4">
-        {authStatus === 'loading' && <p className="text-slate-500">Loading...</p>}
+        {authStatus === 'loading' && (
+          <p className="flex items-center gap-2 text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+          </p>
+        )}
         {authStatus === 'unauthenticated' && (
-          <button
-            onClick={() => signIn('google')}
-            className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
+          <Button onClick={() => signIn('google')} className="mt-4">
             Sign in with Google
-          </button>
+          </Button>
         )}
         {authStatus === 'authenticated' && (
           <div className="mt-1 flex items-center justify-between text-sm text-slate-600">
@@ -221,8 +243,12 @@ export default function Home() {
 
       {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <section className="mt-6 rounded border border-slate-200 p-4">
-        {!scrimmageLoaded && <p className="text-slate-500">Loading this week&apos;s scrimmage...</p>}
+      <Card className="mt-6">
+        {!scrimmageLoaded && (
+          <p className="flex items-center gap-2 text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading this week&apos;s scrimmage...
+          </p>
+        )}
         {scrimmageLoaded && !scrimmage && (
           <p className="text-slate-600">No scrimmage scheduled yet for this week. Check back Monday morning.</p>
         )}
@@ -232,6 +258,9 @@ export default function Home() {
               Scrimmage — {scrimmage.gameDate} at {scrimmage.gameTime}
             </h2>
             {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s scrimmage has been cancelled.</p>}
+            {scrimmage.status !== 'cancelled' && (
+              <WeeklyTimeline gameDate={scrimmage.gameDate} gameTime={scrimmage.gameTime} status={scrimmage.status} />
+            )}
             {scrimmage.status !== 'cancelled' && authStatus === 'authenticated' && (
               <PlayerArea
                 scrimmage={scrimmage}
@@ -255,10 +284,10 @@ export default function Home() {
             )}
           </>
         )}
-      </section>
+      </Card>
 
       {authStatus === 'authenticated' && incomingSubRequests.length > 0 && (
-        <section className="mt-4 rounded border border-amber-300 bg-amber-50 p-4">
+        <Card className="mt-4 border-amber-300 bg-amber-50">
           <h2 className="font-semibold text-slate-900">Sub requests for you</h2>
           {busy && <p className="mt-1 text-xs text-slate-500">Processing...</p>}
           <ul className="mt-2 space-y-2">
@@ -266,32 +295,38 @@ export default function Home() {
               <li key={r.fromSignupId} className="flex items-center justify-between gap-2 text-sm text-slate-700">
                 <span>{r.fromFullName} would like to sub with you.</span>
                 <span className="flex gap-2">
-                  <button
+                  <Button
+                    variant="success"
+                    size="sm"
                     disabled={busy}
                     onClick={() => handleRespondToSubRequest(r.fromSignupId, true)}
-                    className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
                   >
                     Accept
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={busy}
                     onClick={() => handleRespondToSubRequest(r.fromSignupId, false)}
-                    className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
                   >
                     Decline
-                  </button>
+                  </Button>
                 </span>
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {authStatus === 'authenticated' && roster && (
-        <section className="mt-4 rounded border border-slate-200 p-4">
-          <h2 className="font-semibold text-slate-900">Who&apos;s playing</h2>
+        <Card className="mt-4">
+          <h2 className="flex items-center gap-1.5 font-semibold text-slate-900">
+            <Users className="h-4 w-4" /> Who&apos;s playing
+          </h2>
           <div className="mt-2">
-            <h3 className="text-sm font-medium text-slate-700">Confirmed ({roster.confirmed.length})</h3>
+            <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmed.length})
+            </h3>
             <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
               {roster.confirmed.map((p, i) => (
                 <li key={i}>
@@ -303,7 +338,9 @@ export default function Home() {
             </ul>
           </div>
           <div className="mt-3">
-            <h3 className="text-sm font-medium text-slate-700">Waitlist ({roster.waitlisted.length})</h3>
+            <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
+              <Clock3 className="h-3.5 w-3.5 text-amber-600" /> Waitlist ({roster.waitlisted.length})
+            </h3>
             <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
               {roster.waitlisted.map((p, i) => (
                 <li key={i}>
@@ -314,7 +351,7 @@ export default function Home() {
               {roster.waitlisted.length === 0 && <li className="text-slate-400">No one on the waitlist.</li>}
             </ul>
           </div>
-        </section>
+        </Card>
       )}
     </main>
   );
@@ -353,26 +390,27 @@ export function PlayerArea(props: {
     onCancelSubRequest,
   } = props;
 
-  if (!loaded) return <p className="mt-2 text-slate-500">Loading your status...</p>;
+  if (!loaded) {
+    return (
+      <p className="mt-2 flex items-center gap-2 text-slate-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading your status...
+      </p>
+    );
+  }
 
   if (mySignup) {
     return (
       <div className="mt-3">
-        <p className="text-slate-800">
-          You&apos;re{' '}
-          <span className={mySignup.status === 'confirmed' ? 'font-semibold text-green-700' : 'font-semibold text-amber-700'}>
+        <p className="flex flex-wrap items-center gap-2 text-slate-800">
+          You&apos;re <Badge status={mySignup.status === 'confirmed' ? 'confirmed' : 'waitlisted'}>
             {mySignup.status === 'confirmed' ? 'confirmed to play' : 'on the waitlist'}
-          </span>
-          {mySignup.memberStatus === 'guest' ? ' (as a guest)' : ''}
-          {mySignup.status === 'confirmed' && costOwed !== null ? ` — your share: $${costOwed.toFixed(2)}` : ''}.
+          </Badge>
+          {mySignup.memberStatus === 'guest' ? '(as a guest)' : ''}
+          {mySignup.status === 'confirmed' && costOwed !== null ? `— your share: $${costOwed.toFixed(2)}` : ''}
         </p>
-        <button
-          onClick={onCancel}
-          disabled={busy}
-          className="mt-3 rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-        >
+        <Button variant="danger" size="md" onClick={onCancel} disabled={busy} className="mt-3">
           {busy ? 'Processing...' : 'Cancel my spot'}
-        </button>
+        </Button>
 
         {mySignup.status === 'waitlisted' && (
           <SubRequestPanel
@@ -431,27 +469,26 @@ export function SubRequestPanel(props: {
 
   if (subRequestStatus === 'pending') {
     return (
-      <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
         <p className="text-slate-700">Waiting on {subRequestTargetEmail} to respond.</p>
-        <button
-          disabled={busy}
-          onClick={onCancelSubRequest}
-          className="mt-2 rounded border border-slate-300 px-2 py-1 text-xs hover:bg-white disabled:opacity-50"
-        >
+        <Button variant="secondary" size="sm" disabled={busy} onClick={onCancelSubRequest} className="mt-2">
           {busy ? 'Processing...' : 'Cancel request'}
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
       {subRequestStatus === 'declined' && (
         <p className="mb-2 text-slate-600">{subRequestTargetEmail} declined your last request.</p>
       )}
       <p className="text-xs text-slate-500">
-        Know someone confirmed (or waitlisted) who might sub with you? Please try reaching out to them outside the
-        app first, out of politeness, before sending a request below.
+        Please reach out outside the app first, out of politeness — see the{' '}
+        <a href="/guidelines" className="text-blue-600 hover:underline">
+          full guidelines
+        </a>
+        .
       </p>
       <form
         onSubmit={(e) => {
@@ -469,13 +506,9 @@ export function SubRequestPanel(props: {
           onChange={(e) => setTargetEmail(e.target.value)}
           className="flex-1 rounded border border-slate-300 px-2 py-1"
         />
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <Button type="submit" size="sm" disabled={busy}>
           {busy ? 'Processing...' : 'Request to sub'}
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -493,7 +526,7 @@ export function ProfileSection(props: {
 
   if (editing) {
     return (
-      <div className="mt-4 rounded border border-slate-200 p-4">
+      <Card className="mt-4">
         <ProfileForm
           initialValues={myPlayer}
           busy={busy}
@@ -505,19 +538,19 @@ export function ProfileSection(props: {
           }}
           onCancel={() => setEditing(false)}
         />
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="mt-4 flex items-center justify-between gap-3 rounded border border-slate-200 p-3 text-sm text-slate-700">
+    <Card className="mt-4 flex items-center justify-between gap-3 text-sm text-slate-700">
       <span>
         {myPlayer.fullName} — {myPlayer.gender}, {myPlayer.age} — positions: {myPlayer.savedPositions || 'none saved'}
       </span>
       <button onClick={() => setEditing(true)} className="shrink-0 text-blue-600 hover:underline">
         Edit profile
       </button>
-    </div>
+    </Card>
   );
 }
 
@@ -618,22 +651,13 @@ export function ProfileForm(props: {
         </div>
       </div>
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={busy}>
           {busy ? 'Processing...' : initialValues ? 'Save changes' : 'Save and continue'}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className="rounded border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
+          <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -713,13 +737,9 @@ export function SignupForm(props: {
         I agree to the above
       </label>
 
-      <button
-        type="submit"
-        disabled={busy || !waiverAccepted}
-        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-      >
+      <Button type="submit" disabled={busy || !waiverAccepted}>
         {busy ? 'Processing...' : 'Sign up'}
-      </button>
+      </Button>
     </form>
   );
 }
