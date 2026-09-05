@@ -10,6 +10,7 @@ import {
   batchUpdateRows,
 } from './client';
 import { Signup, SignupStatus, SIGNUP_HEADERS, parseSignupRow, serializeSignupRow } from './schema';
+import { normalizeEmail } from '../lib/email';
 
 const TAB = 'Signups';
 
@@ -59,10 +60,13 @@ export async function getSignupsByIds(signupIds: string[]): Promise<Signup[]> {
 /**
  * A cancelled signup doesn't count against the uniqueness rule — someone
  * who cancelled should be able to sign up again for the same session.
+ * Email matching is case-insensitive on both sides, so a row stored with
+ * different casing still counts as the same person (see lib/email.ts).
  */
 export async function findActiveSignup(sessionId: string, email: string): Promise<Signup | null> {
+  const target = normalizeEmail(email);
   const signups = await listSignupsForSession(sessionId);
-  return signups.find((s) => s.email === email && s.status !== 'cancelled') ?? null;
+  return signups.find((s) => normalizeEmail(s.email) === target && s.status !== 'cancelled') ?? null;
 }
 
 export function generateSignupId(): string {
@@ -81,7 +85,13 @@ export async function createSignup(signup: Omit<Signup, 'signupId'>): Promise<Si
     throw new Error(`"${signup.email}" is already signed up for session "${signup.sessionId}".`);
   }
 
-  const full: Signup = { ...signup, signupId: generateSignupId() };
+  // Normalized on the way in so no new casing variants ever reach the Sheet.
+  const full: Signup = {
+    ...signup,
+    email: normalizeEmail(signup.email),
+    subRequestTargetEmail: signup.subRequestTargetEmail ? normalizeEmail(signup.subRequestTargetEmail) : '',
+    signupId: generateSignupId(),
+  };
   const row = serializeSignupRow(full);
   await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(SIGNUP_HEADERS.length)}`, [SIGNUP_HEADERS.map((h) => row[h])]);
   return full;
