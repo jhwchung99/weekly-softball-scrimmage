@@ -34,6 +34,19 @@ export async function sendLateCancellationAlert(signup: Signup, session: Session
   await sendPush(title, message);
 }
 
+/**
+ * Registration just closed but the session still has open spots — not in
+ * the original guidelines, added so the organizer knows to consider
+ * manually adding someone (Section 8's "manually add a signup") rather
+ * than discovering unused capacity only once it's too late to fill it.
+ */
+export async function sendOpenSpotsAlert(session: Session, openSpots: number): Promise<void> {
+  const title = `${openSpots} open spot${openSpots === 1 ? '' : 's'} — ${session.gameDate} scrimmage`;
+  const message = `Registration just closed for the ${session.gameDate} ${session.gameTime} scrimmage with ${openSpots} of ${session.capacity} spots still open. Consider manually adding someone.`;
+
+  await sendPush(title, message);
+}
+
 /** A waitlisted player has asked a specific signed-up player to share
  * their spot — notifies the target so they can log in and respond. */
 export async function sendSubRequestEmail(target: Signup, requester: Signup, session: Session): Promise<void> {
