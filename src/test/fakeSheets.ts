@@ -181,7 +181,6 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     email: 'player@dummy.test',
     fullName: 'Test Player',
     gender: 'Other',
-    age: 30,
     savedPositions: '',
     ...overrides,
   };
