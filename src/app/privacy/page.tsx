@@ -28,7 +28,7 @@ export default function PrivacyPage() {
         </ul>
         <p className="mt-2 text-sm">When you sign up to play, you (or an admin, on your behalf) provide:</p>
         <ul className="list-disc space-y-1 pl-5 text-sm">
-          <li>Your full name, gender, and age</li>
+          <li>Your full name and gender</li>
           <li>The positions you&apos;re comfortable playing</li>
           <li>Whether you&apos;re a New Hope member or a guest, and if a guest, which member invited you</li>
           <li>Your confirmation that you accept the participation waiver, including the exact wording you agreed to and when</li>
