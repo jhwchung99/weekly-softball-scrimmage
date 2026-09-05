@@ -33,6 +33,13 @@ export function fakeSessionsModule(store: FakeStore) {
   return {
     listSessions: vi.fn(async () => [...store.sessions.values()]),
     getSession: vi.fn(async (sessionId: string) => store.sessions.get(sessionId) ?? null),
+    getSessionByAnyId: vi.fn(async (sessionIds: string[]) => {
+      for (const id of sessionIds) {
+        const match = store.sessions.get(id);
+        if (match) return match;
+      }
+      return null;
+    }),
     createSession: vi.fn(async (session: Session) => {
       if (store.sessions.has(session.sessionId)) {
         throw new Error(`A session with id "${session.sessionId}" already exists.`);
@@ -44,7 +51,13 @@ export function fakeSessionsModule(store: FakeStore) {
       const existing = store.sessions.get(sessionId);
       if (!existing) throw new Error(`No session with id "${sessionId}".`);
       const updated = { ...existing, ...updates };
-      store.sessions.set(sessionId, updated);
+      // Mirrors the real repository: this is a rename of the same row, not
+      // a separate insert, so the old key stops resolving once the id
+      // itself changes (see adminRescheduleSession).
+      if (updated.sessionId !== sessionId) {
+        store.sessions.delete(sessionId);
+      }
+      store.sessions.set(updated.sessionId, updated);
       return updated;
     }),
     updateSessionStatus: vi.fn(async (sessionId: string, status: SessionStatus) => {
