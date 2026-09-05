@@ -16,6 +16,11 @@ import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { isWithinPromotionCutoff } from './time';
 import { normalizeEmail } from './email';
+import { countConfirmedSlots, computeCostShare } from './payments';
+
+// Moved to lib/payments.ts so client components can share the implementation;
+// re-exported here because this has been their import site all along.
+export { countConfirmedSlots, computeCostShare, computePaymentSummary } from './payments';
 import { sendPromotionEmail, sendLateCancellationAlert } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
@@ -30,33 +35,13 @@ function requireWaiver(waiverAccepted: boolean) {
  * outstanding — spread into every createSignup call below. */
 const NEW_SIGNUP_EXTRAS = {
   paid: false,
+  amountPaid: 0,
+  paidAt: '',
+  attended: false,
   subRequestTargetEmail: '',
   subRequestStatus: '' as const,
   subRequestedAt: '',
 };
-
-/**
- * A pair (linked via pairId) occupies exactly ONE slot combined (Section
- * 5) — so counting "confirmed slots" means counting distinct pairIds
- * once, not once per row. This is also what makes the "either partner can
- * cancel without freeing the slot" rule work for free: as long as at
- * least one row for a given pairId is still 'confirmed', that pairId is
- * still counted, so the slot stays occupied. Exported since Step 7
- * (promotion) will need the same count.
- */
-export function countConfirmedSlots(signups: Signup[]): number {
-  const confirmed = signups.filter((s) => s.status === 'confirmed');
-  const countedPairIds = new Set<string>();
-  let slots = 0;
-  for (const s of confirmed) {
-    if (s.pairId) {
-      if (countedPairIds.has(s.pairId)) continue;
-      countedPairIds.add(s.pairId);
-    }
-    slots += 1;
-  }
-  return slots;
-}
 
 async function computeCapacityStatus(sessionId: string, capacity: number): Promise<'confirmed' | 'waitlisted'> {
   const existing = await listSignupsForSession(sessionId);
@@ -361,36 +346,6 @@ export async function cancelMySignup(
   return { promoted: promotedSignups };
 }
 
-/**
- * Splits session.cost across confirmed slots (pair-aware, same dedup as
- * countConfirmedSlots), then splits each slot's share across however
- * many people share that slot's pairId — 1 for a solo confirmed player,
- * 2 for a pair. Not stored — computed on every read, so it can't drift
- * from reality if headcount or cost changes before payment happens.
- * Rounded to the nearest cent; per-person shares won't always sum to
- * exactly session.cost (e.g. $100 split 13 ways) — accepted, not
- * reconciled, for a casual weekly game.
- */
-export function computeCostShare(session: Session, signups: Signup[]): Record<string, number> {
-  if (!session.cost) return {};
-
-  const confirmed = signups.filter((s) => s.status === 'confirmed');
-  const slots = countConfirmedSlots(signups);
-  if (slots === 0) return {};
-
-  const perSlot = session.cost / slots;
-  const pairSizes = new Map<string, number>();
-  for (const s of confirmed) {
-    if (s.pairId) pairSizes.set(s.pairId, (pairSizes.get(s.pairId) ?? 0) + 1);
-  }
-
-  const perPerson: Record<string, number> = {};
-  for (const s of confirmed) {
-    const shareOf = s.pairId ? pairSizes.get(s.pairId) ?? 1 : 1;
-    perPerson[s.signupId] = Math.round((perSlot / shareOf) * 100) / 100;
-  }
-  return perPerson;
-}
 
 export interface MyStatus {
   signup: Signup | null;
@@ -399,6 +354,10 @@ export interface MyStatus {
   /** This caller's own share of session.cost, or null if not priced yet
    * or the caller isn't confirmed. */
   costOwed: number | null;
+  /** 1-based place in the waitlist queue, or null when not waitlisted.
+   * Computed server-side so it's still correct for a player who can't see the
+   * roster list itself (the roster hides names from non-participants). */
+  waitlistPosition: number | null;
 }
 
 /**
@@ -421,7 +380,21 @@ export function buildMyStatus(session: Session | null, allSignups: Signup[], ema
     costOwed = computeCostShare(session, allSignups)[signup.signupId] ?? null;
   }
 
-  return { signup, incomingSubRequests, costOwed };
+  // Position among waitlisted rows in signup order. Counts rows rather than
+  // promotion units, so it answers "how many people are ahead of me" — the
+  // question a player is actually asking. Promotion order additionally
+  // considers member/guest tiering (see groupWaitlistUnits), so this is a
+  // good-faith indicator rather than a promise about who moves up next.
+  let waitlistPosition: number | null = null;
+  if (signup && signup.status === 'waitlisted') {
+    const queue = allSignups
+      .filter((s) => s.status === 'waitlisted')
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    const index = queue.findIndex((s) => s.signupId === signup.signupId);
+    waitlistPosition = index >= 0 ? index + 1 : null;
+  }
+
+  return { signup, incomingSubRequests, costOwed, waitlistPosition };
 }
 
 /**
