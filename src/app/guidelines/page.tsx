@@ -23,7 +23,7 @@ export default function GuidelinesPage() {
       <Section title="Signing up">
         <li>First-come, first-served</li>
         <li>Once capacity fills, new signups go on an automatic waitlist, in order</li>
-        <li>First time signing up: fill out a short profile (name, gender, age, positions)</li>
+        <li>First time signing up: fill out a short profile (name, gender, positions)</li>
         <li>Profile is saved for future weeks — update it any time from the homepage</li>
       </Section>
 
