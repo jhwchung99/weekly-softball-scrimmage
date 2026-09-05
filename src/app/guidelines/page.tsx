@@ -50,11 +50,11 @@ export default function GuidelinesPage() {
       <Section title="Cancelling">
         <li>Cancel any time, right up to game day, from the homepage</li>
         <li>
-          <strong>More than 2 hours before game time:</strong> the next person (or pair) on the waitlist is
+          <strong>More than 5 hours before game time:</strong> the next person (or pair) on the waitlist is
           automatically confirmed and emailed
         </li>
         <li>
-          <strong>Within 2 hours of game time:</strong> no automatic replacement — the organizer gets a push alert to
+          <strong>Within 5 hours of game time:</strong> no automatic replacement — the organizer gets a push alert to
           fill it manually
         </li>
       </Section>
