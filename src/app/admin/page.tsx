@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
+import { computePaymentSummary } from '../../lib/payments';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -19,6 +20,10 @@ interface SessionInfo {
   capacity: number;
   status: SessionStatus;
   cost: number;
+  pricePerSpot: number;
+  locationArea: string;
+  locationName: string;
+  locationUrl: string;
 }
 
 interface AdminSignup {
@@ -31,6 +36,8 @@ interface AdminSignup {
   status: SignupStatus;
   positions: string;
   paid: boolean;
+  amountPaid: number;
+  attended: boolean;
 }
 
 class HttpError extends Error {
@@ -63,6 +70,10 @@ export default function AdminPage() {
   const [costInput, setCostInput] = useState('');
   const [gameDateInput, setGameDateInput] = useState('');
   const [gameTimeInput, setGameTimeInput] = useState('');
+  const [priceInput, setPriceInput] = useState('');
+  const [areaInput, setAreaInput] = useState('');
+  const [fieldNameInput, setFieldNameInput] = useState('');
+  const [fieldUrlInput, setFieldUrlInput] = useState('');
 
   async function loadCurrentSessionId() {
     const { session } = await fetchJson<{ session: SessionInfo | null }>('/api/sessions/current');
@@ -84,6 +95,10 @@ export default function AdminPage() {
       setCostInput(String(sessionRes.session.cost));
       setGameDateInput(sessionRes.session.gameDate);
       setGameTimeInput(sessionRes.session.gameTime);
+      setPriceInput(String(sessionRes.session.pricePerSpot));
+      setAreaInput(sessionRes.session.locationArea);
+      setFieldNameInput(sessionRes.session.locationName);
+      setFieldUrlInput(sessionRes.session.locationUrl);
       setRoster(rosterRes.signups);
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
@@ -138,7 +153,13 @@ export default function AdminPage() {
   }
 
   async function updateSignupPaid(signupId: string, paid: boolean) {
+    // The server records the amount and timestamp; the checkbox stays a
+    // one-click action for the common case.
     await updateSignupFields(signupId, { paid });
+  }
+
+  async function updateSignupAttended(signupId: string, attended: boolean) {
+    await updateSignupFields(signupId, { attended });
   }
 
   async function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
@@ -296,6 +317,24 @@ export default function AdminPage() {
                 >
                   {busy ? 'Processing...' : 'Save'}
                 </Button>
+                <label htmlFor="admin-price" className="ml-3 text-sm text-slate-700">Price/spot ($)</label>
+                <input
+                  id="admin-price"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={priceInput}
+                  onChange={(e) => setPriceInput(e.target.value)}
+                  className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => updateSession({ pricePerSpot: Number(priceInput) })}
+                >
+                  {busy ? 'Processing...' : 'Save'}
+                </Button>
                 {scrimmage.status !== 'cancelled' && (
                   <Button
                     size="sm"
@@ -312,12 +351,102 @@ export default function AdminPage() {
                   </Button>
                 )}
               </div>
+
+              {/* Registration open/close. Sessions are created closed so nobody
+                  can sign up for a future week early; this is how one gets
+                  opened outside the Monday 9am cron. */}
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+                <span className="text-sm text-slate-700">Registration</span>
+                <Button
+                  size="sm"
+                  variant={scrimmage.status === 'open' ? 'secondary' : 'success'}
+                  disabled={busy || scrimmage.status === 'open'}
+                  onClick={() => updateSession({ status: 'open' })}
+                >
+                  Open
+                </Button>
+                <Button
+                  size="sm"
+                  variant={scrimmage.status === 'closed' ? 'secondary' : 'danger'}
+                  disabled={busy || scrimmage.status === 'closed'}
+                  onClick={() => updateSession({ status: 'closed' })}
+                >
+                  Close
+                </Button>
+              </div>
+
+              {/* Location arrives in two stages: the area up front, the actual
+                  field once the permit is booked. */}
+              <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2">
+                <div>
+                  <label htmlFor="admin-area" className="block text-sm text-slate-700">Area</label>
+                  <input
+                    id="admin-area"
+                    placeholder="Mississauga"
+                    value={areaInput}
+                    onChange={(e) => setAreaInput(e.target.value)}
+                    className="mt-1 w-36 rounded border border-slate-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="admin-field" className="block text-sm text-slate-700">Field (once booked)</label>
+                  <input
+                    id="admin-field"
+                    placeholder="Iceland Park Diamond 3"
+                    value={fieldNameInput}
+                    onChange={(e) => setFieldNameInput(e.target.value)}
+                    className="mt-1 w-52 rounded border border-slate-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="admin-field-url" className="block text-sm text-slate-700">Map link</label>
+                  <input
+                    id="admin-field-url"
+                    type="url"
+                    placeholder="https://maps.app.goo.gl/..."
+                    value={fieldUrlInput}
+                    onChange={(e) => setFieldUrlInput(e.target.value)}
+                    className="mt-1 w-52 rounded border border-slate-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    updateSession({ locationArea: areaInput, locationName: fieldNameInput, locationUrl: fieldUrlInput })
+                  }
+                >
+                  {busy ? 'Processing...' : 'Save location'}
+                </Button>
+              </div>
             </Card>
           )}
 
           {roster && (
             <Card className="mt-4">
               <h2 className="font-semibold text-slate-900">Roster ({roster.length})</h2>
+              {scrimmage && scrimmage.pricePerSpot > 0 && (() => {
+                // Shared with the server rather than recomputed here: a pair
+                // splits one spot's price, so counting confirmed *people*
+                // would overstate what's owed.
+                const summary = computePaymentSummary(scrimmage, roster);
+                return (
+                  <p className="mt-1 text-sm text-slate-600">
+                    Collected <strong>${summary.collected.toFixed(2)}</strong> of ${summary.expected.toFixed(2)} expected
+                    {summary.permitCost > 0 && (
+                      <>
+                        {' · '}permit ${summary.permitCost.toFixed(2)}
+                        {' · '}
+                        <span className={summary.surplus < 0 ? 'text-red-700' : 'text-green-700'}>
+                          {summary.surplus < 0 ? 'short' : 'surplus'} ${Math.abs(summary.surplus).toFixed(2)}
+                        </span>
+                      </>
+                    )}
+                    {' · '}{summary.unpaidCount} unpaid
+                  </p>
+                );
+              })()}
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full min-w-[640px] border-collapse text-sm">
                   <thead>
@@ -327,6 +456,7 @@ export default function AdminPage() {
                       <th className="py-1 pr-2">Positions</th>
                       <th className="py-1 pr-2">Status</th>
                       <th className="py-1 pr-2">Paid</th>
+                      <th className="py-1 pr-2">Here</th>
                       <th className="py-1 pr-2"></th>
                     </tr>
                   </thead>
@@ -348,12 +478,25 @@ export default function AdminPage() {
                             <option value="cancelled">cancelled</option>
                           </select>
                         </td>
-                        <td className="py-1.5 pr-2">
+                        <td className="py-1.5 pr-2 whitespace-nowrap">
                           <input
                             type="checkbox"
+                            aria-label={`Paid — ${s.fullName}`}
                             checked={s.paid}
                             disabled={busy}
                             onChange={(e) => updateSignupPaid(s.signupId, e.target.checked)}
+                          />
+                          {s.paid && s.amountPaid > 0 && (
+                            <span className="ml-1 text-xs text-slate-500">${s.amountPaid.toFixed(2)}</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Attended — ${s.fullName}`}
+                            checked={s.attended}
+                            disabled={busy}
+                            onChange={(e) => updateSignupAttended(s.signupId, e.target.checked)}
                           />
                         </td>
                         <td className="py-1.5 pr-2">
@@ -399,6 +542,8 @@ function CreateSessionForm(props: {
   const [gameTime, setGameTime] = useState('18:00');
   const [capacity, setCapacity] = useState('20');
   const [cost, setCost] = useState('0');
+  const [pricePerSpot, setPricePerSpot] = useState('10');
+  const [area, setArea] = useState('');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -408,7 +553,14 @@ function CreateSessionForm(props: {
       const res = await fetch('/api/admin/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameDate, gameTime, capacity: Number(capacity), cost: Number(cost) }),
+        body: JSON.stringify({
+          gameDate,
+          gameTime,
+          capacity: Number(capacity),
+          cost: Number(cost),
+          pricePerSpot: Number(pricePerSpot),
+          locationArea: area,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Create failed');
@@ -425,7 +577,10 @@ function CreateSessionForm(props: {
     <Card className="mt-4">
       <form onSubmit={handleSubmit} className="space-y-2">
         <h2 className="font-semibold text-slate-900">Create a new session</h2>
-        <p className="text-xs text-slate-500">Game day must be a Friday, Saturday, or Sunday.</p>
+        <p className="text-xs text-slate-500">
+          Game day must be a Friday, Saturday, or Sunday. Created with registration <strong>closed</strong> — the
+          Monday 9am job opens whichever session belongs to that week, so nobody can sign up early.
+        </p>
         <div className="flex flex-wrap items-end gap-2">
           <div>
             <label htmlFor="create-session-date" className="block text-sm text-slate-700">Date</label>
@@ -462,7 +617,7 @@ function CreateSessionForm(props: {
             />
           </div>
           <div>
-            <label htmlFor="create-session-cost" className="block text-sm text-slate-700">Cost ($)</label>
+            <label htmlFor="create-session-cost" className="block text-sm text-slate-700">Permit cost ($)</label>
             <input
               id="create-session-cost"
               type="number"
@@ -471,6 +626,28 @@ function CreateSessionForm(props: {
               value={cost}
               onChange={(e) => setCost(e.target.value)}
               className="mt-1 w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="create-session-price" className="block text-sm text-slate-700">Price/spot ($)</label>
+            <input
+              id="create-session-price"
+              type="number"
+              min={0}
+              step="0.01"
+              value={pricePerSpot}
+              onChange={(e) => setPricePerSpot(e.target.value)}
+              className="mt-1 w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="create-session-area" className="block text-sm text-slate-700">Area</label>
+            <input
+              id="create-session-area"
+              placeholder="Mississauga"
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              className="mt-1 w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
             />
           </div>
           <Button type="submit" size="sm" disabled={busy}>
