@@ -48,9 +48,9 @@ describe('member/guest merge keeps the pair on one status', () => {
     expect(countConfirmedSlots([...store.signups.values()])).toBe(1); // still one slot
 
     // And the member is billed for their half rather than silently skipped.
-    store.sessions.set(SESSION, { ...store.sessions.get(SESSION)!, cost: 20 });
+    store.sessions.set(SESSION, { ...store.sessions.get(SESSION)!, pricePerSpot: 20 });
     const status = await getMyStatusForSession(SESSION, 'member@dummy.test');
-    expect(status.costOwed).toBe(10);
+    expect(status.costOwed).toBe(10); // one spot's price, split with the guest
   });
 
   it('leaves both on the waitlist when the guest was waitlisted too', async () => {
