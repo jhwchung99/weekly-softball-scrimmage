@@ -3,7 +3,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PlayerArea } from '../page';
 
-const scrimmage = { sessionId: '2099-01-01', gameDate: '2099-01-01', gameTime: '18:00', capacity: 10, status: 'open' as const };
+const scrimmage = {
+  sessionId: '2099-01-01',
+  gameDate: '2099-01-01',
+  gameTime: '18:00',
+  capacity: 10,
+  status: 'open' as const,
+  pricePerSpot: 0,
+  locationArea: '',
+  locationName: '',
+  locationUrl: '',
+};
 
 const baseProps = {
   scrimmage,
@@ -12,6 +22,8 @@ const baseProps = {
   myPlayer: null,
   waiverText: 'Waiver text',
   costOwed: null,
+  waitlistPosition: null,
+  paymentInstructions: '',
   loaded: true,
   busy: false,
   setBusy: vi.fn(),
