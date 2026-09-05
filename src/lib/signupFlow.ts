@@ -275,7 +275,7 @@ export interface CancelResult {
  * cancelled row's own status — that's what makes "both partners must be
  * out" fall out for free instead of needing special-case logic.
  *
- * If a slot was freed and we're not within the 2-hour cutoff (Section 6),
+ * If a slot was freed and we're not within the 5-hour cutoff (Section 6),
  * promotes the next eligible waitlisted person/pair. Exactly one
  * promotion per call is always correct here, since even a full pair
  * drop-out only ever frees one slot (a pair only ever consumed one).
