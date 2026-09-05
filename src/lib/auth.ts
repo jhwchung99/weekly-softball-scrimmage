@@ -3,6 +3,7 @@ import GoogleProvider from 'next-auth/providers/google';
 import { getServerSession } from 'next-auth';
 import { isAdminEmail } from '../sheets/admins';
 import { ApiError } from './apiErrors';
+import { normalizeEmail } from './email';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -14,10 +15,16 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-/** The logged-in player's email — the sole identity source app-wide (Section 4). */
+/**
+ * The logged-in player's email — the sole identity source app-wide (Section 4),
+ * and the single choke point where inbound identity is normalized. Everything
+ * downstream can therefore compare against stored emails without each call
+ * site having to remember to lowercase (see lib/email.ts).
+ */
 export async function getSessionEmail(): Promise<string | null> {
   const session = await getServerSession(authOptions);
-  return session?.user?.email ?? null;
+  const email = session?.user?.email;
+  return email ? normalizeEmail(email) : null;
 }
 
 /** Throws if there's no session, or if the session's email isn't on the Admins tab. */
