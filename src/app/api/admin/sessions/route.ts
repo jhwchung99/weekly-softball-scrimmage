@@ -17,6 +17,9 @@ export async function POST(request: Request) {
         gameTime: body?.gameTime,
         capacity: body?.capacity,
         cost: body?.cost,
+        pricePerSpot: body?.pricePerSpot,
+        locationArea: body?.locationArea,
+        openImmediately: Boolean(body?.openImmediately),
       })
     );
     return NextResponse.json({ session }, { status: 201 });
