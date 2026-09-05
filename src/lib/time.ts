@@ -48,6 +48,47 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+export interface WeeklyMilestones {
+  /** Monday 9am ET — when registration is scheduled to open. */
+  registrationOpensAt: Date;
+  /** Wednesday 9pm ET — when registration is scheduled to close. */
+  registrationClosesAt: Date;
+  /** The game's actual start instant. */
+  gameStart: Date;
+  /** 2 hours before gameStart — see isWithinPromotionCutoff. */
+  cutoffStart: Date;
+}
+
+/**
+ * The four dates a player might want to see on a weekly timeline,
+ * derived purely from the Friday game date/time — not from the
+ * session's own registrationOpensAt/registrationClosesAt fields, which
+ * are often blank (closesAt stays '' until the Wednesday cron actually
+ * runs) or reflect an admin manually opening things early rather than
+ * the intended schedule. This computes the *schedule*, independent of
+ * whether it's actually been hit yet — pairs with the session's own
+ * `status` field (the actual source of truth for whether signups are
+ * currently accepted) rather than replacing it. No server-only APIs
+ * used, safe to import from a client component too.
+ */
+export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyMilestones {
+  const [year, month, day] = gameDate.split('-').map(Number);
+  // Anchored at noon UTC so subtracting whole days never crosses a
+  // local-date boundary before the zone conversion happens below.
+  const fridayNoonUtc = Date.UTC(year, month - 1, day, 12);
+  const toDateStr = (utcMs: number) => {
+    const d = new Date(utcMs);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  };
+
+  const registrationOpensAt = zonedTimeToUtc(toDateStr(fridayNoonUtc - 4 * 24 * 60 * 60 * 1000), '09:00');
+  const registrationClosesAt = zonedTimeToUtc(toDateStr(fridayNoonUtc - 2 * 24 * 60 * 60 * 1000), '21:00');
+  const gameStart = zonedTimeToUtc(gameDate, gameTime);
+  const cutoffStart = new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
+
+  return { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart };
+}
+
 /**
  * The Friday of the calendar week `now` falls in, as read in Eastern
  * time — this is what makes "today" mean the right thing for a
