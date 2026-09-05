@@ -99,10 +99,15 @@ sequenceDiagram
    waitlist, based on the week's capacity — and if waitlisted, where you
    are in the queue. Once you're signed up you can also see who else is
    playing; before that you only see the headcount.
-4. **Pay before game day.** Each spot has a fixed price, shown up front
-   and unchanged by how many people end up playing (two people sharing a
-   spot pay half each). Payment happens outside the app. Once you've
-   paid it's settled — cancelling later doesn't get you a refund.
+4. **Payment opens 5 hours before game time**, the moment the roster
+   locks, and is due before the game starts. Each spot has a fixed price,
+   shown up front and unchanged by how many people end up playing (two
+   people sharing a spot pay half each). Nothing is owed before the lock:
+   cancel earlier and someone from the waitlist simply takes the spot,
+   with no money having changed hands. Deliberately aligned this way so
+   that nobody who has paid can then be replaced — which means no
+   refunds, and no working out who owes whom. Payment happens outside the
+   app.
 5. **Cancel any time** if plans change — from right after you sign up
    through game day itself. If your cancellation frees up a confirmed
    spot:
