@@ -6,8 +6,29 @@ const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
 const KEY_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS || 'credentials/service-account.json';
 
-export const SPREADSHEET_ID =
-  process.env.SPREADSHEET_ID || '1KFLSMxqMcEa8z0kB8XIIrwr5H78GnP9n9NpbVUEI1UI';
+/**
+ * No hardcoded fallback. A default meant any environment that forgot to set
+ * this — a preview deploy, a test run, a script — silently read and wrote the
+ * live production spreadsheet instead of failing loudly. That is exactly how a
+ * unit test ended up hitting production data on 2026-09-05. See
+ * planner/2026-09-05-code-security-review.md, S3.
+ *
+ * Deliberately NOT validated at module scope: that would throw during
+ * `next build` (which imports route modules) and take down static pages that
+ * never touch Sheets at all. Instead getSheetsClient() — which every single
+ * Sheets operation in this file goes through — asserts it just before use, so
+ * a misconfiguration fails loudly at exactly the right moment and nowhere else.
+ */
+export const SPREADSHEET_ID = process.env.SPREADSHEET_ID ?? '';
+
+function assertSpreadsheetConfigured(): void {
+  if (!SPREADSHEET_ID) {
+    throw new Error(
+      'SPREADSHEET_ID is not set — refusing to guess a spreadsheet. Set it in .env.local for local dev, ' +
+        'and as an environment variable on Vercel for production.'
+    );
+  }
+}
 
 function loadKey(): Record<string, unknown> {
   // Production (Vercel): the key is set as a GOOGLE_SERVICE_ACCOUNT_KEY env
@@ -68,6 +89,7 @@ async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
 let sheetsClient: sheets_v4.Sheets | undefined;
 
 export async function getSheetsClient(): Promise<sheets_v4.Sheets> {
+  assertSpreadsheetConfigured();
   if (sheetsClient) return sheetsClient;
 
   const credentials = loadKey();
@@ -175,14 +197,21 @@ export async function getRowObjects<T extends Record<string, unknown>>(
 ): Promise<SheetRow<T>[]> {
   const lastCol = columnLetter(headers.length);
   const rows = await getValues(spreadsheetId, `${tab}!A2:${lastCol}`);
+  // rowNumber is assigned from each row's position in the RAW response, before
+  // blank rows are dropped. Numbering after the filter shifted every row below
+  // a blank one up by one, and since rowNumber is what updateRow/deleteRow
+  // target, a single cleared-but-not-deleted row would make every subsequent
+  // write land on the wrong person. See
+  // planner/2026-09-05-code-security-review.md, Bug 6.
   return rows
-    .filter((row) => row.some((cell) => cell !== undefined && cell !== ''))
-    .map((row, i) => {
+    .map((row, i) => ({ row, rowNumber: i + 2 }))
+    .filter(({ row }) => row.some((cell) => cell !== undefined && cell !== ''))
+    .map(({ row, rowNumber }) => {
       const data = {} as T;
       headers.forEach((header, idx) => {
         (data as Record<string, unknown>)[header] = row[idx] ?? '';
       });
-      return { rowNumber: i + 2, data };
+      return { rowNumber, data };
     });
 }
 
