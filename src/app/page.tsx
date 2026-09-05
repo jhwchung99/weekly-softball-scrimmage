@@ -8,6 +8,8 @@ import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
+import { SessionLocation } from '../components/SessionLocation';
+import { AddToCalendar } from '../components/AddToCalendar';
 
 export interface SessionInfo {
   sessionId: string;
@@ -15,6 +17,10 @@ export interface SessionInfo {
   gameTime: string;
   capacity: number;
   status: 'open' | 'closed' | 'cancelled';
+  pricePerSpot: number;
+  locationArea: string;
+  locationName: string;
+  locationUrl: string;
 }
 
 export interface SignupInfo {
@@ -65,8 +71,12 @@ export default function Home() {
   const [mySignup, setMySignup] = useState<SignupInfo | null>(null);
   const [incomingSubRequests, setIncomingSubRequests] = useState<IncomingSubRequest[]>([]);
   const [costOwed, setCostOwed] = useState<number | null>(null);
+  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
   const [myPlayer, setMyPlayer] = useState<PlayerInfo | null>(null);
   const [waiverText, setWaiverText] = useState('');
+  // How to actually pay. Comes from the server rather than the bundle so the
+  // organizer's payment address isn't published to anyone who loads the page.
+  const [paymentInstructions, setPaymentInstructions] = useState('');
   const [roster, setRoster] = useState<Roster | null>(null);
   const [playerDataLoaded, setPlayerDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,16 +99,20 @@ export default function Home() {
         signup: SignupInfo | null;
         incomingSubRequests: IncomingSubRequest[];
         costOwed: number | null;
+        waitlistPosition: number | null;
         roster: Roster | null;
         waiverText: string;
+        paymentInstructions: string;
       }>('/api/home');
 
       setScrimmage(d.session);
       setMySignup(d.signup);
       setIncomingSubRequests(d.incomingSubRequests);
       setCostOwed(d.costOwed);
+      setWaitlistPosition(d.waitlistPosition);
       setMyPlayer(d.player);
       setWaiverText(d.waiverText);
+      setPaymentInstructions(d.paymentInstructions);
       setRoster(d.roster);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -272,6 +286,15 @@ export default function Home() {
             <h2 className="font-semibold text-slate-900">
               Scrimmage — {scrimmage.gameDate} at {scrimmage.gameTime}
             </h2>
+            <SessionLocation
+              className="mt-1"
+              locationArea={scrimmage.locationArea}
+              locationName={scrimmage.locationName}
+              locationUrl={scrimmage.locationUrl}
+            />
+            {scrimmage.pricePerSpot > 0 && (
+              <p className="mt-1 text-sm text-slate-600">${scrimmage.pricePerSpot.toFixed(2)} per spot</p>
+            )}
             {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s scrimmage has been cancelled.</p>}
             {scrimmage.status !== 'cancelled' && (
               <WeeklyTimeline gameDate={scrimmage.gameDate} gameTime={scrimmage.gameTime} status={scrimmage.status} />
@@ -284,6 +307,8 @@ export default function Home() {
                 myPlayer={myPlayer}
                 waiverText={waiverText}
                 costOwed={costOwed}
+                waitlistPosition={waitlistPosition}
+                paymentInstructions={paymentInstructions}
                 loaded={playerDataLoaded}
                 busy={busy}
                 setBusy={setBusy}
@@ -389,6 +414,8 @@ export function PlayerArea(props: {
   myPlayer: PlayerInfo | null;
   waiverText: string;
   costOwed: number | null;
+  waitlistPosition: number | null;
+  paymentInstructions: string;
   loaded: boolean;
   busy: boolean;
   setBusy: (b: boolean) => void;
@@ -405,6 +432,8 @@ export function PlayerArea(props: {
     myPlayer,
     waiverText,
     costOwed,
+    waitlistPosition,
+    paymentInstructions,
     loaded,
     busy,
     setBusy,
@@ -431,8 +460,26 @@ export function PlayerArea(props: {
             {mySignup.status === 'confirmed' ? 'confirmed to play' : 'on the waitlist'}
           </Badge>
           {mySignup.memberStatus === 'guest' ? '(as a guest)' : ''}
-          {mySignup.status === 'confirmed' && costOwed !== null ? `— your share: $${costOwed.toFixed(2)}` : ''}
+          {mySignup.status === 'waitlisted' && waitlistPosition !== null ? `— #${waitlistPosition} in line` : ''}
         </p>
+
+        {mySignup.status === 'confirmed' && costOwed !== null && (
+          <p className="mt-2 text-sm text-slate-700">
+            You owe <strong>${costOwed.toFixed(2)}</strong> — please send it before game day.
+            {paymentInstructions ? ` ${paymentInstructions}` : ''}
+          </p>
+        )}
+
+        {mySignup.status === 'confirmed' && (
+          <AddToCalendar
+            gameDate={scrimmage.gameDate}
+            gameTime={scrimmage.gameTime}
+            locationArea={scrimmage.locationArea}
+            locationName={scrimmage.locationName}
+            locationUrl={scrimmage.locationUrl}
+          />
+        )}
+
         <Button variant="danger" size="md" onClick={onCancel} disabled={busy} className="mt-3">
           {busy ? 'Processing...' : 'Cancel my spot'}
         </Button>
