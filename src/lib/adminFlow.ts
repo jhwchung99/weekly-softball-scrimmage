@@ -3,7 +3,7 @@ import { getSession, createSession, updateSession } from '../sheets/sessions';
 import { listSignupsForSession, batchUpdateSignups } from '../sheets/signups';
 import { Session, Signup } from '../sheets/schema';
 import { signUpForSession, signUpAsGuestForSession } from './signupFlow';
-import { DEFAULT_GAME_TIME, DEFAULT_CAPACITY } from './scheduling';
+import { DEFAULT_GAME_TIME, DEFAULT_CAPACITY, DEFAULT_PRICE_PER_SPOT } from './scheduling';
 import { ApiError } from './apiErrors';
 import {
   validatePlayerProfile,
@@ -12,6 +12,7 @@ import {
   validateGameTime,
   validateCapacity,
   validateCost,
+  validateLocationArea,
 } from './validation';
 
 export interface AdminAddSignupInput {
@@ -67,6 +68,10 @@ export interface AdminCreateSessionInput {
   gameTime?: unknown;
   capacity?: unknown;
   cost?: unknown;
+  pricePerSpot?: unknown;
+  locationArea?: unknown;
+  /** Opt in to opening registration immediately; otherwise created closed. */
+  openImmediately?: boolean;
 }
 
 /**
@@ -74,14 +79,24 @@ export interface AdminCreateSessionInput {
  * sheets/sessions.ts), so this is really just createSession with
  * defaults filled in and gameDate/gameTime validated. Mainly for
  * scheduling a Saturday/Sunday game, or a Friday one ahead of the
- * Monday-open cron so an admin can set a non-default capacity/cost from
+ * Monday-open cron so an admin can set a non-default capacity/price from
  * the start rather than editing it in right after.
+ *
+ * Created **closed** by default. Signups are gated on `status` alone with no
+ * date check, so creating a future session open meant anyone could
+ * immediately sign up for it — months early, since session ids are just dates
+ * and therefore guessable. The Monday 9am cron opens whichever session belongs
+ * to the current week, which is the intended path; `openImmediately` is the
+ * deliberate escape hatch (e.g. the cron failed and this week needs opening
+ * now). See planner/2026-09-05-location-payments-qol-plan.md, §1.
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
   const gameDate = validateGameDate(input.gameDate);
   const gameTime = input.gameTime !== undefined ? validateGameTime(input.gameTime) : DEFAULT_GAME_TIME;
   const capacity = input.capacity !== undefined ? validateCapacity(input.capacity) : DEFAULT_CAPACITY;
   const cost = input.cost !== undefined ? validateCost(input.cost) : 0;
+  const pricePerSpot = input.pricePerSpot !== undefined ? validateCost(input.pricePerSpot) : DEFAULT_PRICE_PER_SPOT;
+  const locationArea = input.locationArea !== undefined ? validateLocationArea(input.locationArea) : '';
 
   const existing = await getSession(gameDate);
   if (existing) throw new ApiError(409, `A session for ${gameDate} already exists.`);
@@ -94,7 +109,11 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
     registrationClosesAt: '',
     capacity,
     cost,
-    status: 'open',
+    pricePerSpot,
+    locationArea,
+    locationName: '',
+    locationUrl: '',
+    status: input.openImmediately ? 'open' : 'closed',
   });
 }
 
