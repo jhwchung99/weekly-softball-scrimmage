@@ -76,8 +76,8 @@ export default function AdminPage() {
     setScrimmage(null);
     try {
       const [sessionRes, rosterRes] = await Promise.all([
-        fetchJson<{ session: SessionInfo }>(`/api/admin/sessions/${id}`),
-        fetchJson<{ signups: AdminSignup[] }>(`/api/admin/sessions/${id}/signups`),
+        fetchJson<{ session: SessionInfo }>(`/api/admin/sessions/${encodeURIComponent(id)}`),
+        fetchJson<{ signups: AdminSignup[] }>(`/api/admin/sessions/${encodeURIComponent(id)}/signups`),
       ]);
       setScrimmage(sessionRes.session);
       setCapacityInput(String(sessionRes.session.capacity));
@@ -114,7 +114,7 @@ export default function AdminPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/sessions/${sessionId}`, {
+      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -145,7 +145,7 @@ export default function AdminPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/signups/${signupId}`, {
+      const res = await fetch(`/api/admin/signups/${encodeURIComponent(signupId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -159,11 +159,16 @@ export default function AdminPage() {
     }
   }
 
-  async function removeSignup(signupId: string) {
+  // Both destructive actions below confirm first. Removing a signup is a HARD
+  // delete of the row (not a status change), and cancelling the session
+  // affects everyone — neither should be one stray click away, especially
+  // since they sit right next to non-destructive Save buttons.
+  async function removeSignup(signupId: string, fullName: string) {
+    if (!window.confirm(`Permanently remove ${fullName}'s signup? This deletes the row and can't be undone.`)) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/signups/${signupId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/signups/${encodeURIComponent(signupId)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Remove failed');
       await loadRoster(sessionId);
     } catch (err) {
@@ -296,7 +301,11 @@ export default function AdminPage() {
                     size="sm"
                     variant="danger"
                     disabled={busy}
-                    onClick={() => updateSession({ status: 'cancelled' })}
+                    onClick={() => {
+                      if (window.confirm(`Cancel the whole ${scrimmage.gameDate} scrimmage? Everyone signed up will see it as cancelled.`)) {
+                        updateSession({ status: 'cancelled' });
+                      }
+                    }}
                     className="ml-auto"
                   >
                     Cancel session (rainout)
@@ -350,7 +359,7 @@ export default function AdminPage() {
                         <td className="py-1.5 pr-2">
                           <button
                             disabled={busy}
-                            onClick={() => removeSignup(s.signupId)}
+                            onClick={() => removeSignup(s.signupId, s.fullName)}
                             className="text-red-600 hover:underline disabled:opacity-50"
                           >
                             Remove
@@ -507,7 +516,7 @@ function AddSignupForm(props: {
         body.invitedByName = invitedByName;
         body.willingToShare = willingToShare;
       }
-      const res = await fetch(`/api/admin/sessions/${sessionId}/signups`, {
+      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}/signups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
