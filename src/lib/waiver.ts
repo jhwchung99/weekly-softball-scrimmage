@@ -1,11 +1,8 @@
 /**
- * ⚠️ NOT LEGAL ADVICE. This is the exact draft language from
- * PROJECT_GUIDELINES.md Section 9, which explicitly flags it as
- * unreviewed. Do NOT let real players sign up against this wording until
- * whoever handles New Hope's insurance/liability has reviewed it — this
- * constant is the single place to update once that happens.
+ * Simplified from the original formal liability-release draft on
+ * 2026-09-05, per a deliberate decision that this is a casual league and
+ * doesn't need one — this is a plain risk acknowledgment, not a legal
+ * release. Still required on every signup (member and guest alike), not
+ * just a one-time thing — see requireWaiver() in signupFlow.ts.
  */
-export const WAIVER_TEXT =
-  'I acknowledge that softball involves inherent physical risk, including risk of injury. ' +
-  'I confirm I am physically able to participate and voluntarily assume this risk. ' +
-  'I release New Hope [org name] and its organizers from liability for injuries sustained during play.';
+export const WAIVER_TEXT = "I understand softball carries a risk of injury and I'm choosing to play.";
