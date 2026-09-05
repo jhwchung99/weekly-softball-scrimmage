@@ -1,13 +1,14 @@
 name: Close registration
 
-# Wednesday 9pm ET (Section 1) — which is Thursday in UTC, since 9pm ET
-# crosses midnight UTC. Same DST-duplicate-firing pattern as
-# open-registration.yml; see that file's comment and
+# Tuesday 12am ET / midnight (Section 1) — short on purpose (~15 hours
+# after Monday's open) so the organizer has the rest of the week to book
+# a permit sized to the actual headcount. Same DST-duplicate-firing
+# pattern as open-registration.yml; see that file's comment and
 # src/lib/scheduling.ts / src/lib/time.ts.
 on:
   schedule:
-    - cron: '0 1 * * 4' # 9pm EDT Wednesday (UTC-4) = 1am UTC Thursday
-    - cron: '0 2 * * 4' # 9pm EST Wednesday (UTC-5) = 2am UTC Thursday
+    - cron: '0 4 * * 2' # 12am EDT Tuesday (UTC-4) = 4am UTC Tuesday
+    - cron: '0 5 * * 2' # 12am EST Tuesday (UTC-5) = 5am UTC Tuesday
   workflow_dispatch: {} # manual trigger, for testing
 
 jobs:
