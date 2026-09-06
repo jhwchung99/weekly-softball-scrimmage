@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Weekly Softball Scrimmage',
+  title: 'Privacy Policy | Weekly Softball Scrimmage',
 };
 
 export default function PrivacyPage() {
@@ -59,12 +59,12 @@ export default function PrivacyPage() {
       <section className="mt-6 space-y-2">
         <h2 className="font-semibold text-slate-900">Where it&apos;s stored, and who can see it</h2>
         <p className="text-sm">
-          Signup data lives in a Google Sheet accessible only to the organizer and designated admins —
+          Signup data lives in a Google Sheet accessible only to the organizer and designated admins,
           not the general public, and not other players beyond what they can see about their own status in the app.
         </p>
         <p className="text-sm">
-          Within the app, other players can see the roster of who is playing in a given week — first and last name
-          and the positions someone plays — and only if they are themselves signed up for that week. Your email
+          Within the app, other players can see the roster of who is playing in a given week (first and last name,
+          and the positions someone plays), and only if they are themselves signed up for that week. Your email
           address is never shown to other players.
         </p>
       </section>
@@ -96,7 +96,7 @@ export default function PrivacyPage() {
           <li>
             <strong>Outgoing email only, from a separate account.</strong> Notification emails are sent from a
             dedicated account belonging to the scrimmage organizer, using send-only permission on that account. The
-            app cannot read anyone&apos;s email — not yours, and not the sender account&apos;s.
+            app cannot read anyone&apos;s email, not yours, and not the sender account&apos;s.
           </li>
           <li>
             <strong>Restricted access to stored data.</strong> The spreadsheet is private. It is reachable by the
@@ -113,7 +113,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>We collect as little as possible.</strong> We ask only for what is needed to run weekly signups,
-            and we remove fields we no longer need — for example, we previously collected each player&apos;s age and
+            and we remove fields we no longer need. For example, we previously collected each player&apos;s age and
             have since stopped, deleting it from our records.
           </li>
         </ul>
@@ -136,7 +136,7 @@ export default function PrivacyPage() {
         <h2 className="font-semibold text-slate-900">Third-party services we use</h2>
         <ul className="list-disc space-y-1 pl-5 text-sm">
           <li>
-            <strong>Google</strong> — for signing in, storing signup data (Google Sheets), and sending promotion
+            <strong>Google</strong>: for signing in, storing signup data (Google Sheets), and sending promotion
             emails (Gmail). This app&apos;s use of information received via Google APIs adheres to the{' '}
             <a
               href="https://developers.google.com/terms/api-services-user-data-policy"
@@ -147,7 +147,7 @@ export default function PrivacyPage() {
             , including the Limited Use requirements.
           </li>
           <li>
-            <strong>ntfy.sh</strong> — only receives a cancelled player&apos;s name and the position they played, for
+            <strong>ntfy.sh</strong>: only receives a cancelled player&apos;s name and the position they played, for
             the organizer&apos;s late-cancellation alert. It never receives your email address, login credentials, or
             any other personal information.
           </li>
@@ -159,7 +159,7 @@ export default function PrivacyPage() {
         <h2 className="font-semibold text-slate-900">How long we keep it</h2>
         <p className="text-sm">
           Signup records are kept as an ongoing operational history (e.g. for attendance tracking).
-          You can ask to have your data corrected or deleted at any time — see Contact below.
+          You can ask to have your data corrected or deleted at any time. See Contact below.
         </p>
       </section>
 
