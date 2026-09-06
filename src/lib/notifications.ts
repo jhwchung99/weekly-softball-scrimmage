@@ -13,7 +13,7 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
   const text = [
     `Hi ${signup.fullName},`,
     '',
-    `A spot opened up and you've moved up from the waitlist — you're now scheduled to play ${whenAndWhere(session)}.`,
+    `A spot opened up and you've moved up from the waitlist. You're now scheduled to play ${whenAndWhere(session)}.`,
     '',
     'See you on the field!',
   ].join('\n');
@@ -29,11 +29,11 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
  * fill the spot.
  */
 export async function sendLateCancellationAlert(signup: Signup, session: Session, amountOwed = 0): Promise<void> {
-  const title = `Late cancellation — ${session.gameDate} scrimmage`;
+  const title = `Late cancellation: ${session.gameDate} scrimmage`;
   const positions = signup.positions || 'no positions listed';
   const parts = [
     `${signup.fullName} (${positions}) just cancelled within 5 hours of the ${session.gameDate} ${session.gameTime} scrimmage.`,
-    'No one was auto-promoted — their spot is open.',
+    'No one was auto-promoted, so their spot is open.',
   ];
 
   // Saves the organizer wondering whether to chase or refund: the money is
@@ -42,8 +42,8 @@ export async function sendLateCancellationAlert(signup: Signup, session: Session
   if (amountOwed > 0) {
     parts.push(
       signup.paid
-        ? `They've already paid $${signup.amountPaid.toFixed(2)} — no refund; if someone fills in, they settle it directly.`
-        : `They still owe $${amountOwed.toFixed(2)} — collect from them, not from whoever fills in.`
+        ? `They've already paid $${signup.amountPaid.toFixed(2)}. No refund; if someone fills in, they settle it directly.`
+        : `They still owe $${amountOwed.toFixed(2)}. Collect from them, not from whoever fills in.`
     );
   }
 
@@ -57,7 +57,7 @@ export async function sendLateCancellationAlert(signup: Signup, session: Session
  * than discovering unused capacity only once it's too late to fill it.
  */
 export async function sendOpenSpotsAlert(session: Session, openSpots: number): Promise<void> {
-  const title = `${openSpots} open spot${openSpots === 1 ? '' : 's'} — ${session.gameDate} scrimmage`;
+  const title = `${openSpots} open spot${openSpots === 1 ? '' : 's'} for the ${session.gameDate} scrimmage`;
   const message = `Registration just closed for the ${session.gameDate} ${session.gameTime} scrimmage with ${openSpots} of ${session.capacity} spots still open. Consider manually adding someone.`;
 
   await sendPush(title, message);
@@ -117,7 +117,7 @@ export async function sendGameDayReminderEmail(
   amountOwed: number,
   now: Date = new Date()
 ): Promise<void> {
-  const subject = `Softball this ${session.gameDate} — ${session.gameTime}`;
+  const subject = `Softball this ${session.gameDate} at ${session.gameTime}`;
   const lines = [
     `Hi ${signup.fullName},`,
     '',
@@ -143,8 +143,8 @@ export async function sendGameDayReminderEmail(
     lines.push(
       '',
       now < cutoffStart
-        ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks — send it any time between then and the game.`
-        : `You still owe $${amountOwed.toFixed(2)} for your spot — please send it before the game.`
+        ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks. Send it any time between then and the game.`
+        : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`
     );
     const instructions = process.env.PAYMENT_INSTRUCTIONS;
     if (instructions) lines.push(instructions);
