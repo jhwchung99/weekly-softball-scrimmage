@@ -174,21 +174,21 @@ describe('PlayerArea locked-cancellation notice', () => {
     expect(screen.queryByText(/between the two of you/i)).not.toBeInTheDocument();
   });
 
-  it('tells an unpaid player they still owe, and that collecting from a sub is on them', () => {
+  it('asks an unpaid player to still send it, and says collecting from a sub is on them', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // after the lock
     render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
 
-    expect(screen.getByText(/doesn't clear what you owe/i)).toBeInTheDocument();
+    expect(screen.getByText(/please still send your \$10\.00/i)).toBeInTheDocument();
     expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
   });
 
-  it('tells an already-paid player that cancelling changes nothing', () => {
+  it('does not ask an already-paid player to send it again', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
     render(<PlayerArea {...baseProps} mySignup={{ ...confirmed, paid: true }} costOwed={10} />);
 
-    expect(screen.getByText(/already paid/i)).toBeInTheDocument();
+    expect(screen.queryByText(/please still send/i)).not.toBeInTheDocument();
     expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
   });
 

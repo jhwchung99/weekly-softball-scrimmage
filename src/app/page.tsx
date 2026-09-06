@@ -482,14 +482,9 @@ function LockedCancelNotice({ amount, paid }: { amount: number | null; paid: boo
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <span>
         <strong>The roster is locked.</strong>{' '}
-        {paid ? (
-          <>You&apos;ve already paid, and cancelling now doesn&apos;t change that.</>
-        ) : (
-          <>
-            Cancelling now doesn&apos;t clear what you owe
-            {amount !== null ? <> — please still send your ${amount.toFixed(2)}</> : null}.
-          </>
-        )}{' '}
+        {/* Omitted for someone who has already paid — telling them to "still
+            send" it would have them pay twice. */}
+        {!paid && amount !== null ? <>Please still send your ${amount.toFixed(2)}. </> : null}
         Nobody is added in your place automatically. If someone does end up filling in for you, sorting that money out
         is between the two of you.
       </span>
