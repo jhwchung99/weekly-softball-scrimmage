@@ -174,12 +174,13 @@ describe('PlayerArea locked-cancellation notice', () => {
     expect(screen.queryByText(/between the two of you/i)).not.toBeInTheDocument();
   });
 
-  it('says what is owed stays owed, and that collecting from a sub is on them', () => {
+  it('covers both the unpaid and already-paid cases, and who collects from a sub', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // after the lock
     render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
 
-    expect(screen.getByText(/doesn't change what you owe/i)).toBeInTheDocument();
+    expect(screen.getByText(/if you have not sent payment, please still send your \$10\.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/if you have sent the payment, please try and get someone to sub in/i)).toBeInTheDocument();
     expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
   });
 
@@ -188,10 +189,18 @@ describe('PlayerArea locked-cancellation notice', () => {
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
     render(<PlayerArea {...baseProps} mySignup={{ ...confirmed, paid: true }} costOwed={10} />);
 
-    // One sentence for both states — the amount and paid status are stated
-    // directly above by PaymentPrompt, so the notice never repeats them.
-    expect(screen.getByText(/doesn't change what you owe/i)).toBeInTheDocument();
-    expect(screen.queryByText(/\$10\.00/)).not.toBeInTheDocument(); // "Payment received" instead
+    // One block covering both cases, so there's only ever one message to keep
+    // accurate rather than two that can drift apart.
+    expect(screen.getByText(/if you have not sent payment/i)).toBeInTheDocument();
+    expect(screen.getByText(/if you have sent the payment/i)).toBeInTheDocument();
+  });
+
+  it('is omitted when the week has no price set — every sentence is about payment', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={null} />);
+
+    expect(screen.queryByText(/between the two of you/i)).not.toBeInTheDocument();
   });
 
   it('still lets them cancel — the notice never blocks it', async () => {

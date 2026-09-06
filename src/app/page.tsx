@@ -471,23 +471,23 @@ function PaymentPrompt({
  *
  * This is the one case where the organizer would otherwise get pulled into
  * moving money around. After the lock nobody is auto-promoted, so if the spot
- * gets filled at all it's because the organizer texted someone — and without
+ * gets filled at all it's because someone was asked directly — and without
  * saying so, the natural assumption is that the organizer sorts out the
  * refund. The rule is the opposite: what's owed stays owed, and collecting
  * from whoever fills in is between the two players.
  *
- * Deliberately one sentence with no paid/unpaid branch: "doesn't change what
- * you owe" is true either way, and the amount and payment status are already
- * stated directly above by PaymentPrompt.
+ * Covers both cases in prose rather than branching on `paid`, so there is one
+ * message to keep accurate instead of two.
  */
-function LockedCancelNotice() {
+function LockedCancelNotice({ amount }: { amount: number }) {
   return (
     <p className="mt-3 flex items-start gap-1.5 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <span>
-        <strong>The roster is locked.</strong> Cancelling doesn&apos;t change what you owe for your spot, and nobody is
-        added in your place automatically — if someone does end up filling in for you, sorting that money out is
-        between the two of you.
+        <strong>The roster is locked.</strong> If you have not sent payment, please still send your $
+        {amount.toFixed(2)}. If you have sent the payment, please try and get someone to sub in as nobody is added in
+        your place automatically. If someone does end up filling in for you, sorting that money out is between the two
+        of you.
       </span>
     </p>
   );
@@ -571,7 +571,9 @@ export function PlayerArea(props: {
           />
         )}
 
-        {rosterLocked && mySignup.status === 'confirmed' && <LockedCancelNotice />}
+        {rosterLocked && mySignup.status === 'confirmed' && costOwed !== null && (
+          <LockedCancelNotice amount={costOwed} />
+        )}
 
         <Button variant="danger" size="md" onClick={onCancel} disabled={busy} className="mt-3">
           {busy ? 'Processing...' : 'Cancel my spot'}
