@@ -302,6 +302,9 @@ export async function cancelMySignup(
   if (!session) throw new ApiError(404, 'No such session.');
 
   const before = countConfirmedSlots(sessionSignups);
+  // Captured before the status flips: computeCostShare only counts confirmed
+  // rows, so afterwards this person's share would read as 0.
+  const owedAtCancellation = computeCostShare(session, sessionSignups)[signupId] ?? 0;
   await updateSignupStatus(signupId, 'cancelled');
   const afterSignups = await listSignupsForSession(signup.sessionId);
   const after = countConfirmedSlots(afterSignups);
@@ -319,7 +322,7 @@ export async function cancelMySignup(
     // text someone. Same awaited-but-swallowed pattern as the promotion
     // email below — a failed push shouldn't affect the cancellation.
     try {
-      await sendLateCancellationAlert(signup, session);
+      await sendLateCancellationAlert(signup, session, owedAtCancellation);
     } catch (err) {
       console.error(`Failed to send organizer alert for cancelled signup ${signup.signupId}:`, err);
     }
