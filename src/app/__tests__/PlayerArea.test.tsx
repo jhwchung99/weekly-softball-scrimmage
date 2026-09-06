@@ -174,22 +174,24 @@ describe('PlayerArea locked-cancellation notice', () => {
     expect(screen.queryByText(/between the two of you/i)).not.toBeInTheDocument();
   });
 
-  it('asks an unpaid player to still send it, and says collecting from a sub is on them', () => {
+  it('says what is owed stays owed, and that collecting from a sub is on them', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // after the lock
     render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
 
-    expect(screen.getByText(/please still send your \$10\.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/doesn't change what you owe/i)).toBeInTheDocument();
     expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
   });
 
-  it('does not ask an already-paid player to send it again', () => {
+  it('reads the same whether or not the payment is already recorded', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
     render(<PlayerArea {...baseProps} mySignup={{ ...confirmed, paid: true }} costOwed={10} />);
 
-    expect(screen.queryByText(/please still send/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
+    // One sentence for both states — the amount and paid status are stated
+    // directly above by PaymentPrompt, so the notice never repeats them.
+    expect(screen.getByText(/doesn't change what you owe/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\$10\.00/)).not.toBeInTheDocument(); // "Payment received" instead
   });
 
   it('still lets them cancel — the notice never blocks it', async () => {
