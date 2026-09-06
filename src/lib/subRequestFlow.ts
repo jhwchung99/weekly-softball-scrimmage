@@ -33,7 +33,7 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
   // 'pending' does. cancelSubRequest is the deliberate way out if the
   // target never responds.
   if (signup.subRequestStatus === 'pending') {
-    throw new ApiError(409, 'You already have a pending sub request — cancel it before requesting someone else.');
+    throw new ApiError(409, 'You already have a pending sub request. Cancel it before requesting someone else.');
   }
 
   const normalizedTarget = normalizeEmail(targetEmail);
@@ -115,7 +115,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
   // dropping the roster below capacity with no promotion cascade to refill
   // it. See planner/2026-09-05-code-security-review.md, Bug 2.
   if (requester.status !== 'waitlisted') {
-    throw new ApiError(409, 'That person already has their own spot — nothing to sub into.');
+    throw new ApiError(409, 'That person already has their own spot, so there is nothing to sub into.');
   }
   if (target.pairId) throw new ApiError(409, "You're already sharing a slot with someone else.");
   if (requester.pairId) throw new ApiError(409, 'That signup is already sharing a slot with someone else.');
