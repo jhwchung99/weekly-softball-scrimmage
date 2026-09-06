@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Card } from '../../components/Card';
 
 export const metadata: Metadata = {
-  title: 'Guidelines — Weekly Softball Scrimmage',
+  title: 'Guidelines | Weekly Softball Scrimmage',
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -24,18 +24,18 @@ export default function GuidelinesPage() {
         <li><strong>Signups open Monday at 9:00am ET</strong></li>
         <li><strong>Signups close Tuesday at 12:00am ET</strong> (midnight, i.e. the end of Monday)</li>
         <li>
-          That window is short on purpose — it lets the organizer book a field sized to the actual headcount for the
+          That window is short on purpose: it lets the organizer book a field sized to the actual headcount for the
           rest of the week
         </li>
         <li>Miss it and you&apos;re out for that week, so it&apos;s worth signing up Monday</li>
-        <li>Games are Friday, Saturday, or Sunday — check the homepage for which one this week is</li>
+        <li>Games are Friday, Saturday, or Sunday. Check the homepage for which one this week is</li>
       </Section>
 
       <Section title="Signing up">
         <li>First-come, first-served</li>
         <li>Once capacity fills, new signups go on an automatic waitlist, in order</li>
         <li>First time signing up: fill out a short profile (name, gender, positions)</li>
-        <li>Profile is saved for future weeks — update it any time from the homepage</li>
+        <li>Profile is saved for future weeks. Update it any time from the homepage</li>
         <li>Waitlisted? The homepage shows where you are in line</li>
         <li>You can see who else is playing once you&apos;re signed up for that week</li>
         <li>Confirmed players get a reminder email on game-day morning, and can add the game to their calendar</li>
@@ -54,11 +54,11 @@ export default function GuidelinesPage() {
           automatically confirmed and emailed. Nothing is owed yet at this point, so there&apos;s no money to sort out
         </li>
         <li>
-          <strong>Within 5 hours of game time:</strong> no automatic replacement — the organizer gets a push alert to
+          <strong>Within 5 hours of game time:</strong> no automatic replacement. The organizer gets a push alert to
           fill it manually
         </li>
         <li>
-          Cancelling this late <strong>doesn&apos;t clear what you owe</strong> — send it anyway. If the organizer
+          Cancelling this late <strong>doesn&apos;t clear what you owe</strong>, so send it anyway. If the organizer
           finds someone to fill in for you, collecting from that person is up to you, not the organizer
         </li>
       </Section>
@@ -68,29 +68,29 @@ export default function GuidelinesPage() {
         <li>
           <strong>Please reach out to them outside the app first</strong>, as a courtesy
         </li>
-        <li>Only one outstanding request at a time — cancel it to try someone else instead</li>
+        <li>Only one outstanding request at a time. Cancel it to try someone else instead</li>
         <li>If they accept, you both share their spot going forward (same as a member/guest pairing)</li>
       </Section>
 
       <Section title="Where we play">
-        <li>The general area is set when the week opens — e.g. &quot;Mississauga&quot;</li>
+        <li>The general area is set when the week opens, e.g. &quot;Mississauga&quot;</li>
         <li>The exact field is booked after signups close, once the headcount is known</li>
         <li>Once it&apos;s booked, the field and a map link show up on the homepage</li>
       </Section>
 
       <Section title="Cost">
-        <li>A fixed price per spot, shown before you sign up — it doesn&apos;t change with headcount</li>
+        <li>A fixed price per spot, shown before you sign up. It doesn&apos;t change with headcount</li>
         <li>Sharing a spot with someone? You each pay half</li>
         <li>
-          <strong>Payment opens 5 hours before game time</strong>, when the roster locks — pay any time between then
+          <strong>Payment opens 5 hours before game time</strong>, when the roster locks. Pay any time between then
           and the start of the game
         </li>
         <li>
           Nothing to pay before that. Cancel earlier and someone from the waitlist simply takes your spot, with no
           money involved either way
         </li>
-        <li>Once the roster locks, cancelling doesn&apos;t remove what you owe — nobody replaces you, and the field is booked regardless</li>
-        <li>Payment happens outside the app — the organizer tracks who&apos;s paid</li>
+        <li>Once the roster locks, cancelling doesn&apos;t remove what you owe: nobody replaces you, and the field is booked regardless</li>
+        <li>Payment happens outside the app. The organizer tracks who&apos;s paid</li>
         <li>
           Payment opening at the lock is deliberate: it means nobody who has paid can then be replaced, so there are
           never refunds or transfers between players to work out
@@ -99,7 +99,7 @@ export default function GuidelinesPage() {
 
       <Section title="A note on risk">
         <li>Softball carries a real risk of injury</li>
-        <li>Every signup includes a plain acknowledgment of that — you&apos;re choosing to play</li>
+        <li>Every signup includes a plain acknowledgment of that: you&apos;re choosing to play</li>
         <li>
           See our{' '}
           <a href="/privacy" className="text-blue-600 hover:underline">
