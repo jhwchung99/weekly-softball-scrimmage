@@ -28,12 +28,26 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
  * about whoever just dropped, so they can personally text someone to
  * fill the spot.
  */
-export async function sendLateCancellationAlert(signup: Signup, session: Session): Promise<void> {
+export async function sendLateCancellationAlert(signup: Signup, session: Session, amountOwed = 0): Promise<void> {
   const title = `Late cancellation — ${session.gameDate} scrimmage`;
   const positions = signup.positions || 'no positions listed';
-  const message = `${signup.fullName} (${positions}) just cancelled within 5 hours of the ${session.gameDate} ${session.gameTime} scrimmage. No one was auto-promoted — their spot is open.`;
+  const parts = [
+    `${signup.fullName} (${positions}) just cancelled within 5 hours of the ${session.gameDate} ${session.gameTime} scrimmage.`,
+    'No one was auto-promoted — their spot is open.',
+  ];
 
-  await sendPush(title, message);
+  // Saves the organizer wondering whether to chase or refund: the money is
+  // still owed by the person who cancelled, and if anyone fills in, the two of
+  // them settle it between themselves.
+  if (amountOwed > 0) {
+    parts.push(
+      signup.paid
+        ? `They've already paid $${signup.amountPaid.toFixed(2)} — no refund; if someone fills in, they settle it directly.`
+        : `They still owe $${amountOwed.toFixed(2)} — collect from them, not from whoever fills in.`
+    );
+  }
+
+  await sendPush(title, parts.join(' '));
 }
 
 /**
