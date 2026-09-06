@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck, Lock } from 'lucide-react';
+import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck, Lock, AlertTriangle } from 'lucide-react';
 import { POSITIONS } from '../lib/positions';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -28,6 +28,8 @@ export interface SignupInfo {
   signupId: string;
   status: 'confirmed' | 'waitlisted' | 'cancelled';
   memberStatus: 'member' | 'guest';
+  /** Whether the organizer has recorded this person's payment. */
+  paid: boolean;
   subRequestTargetEmail: string;
   subRequestStatus: '' | 'pending' | 'declined';
 }
@@ -420,15 +422,25 @@ export default function Home() {
  */
 function PaymentPrompt({
   amount,
+  paid,
   gameDate,
   gameTime,
   instructions,
 }: {
   amount: number;
+  paid: boolean;
   gameDate: string;
   gameTime: string;
   instructions: string;
 }) {
+  if (paid) {
+    return (
+      <p className="mt-2 text-sm text-green-700">
+        Payment received — thanks. You&apos;re all settled for this week.
+      </p>
+    );
+  }
+
   const { cutoffStart } = getWeeklyMilestones(gameDate, gameTime);
   const opensAt = cutoffStart.toLocaleString('en-US', {
     timeZone: 'America/New_York',
@@ -450,6 +462,37 @@ function PaymentPrompt({
     <p className="mt-2 text-sm text-slate-700">
       You owe <strong>${amount.toFixed(2)}</strong> — please send it before the game starts.
       {instructions ? ` ${instructions}` : ''}
+    </p>
+  );
+}
+
+/**
+ * Shown above the cancel button once the roster has locked.
+ *
+ * This is the one case where the organizer would otherwise get pulled into
+ * moving money around. After the lock nobody is auto-promoted, so if the spot
+ * gets filled at all it's because the organizer texted someone — and without
+ * saying so, the natural assumption is that the organizer sorts out the
+ * refund. The rule is the opposite: the person who cancelled still owes, and
+ * collecting from whoever fills in is between the two of them.
+ */
+function LockedCancelNotice({ amount, paid }: { amount: number | null; paid: boolean }) {
+  return (
+    <p className="mt-3 flex items-start gap-1.5 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>
+        <strong>The roster is locked.</strong>{' '}
+        {paid ? (
+          <>You&apos;ve already paid, and cancelling now doesn&apos;t change that.</>
+        ) : (
+          <>
+            Cancelling now doesn&apos;t clear what you owe
+            {amount !== null ? <> — please still send your ${amount.toFixed(2)}</> : null}.
+          </>
+        )}{' '}
+        Nobody is added in your place automatically. If someone does end up filling in for you, sorting that money out
+        is between the two of you.
+      </span>
     </p>
   );
 }
@@ -499,6 +542,8 @@ export function PlayerArea(props: {
     );
   }
 
+  const rosterLocked = new Date() >= getWeeklyMilestones(scrimmage.gameDate, scrimmage.gameTime).cutoffStart;
+
   if (mySignup) {
     return (
       <div className="mt-3">
@@ -513,6 +558,7 @@ export function PlayerArea(props: {
         {mySignup.status === 'confirmed' && costOwed !== null && (
           <PaymentPrompt
             amount={costOwed}
+            paid={mySignup.paid}
             gameDate={scrimmage.gameDate}
             gameTime={scrimmage.gameTime}
             instructions={paymentInstructions}
@@ -527,6 +573,10 @@ export function PlayerArea(props: {
             locationName={scrimmage.locationName}
             locationUrl={scrimmage.locationUrl}
           />
+        )}
+
+        {rosterLocked && mySignup.status === 'confirmed' && (
+          <LockedCancelNotice amount={costOwed} paid={mySignup.paid} />
         )}
 
         <Button variant="danger" size="md" onClick={onCancel} disabled={busy} className="mt-3">
