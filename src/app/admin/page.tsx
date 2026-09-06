@@ -279,7 +279,7 @@ export default function AdminPage() {
                 </Button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Game day must be a Friday, Saturday, or Sunday. Moving it — even to a different week — keeps every existing signup.
+                Game day must be a Friday, Saturday, or Sunday. Moving it, even to a different week, keeps every existing signup.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <label htmlFor="admin-capacity" className="text-sm text-slate-700">Capacity</label>
@@ -481,7 +481,7 @@ export default function AdminPage() {
                         <td className="py-1.5 pr-2 whitespace-nowrap">
                           <input
                             type="checkbox"
-                            aria-label={`Paid — ${s.fullName}`}
+                            aria-label={`Paid: ${s.fullName}`}
                             checked={s.paid}
                             disabled={busy}
                             onChange={(e) => updateSignupPaid(s.signupId, e.target.checked)}
@@ -493,7 +493,7 @@ export default function AdminPage() {
                         <td className="py-1.5 pr-2">
                           <input
                             type="checkbox"
-                            aria-label={`Attended — ${s.fullName}`}
+                            aria-label={`Attended: ${s.fullName}`}
                             checked={s.attended}
                             disabled={busy}
                             onChange={(e) => updateSignupAttended(s.signupId, e.target.checked)}
@@ -578,7 +578,7 @@ function CreateSessionForm(props: {
       <form onSubmit={handleSubmit} className="space-y-2">
         <h2 className="font-semibold text-slate-900">Create a new session</h2>
         <p className="text-xs text-slate-500">
-          Game day must be a Friday, Saturday, or Sunday. Created with registration <strong>closed</strong> — the
+          Game day must be a Friday, Saturday, or Sunday. Created with registration <strong>closed</strong>. The
           Monday 9am job opens whichever session belongs to that week, so nobody can sign up early.
         </p>
         <div className="flex flex-wrap items-end gap-2">
