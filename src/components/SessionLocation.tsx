@@ -10,7 +10,7 @@ interface SessionLocationProps {
 
 /**
  * Renders wherever the game is, at whatever certainty is currently known —
- * "Mississauga — specific field TBD" before the permit is booked, the actual
+ * "Mississauga (specific field TBD)" before the permit is booked, the actual
  * diamond (linked to a map, if there is one) afterwards. Renders nothing when
  * no area has been set yet, rather than an empty placeholder.
  */
