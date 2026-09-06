@@ -226,7 +226,7 @@ export default function Home() {
           <ListChecks className="h-4 w-4" /> Quick guide
         </h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-          <li>First-come, first-served — extra signups go to an automatic waitlist.</li>
+          <li>First-come, first-served. Extra signups go to an automatic waitlist.</li>
           <li>Cancel any time, but cancellations within 5 hours of game time won&apos;t trigger an auto-replacement.</li>
           <li>Bringing a guest? They can optionally share your spot instead of taking a separate one.</li>
           <li>Once the week is priced, cost splits evenly across confirmed spots.</li>
@@ -249,7 +249,7 @@ export default function Home() {
             </Button>
             <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-500">
               <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              We only see your name and email — never your password, inbox, or anything else in your Google account.
+              We only see your name and email, never your password, inbox, or anything else in your Google account.
             </p>
           </>
         )}
@@ -287,7 +287,7 @@ export default function Home() {
         {scrimmageLoaded && scrimmage && (
           <>
             <h2 className="font-semibold text-slate-900">
-              Scrimmage — {scrimmage.gameDate} at {scrimmage.gameTime}
+              Scrimmage: {scrimmage.gameDate} at {scrimmage.gameTime}
             </h2>
             <SessionLocation
               className="mt-1"
@@ -436,7 +436,7 @@ function PaymentPrompt({
   if (paid) {
     return (
       <p className="mt-2 text-sm text-green-700">
-        Payment received — thanks. You&apos;re all settled for this week.
+        Payment received, thanks. You&apos;re all settled for this week.
       </p>
     );
   }
@@ -452,7 +452,7 @@ function PaymentPrompt({
   if (new Date() < cutoffStart) {
     return (
       <p className="mt-2 text-sm text-slate-500">
-        Your spot costs <strong>${amount.toFixed(2)}</strong>. Nothing to pay yet — payment opens {opensAt}, once the
+        Your spot costs <strong>${amount.toFixed(2)}</strong>. Nothing to pay yet. Payment opens {opensAt}, once the
         roster is locked and the lineup can no longer change.
       </p>
     );
@@ -460,7 +460,7 @@ function PaymentPrompt({
 
   return (
     <p className="mt-2 text-sm text-slate-700">
-      You owe <strong>${amount.toFixed(2)}</strong> — please send it before the game starts.
+      You owe <strong>${amount.toFixed(2)}</strong>. Please send it before the game starts.
       {instructions ? ` ${instructions}` : ''}
     </p>
   );
@@ -548,7 +548,7 @@ export function PlayerArea(props: {
             {mySignup.status === 'confirmed' ? 'confirmed to play' : 'on the waitlist'}
           </Badge>
           {mySignup.memberStatus === 'guest' ? '(as a guest)' : ''}
-          {mySignup.status === 'waitlisted' && waitlistPosition !== null ? `— #${waitlistPosition} in line` : ''}
+          {mySignup.status === 'waitlisted' && waitlistPosition !== null ? `#${waitlistPosition} in line` : ''}
         </p>
 
         {mySignup.status === 'confirmed' && costOwed !== null && (
@@ -651,7 +651,7 @@ export function SubRequestPanel(props: {
         <p className="mb-2 text-slate-600">{subRequestTargetEmail} declined your last request.</p>
       )}
       <p className="text-xs text-slate-500">
-        Please reach out outside the app first, out of politeness — see the{' '}
+        Please reach out outside the app first, out of politeness. See the{' '}
         <a href="/guidelines" className="text-blue-600 hover:underline">
           full guidelines
         </a>
@@ -712,7 +712,7 @@ export function ProfileSection(props: {
   return (
     <Card className="mt-4 flex items-center justify-between gap-3 text-sm text-slate-700">
       <span>
-        {myPlayer.fullName} — {myPlayer.gender} — positions: {myPlayer.savedPositions || 'none saved'}
+        {myPlayer.fullName}, {myPlayer.gender}, positions: {myPlayer.savedPositions || 'none saved'}
       </span>
       <button onClick={() => setEditing(true)} className="shrink-0 text-blue-600 hover:underline">
         Edit profile
@@ -768,8 +768,8 @@ export function ProfileForm(props: {
     <form onSubmit={handleSubmit} className="mt-3 space-y-3">
       <p className="text-sm text-slate-600">
         {initialValues
-          ? "Update your info — this won't change a signup you've already submitted for this week, only future ones."
-          : 'First time here — tell us a bit about yourself (saved for future weeks).'}
+          ? "Update your info. This won't change a signup you've already submitted for this week, only future ones."
+          : 'First time here? Tell us a bit about yourself (saved for future weeks).'}
       </p>
       <div>
         <label htmlFor="profile-full-name" className="block text-sm text-slate-700">Full name</label>
