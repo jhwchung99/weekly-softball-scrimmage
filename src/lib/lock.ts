@@ -85,5 +85,5 @@ export async function withMutationLock<T>(fn: () => Promise<T>): Promise<T> {
     }
     await new Promise((resolve) => setTimeout(resolve, ACQUIRE_RETRY_DELAY_MS));
   }
-  throw new ApiError(503, 'The server is busy processing other requests — please try again in a moment.');
+  throw new ApiError(503, 'The server is busy processing other requests. Please try again in a moment.');
 }
