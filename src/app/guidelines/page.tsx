@@ -51,11 +51,11 @@ export default function GuidelinesPage() {
         <li>Cancel any time, right up to game day, from the homepage</li>
         <li>
           <strong>More than 5 hours before game time:</strong> the next person (or pair) on the waitlist is
-          automatically confirmed and emailed
+          automatically confirmed and emailed. Nothing is owed yet at this point, so there&apos;s no money to sort out
         </li>
         <li>
           <strong>Within 5 hours of game time:</strong> no automatic replacement — the organizer gets a push alert to
-          fill it manually
+          fill it manually, and what you owe stands (see Cost)
         </li>
       </Section>
 
@@ -87,6 +87,10 @@ export default function GuidelinesPage() {
         </li>
         <li>Once the roster locks, cancelling doesn&apos;t remove what you owe — nobody replaces you, and the field is booked regardless</li>
         <li>Payment happens outside the app — the organizer tracks who&apos;s paid</li>
+        <li>
+          Payment opening at the lock is deliberate: it means nobody who has paid can then be replaced, so there are
+          never refunds or transfers between players to work out
+        </li>
       </Section>
 
       <Section title="A note on risk">
