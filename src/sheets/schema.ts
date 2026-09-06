@@ -24,7 +24,7 @@ export interface Session {
   // spot splits this between its two occupants (computeCostShare). 0 = free /
   // not priced yet.
   locationArea: string; // the general area, known at creation — e.g.
-  // "Mississauga". Shown as "<area> — specific field TBD" until the permit is
+  // "Mississauga". Shown as "<area> (specific field TBD)" until the permit is
   // actually booked.
   locationName: string; // the specific field, filled in once booked — e.g.
   // "Iceland Park Diamond 3". '' until then.
