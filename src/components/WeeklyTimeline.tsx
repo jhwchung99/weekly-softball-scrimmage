@@ -41,9 +41,16 @@ function formatRelative(target: Date, now: Date): string {
 
 type DotState = 'done' | 'current' | 'upcoming';
 
+const DOT_STYLES: Record<DotState, string> = {
+  // Three states need three looks. 'done' and 'current' used to share a colour,
+  // which made a finished milestone and the one in progress indistinguishable.
+  done: 'bg-green-500',
+  current: 'bg-amber-500 ring-2 ring-amber-200',
+  upcoming: 'bg-slate-200',
+};
+
 function Dot({ state }: { state: DotState }) {
-  const color = state === 'upcoming' ? 'bg-slate-200' : 'bg-green-500';
-  return <div className={`h-3 w-3 shrink-0 rounded-full ${color}`} />;
+  return <div className={`h-3 w-3 shrink-0 rounded-full ${DOT_STYLES[state]}`} />;
 }
 
 function Line({ filled }: { filled: boolean }) {
@@ -74,23 +81,27 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
   const now = new Date();
   const { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart } = getWeeklyMilestones(gameDate, gameTime);
 
-  const openDone = status === 'closed' || now >= registrationOpensAt;
-  const closeDone = status === 'closed';
+  // `status` is the source of truth for whether signups are being accepted, but
+  // 'closed' means two different things depending on when you ask: "hasn't
+  // opened yet" for a session created ahead of its week, or "opened and has
+  // since finished". The clock disambiguates those; nothing else here needs it.
+  const closeDone = status === 'closed' && now >= registrationOpensAt;
+  const openDone = status === 'open' || closeDone;
   const gameDone = now >= gameStart;
 
   const openState: DotState = openDone ? 'done' : 'current';
-  const closeState: DotState = closeDone ? 'done' : status === 'open' ? 'current' : 'upcoming';
-  const gameState: DotState = gameDone ? 'done' : status === 'closed' ? 'current' : 'upcoming';
+  const closeState: DotState = closeDone ? 'done' : openDone ? 'current' : 'upcoming';
+  const gameState: DotState = gameDone ? 'done' : closeDone ? 'current' : 'upcoming';
 
   let statusLine: string;
   if (gameDone) {
-    statusLine = "Today's game has started — see you on the field!";
+    statusLine = "Today's game has started. See you on the field!";
   } else if (status === 'open') {
     statusLine = `Registration closes ${formatDateTime(registrationClosesAt)} (${formatRelative(registrationClosesAt, now)})`;
   } else if (status === 'closed') {
     statusLine =
       now >= cutoffStart
-        ? `Game starts ${formatRelative(gameStart, now)} — cancellations now won't trigger an auto-replacement`
+        ? `Game starts ${formatRelative(gameStart, now)}. Cancellations now won't trigger an auto-replacement`
         : `Game starts ${formatDateTime(gameStart)} (${formatRelative(gameStart, now)})`;
   } else {
     statusLine = `Registration opens ${formatDateTime(registrationOpensAt)} (${formatRelative(registrationOpensAt, now)})`;
