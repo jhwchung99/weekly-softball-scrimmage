@@ -69,13 +69,16 @@ sequenceDiagram
 
     Note over Player,Admin: Tuesday close → game day
     Admin->>App: Books a permit sized to the headcount, sets the field + map link
-    Player->>App: Pays for their spot (outside the app)
-    Admin->>Sheet: record the payment
-    Player->>App: Cancel signup (still allowed any time)
+    Player->>App: Cancel signup (still allowed, still auto-promotes a replacement)
 
     Note over Cron,App: Game day, 9am ET
     Cron->>App: POST /api/cron/game-day-reminder
-    App->>Gmail: remind each confirmed player (time, field, amount owed)
+    App->>Gmail: remind each confirmed player (time, field, when payment opens)
+
+    Note over Player,Admin: Game day, 5h before start — roster locks
+    Note over Player,Admin: Cancellations no longer auto-promote, so payment opens
+    Player->>App: Pays for their spot (outside the app)
+    Admin->>Sheet: record the payment
 
     Note over Player,Admin: Game day — Friday, Saturday or Sunday
     Note over Player,Admin: Scrimmage happens, admin records attendance
@@ -99,34 +102,38 @@ sequenceDiagram
    waitlist, based on the week's capacity — and if waitlisted, where you
    are in the queue. Once you're signed up you can also see who else is
    playing; before that you only see the headcount.
-4. **Payment opens 5 hours before game time**, the moment the roster
-   locks, and is due before the game starts. Each spot has a fixed price,
-   shown up front and unchanged by how many people end up playing (two
-   people sharing a spot pay half each). Nothing is owed before the lock:
-   cancel earlier and someone from the waitlist simply takes the spot,
-   with no money having changed hands. Deliberately aligned this way so
-   that nobody who has paid can then be replaced — which means no
-   refunds, and no working out who owes whom. Payment happens outside the
-   app.
-5. **Cancel any time** if plans change — from right after you sign up
+4. **Cancel any time** if plans change — from right after you sign up
    through game day itself. If your cancellation frees up a confirmed
    spot:
    - More than 5 hours before game time: the next person (or pair) on
-     the waitlist is automatically promoted and emailed.
+     the waitlist is automatically promoted and emailed. No money has
+     changed hands at this point, so there's nothing to settle.
    - Within 5 hours of game time: no one is auto-promoted (too last
      minute for an email to reach anyone in time) — the organizer gets a
      push alert instead so they can personally text someone.
-6. **Tuesday, 12am ET** — registration closes automatically. You can no
+5. **Tuesday, 12am ET** — registration closes automatically. You can no
    longer sign up fresh for that week, but you can still cancel an
    existing signup.
-7. **Where you're playing** is confirmed during the week. The general
+6. **Where you're playing** is confirmed during the week. The general
    area is known up front ("Mississauga — specific field TBD"); the
    exact field is booked once the headcount is known and then appears on
    the homepage with a map link.
-8. **Game day** — Friday by default, and an admin can schedule or move
-   it to Saturday or Sunday. Confirmed players get a reminder email that
-   morning with the time, the field, and anything still owed, and can
-   add the game to their calendar from the homepage.
+7. **Game day morning** — confirmed players get a reminder email with
+   the time, the field, and when payment opens, and can add the game to
+   their calendar from the homepage. Game day is Friday by default; an
+   admin can schedule or move it to Saturday or Sunday.
+8. **Five hours before the game, the roster locks and payment opens.**
+   Each spot has a fixed price, shown up front and unchanged by how many
+   people end up playing (two people sharing a spot pay half each). Pay
+   any time between the lock and the start of the game; payment happens
+   outside the app.
+
+   The lock and the payment window are deliberately the same moment. It
+   is also when cancellations stop auto-promoting anyone — so nobody who
+   has paid can subsequently be replaced. That means there are never
+   refunds to issue or transfers between players to work out. Cancelling
+   after the lock doesn't remove what you owe, because no one takes your
+   place and the field is booked either way.
 
 ### As an admin
 
