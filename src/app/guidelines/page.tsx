@@ -55,7 +55,11 @@ export default function GuidelinesPage() {
         </li>
         <li>
           <strong>Within 5 hours of game time:</strong> no automatic replacement — the organizer gets a push alert to
-          fill it manually, and what you owe stands (see Cost)
+          fill it manually
+        </li>
+        <li>
+          Cancelling this late <strong>doesn&apos;t clear what you owe</strong> — send it anyway. If the organizer
+          finds someone to fill in for you, collecting from that person is up to you, not the organizer
         </li>
       </Section>
 
