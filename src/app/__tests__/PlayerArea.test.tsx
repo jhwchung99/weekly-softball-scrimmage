@@ -61,7 +61,7 @@ describe('PlayerArea', () => {
       <PlayerArea
         {...baseProps}
         registrationClosed={true}
-        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
       />
     );
     expect(screen.getByText(/confirmed to play/i)).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe('PlayerArea', () => {
     const { rerender } = render(
       <PlayerArea
         {...baseProps}
-        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
       />
     );
     expect(screen.queryByRole('button', { name: /request to sub/i })).not.toBeInTheDocument();
@@ -80,7 +80,7 @@ describe('PlayerArea', () => {
     rerender(
       <PlayerArea
         {...baseProps}
-        mySignup={{ signupId: 's1', status: 'waitlisted', memberStatus: 'member', subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'waitlisted', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
       />
     );
     expect(screen.getByRole('button', { name: /request to sub/i })).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe('PlayerArea', () => {
       <PlayerArea
         {...baseProps}
         costOwed={7.5}
-        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
       />
     );
     expect(screen.getByText(/\$7\.50/)).toBeInTheDocument();
@@ -114,6 +114,7 @@ describe('PlayerArea payment timing', () => {
     signupId: 's1',
     status: 'confirmed' as const,
     memberStatus: 'member' as const,
+    paid: false,
     subRequestTargetEmail: '',
     subRequestStatus: '' as const,
   };
@@ -132,7 +133,7 @@ describe('PlayerArea payment timing', () => {
     vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // an hour after the lock
     render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
 
-    expect(screen.getByText(/you owe/i)).toBeInTheDocument();
+    expect(screen.getByText(/please send it before the game starts/i)).toBeInTheDocument();
     expect(screen.queryByText(/nothing to pay yet/i)).not.toBeInTheDocument();
   });
 
@@ -142,5 +143,62 @@ describe('PlayerArea payment timing', () => {
     render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} paymentInstructions="e-Transfer to x@y.test" />);
 
     expect(screen.getByText(/e-Transfer to x@y.test/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * After the lock nobody is auto-promoted, so a spot only gets filled if the
+ * organizer texts someone — and the default assumption would be that the
+ * organizer then sorts out the money. The notice exists to say otherwise. It's
+ * informational: it never blocks the cancellation.
+ */
+describe('PlayerArea locked-cancellation notice', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const confirmed = {
+    signupId: 's1',
+    status: 'confirmed' as const,
+    memberStatus: 'member' as const,
+    paid: false,
+    subRequestTargetEmail: '',
+    subRequestStatus: '' as const,
+  };
+
+  it('is not shown while cancelling is still free', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T12:00:00.000Z')); // before the lock
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+
+    // "roster is locked" also appears in the pre-lock payment copy, so match
+    // on wording unique to the notice.
+    expect(screen.queryByText(/between the two of you/i)).not.toBeInTheDocument();
+  });
+
+  it('tells an unpaid player they still owe, and that collecting from a sub is on them', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // after the lock
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+
+    expect(screen.getByText(/doesn't clear what you owe/i)).toBeInTheDocument();
+    expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
+  });
+
+  it('tells an already-paid player that cancelling changes nothing', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
+    render(<PlayerArea {...baseProps} mySignup={{ ...confirmed, paid: true }} costOwed={10} />);
+
+    expect(screen.getByText(/already paid/i)).toBeInTheDocument();
+    expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
+  });
+
+  it('still lets them cancel — the notice never blocks it', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
+    const onCancel = vi.fn();
+    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} onCancel={onCancel} />);
+
+    screen.getByRole('button', { name: /cancel my spot/i }).click();
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
