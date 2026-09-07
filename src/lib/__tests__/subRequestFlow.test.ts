@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer } from '../../test/fakeSheets';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer , duringRegistration} from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 // vi.hoisted's callback runs before this file's own imports are linked,
@@ -36,6 +36,15 @@ async function setUpConfirmedAndWaitlisted() {
 beforeEach(() => {
   resetFakeStore(store);
   vi.clearAllMocks();
+  // Player signups are gated on the registration window now, so these
+  // run at a fixed instant inside it rather than at whatever time the
+  // suite happens to be run.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(duringRegistration());
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('requestSub', () => {
