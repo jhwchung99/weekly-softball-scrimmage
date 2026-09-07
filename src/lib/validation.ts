@@ -1,6 +1,7 @@
 import { ApiError } from './apiErrors';
 import { POSITIONS } from './positions';
 import { normalizeEmail } from './email';
+import { FEEDBACK_KINDS, FeedbackKind, MAX_FEEDBACK_LENGTH } from './feedbackKinds';
 
 // Added in the 2026-09-04 security hardening pass — these fields were
 // previously accepted as arbitrary, unbounded free text (see
@@ -173,4 +174,38 @@ export function validatePlayerProfile(input: PlayerProfileInput): ValidatedPlaye
     gender: validateGender(input.gender),
     savedPositions: validateSavedPositions(input.savedPositions ?? ''),
   };
+}
+
+const MAX_PAGE_URL_LENGTH = 200;
+
+export interface ValidatedFeedback {
+  kind: FeedbackKind;
+  message: string;
+  pageUrl: string;
+}
+
+/**
+ * The feedback form's body. Unlike a profile, this text is never stored,
+ * only pushed straight to the organizer's phone, so the length cap is
+ * what keeps a notification readable rather than what fits a Sheet cell.
+ *
+ * `pageUrl` is a convenience for the reporter ("which screen was this
+ * on"), not a trusted field, so it's clamped to a path rather than
+ * accepted as an arbitrary URL: it ends up in a notification the
+ * organizer may well tap.
+ */
+export function validateFeedback(input: { kind?: unknown; message?: unknown; pageUrl?: unknown }): ValidatedFeedback {
+  const kind = FEEDBACK_KINDS.find((k) => k === input.kind);
+  if (!kind) throw new ApiError(400, `kind must be one of: ${FEEDBACK_KINDS.join(', ')}.`);
+
+  const message = requireTrimmedString(input.message, 'message', MAX_FEEDBACK_LENGTH);
+
+  const rawPageUrl = typeof input.pageUrl === 'string' ? input.pageUrl.trim() : '';
+  // Must be a path, and specifically not a protocol-relative one: a browser
+  // resolves "//evil.example" to an absolute URL on that host, so accepting
+  // it would put an attacker-chosen link in the organizer's notification.
+  const isSameSitePath = rawPageUrl.startsWith('/') && !rawPageUrl.startsWith('//');
+  const pageUrl = isSameSitePath ? rawPageUrl.slice(0, MAX_PAGE_URL_LENGTH) : '';
+
+  return { kind, message, pageUrl };
 }
