@@ -165,7 +165,11 @@ export function parseSessionRow(row: RawRow<Session>): Session {
   return {
     ...row,
     capacity: Number(row.capacity) || 0,
-    status: (row.status || 'open') as SessionStatus,
+    // Defaults CLOSED, not open: a blank cell means "nobody has said this is
+    // open", and for an availability flag the safe reading of silence is no.
+    // Defaulting to open meant a hand-edited or half-written row accepted
+    // signups on its own.
+    status: (row.status || 'closed') as SessionStatus,
     cost: Number(row.cost) || 0,
     pricePerSpot: Number(row.pricePerSpot) || 0,
   };
