@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Session, Signup, Player, SessionStatus } from '../sheets/schema';
 import { normalizeEmail } from '../lib/email';
+import { getWeeklyMilestones } from '../lib/time';
 
 /**
  * A minimal in-memory stand-in for the Sheets-backed repository modules
@@ -181,6 +182,19 @@ export function fakePlayersModule(store: FakeStore) {
       store.players.set(normalized.email, normalized);
     }),
   };
+}
+
+/**
+ * An instant inside a session's registration window (Monday 9am ET to
+ * Tuesday midnight ET), for tests that exercise the player signup path.
+ *
+ * Player signups are gated on the clock as well as `status`, so a test
+ * signing someone up has to say *when* it happens. Derived from the same
+ * helper the gate uses, so it can't drift out of agreement with it.
+ */
+export function duringRegistration(gameDate: string = makeSession().gameDate): Date {
+  const { registrationOpensAt } = getWeeklyMilestones(gameDate, '18:00');
+  return new Date(registrationOpensAt.getTime() + 3 * 60 * 60 * 1000); // Monday noon ET
 }
 
 /** Helpers for building valid fixtures with sensible defaults, so each
