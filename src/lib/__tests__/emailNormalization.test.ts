@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer } from '../../test/fakeSheets';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer , duringRegistration} from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 const store = vi.hoisted((): FakeStore => ({ sessions: new Map(), signups: new Map(), players: new Map() }));
@@ -14,7 +14,18 @@ const { normalizeEmail } = await import('../email');
 const { signUpForSession, cancelMySignup, getMyStatusForSession } = await import('../signupFlow');
 const { requestSub, cancelSubRequest } = await import('../subRequestFlow');
 
-beforeEach(() => resetFakeStore(store));
+beforeEach(() => {
+  resetFakeStore(store);
+  // Player signups are gated on the registration window now, so these
+  // run at a fixed instant inside it rather than at whatever time the
+  // suite happens to be run.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(duringRegistration());
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('normalizeEmail', () => {
   it('trims and lowercases', () => {
