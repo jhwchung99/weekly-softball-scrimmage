@@ -162,6 +162,18 @@ export function validateGameTime(value: unknown): string {
   return trimmed;
 }
 
+/**
+ * How many diamonds are booked. Two is the practical ceiling for a pickup
+ * game, and it is what decides whether the generator makes two teams or four.
+ */
+export function validateNumFields(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 2) {
+    throw new ApiError(400, 'numFields must be 1 or 2.');
+  }
+  return n;
+}
+
 export interface PlayerProfileInput {
   fullName: unknown;
   gender: unknown;
