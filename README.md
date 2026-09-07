@@ -12,9 +12,11 @@ backed by a Google Sheet as its database.
 - **Next.js app** (`src/app`) — the signup UI, the admin dashboard, and
   every API route. Deployed on Vercel.
 - **Google Sheet** (`src/sheets`) — the database. Five tabs: `Sessions`
-  (one row per week's game), `Signups`, `Players` (saved profiles),
-  `Admins` (allowlist of admin emails), and `Feedback` (append-only log
-  of bug reports and suggestions). Read and written via a service
+  (one row per week's game, including how many fields are booked and
+  whether teams have been posted), `Signups` (including which team each
+  player is on), `Players` (saved profiles), `Admins` (allowlist of admin
+  emails), and `Feedback` (append-only log of bug reports and
+  suggestions). Read and written via a service
   account through the Sheets API, not a spreadsheet UI a player ever
   touches directly. Columns are mapped **by position**, so the header
   arrays in `src/sheets/schema.ts` are the physical layout — run
@@ -30,9 +32,11 @@ backed by a Google Sheet as its database.
 - **ntfy.sh** — push notifications to the organizer: a cancellation too
   close to game time to auto-promote anyone, and a heads-up whenever
   someone files feedback from the site's feedback button.
-- **GitHub Actions** (`.github/workflows`) — three scheduled jobs:
-  opening registration Monday, closing it Tuesday, and the game-day
-  reminder.
+- **GitHub Actions** (`.github/workflows`) — four scheduled jobs:
+  opening registration Monday, closing it Tuesday, the game-day
+  reminder, and team generation. The first three fire at fixed clock
+  times; team generation runs hourly on game days, because the moment it
+  cares about (the roster lock) moves with each session's game time.
 
 ## Typical week
 
@@ -141,6 +145,12 @@ sequenceDiagram
    after the lock doesn't remove what you owe, because no one takes your
    place and the field is booked either way.
 
+9. **Teams go up on the homepage** once the organizer posts them. They
+   are drawn up automatically after the roster locks and reviewed before
+   anyone sees them, so they appear some time between the lock and the
+   game. If someone cancels after that, they simply drop off their team
+   and it plays a person short.
+
 ### As an admin
 
 Anyone whose email is on the `Admins` sheet tab sees an admin dashboard
@@ -193,6 +203,27 @@ in addition to the regular player view. Across the same week:
 - **Track attendance.** A per-signup checkbox for who actually turned
   up. Admin-only — nothing is shown to players and nothing happens
   automatically; it's just a record.
+- Gets a **headcount push the moment registration closes**, whatever the
+  numbers are. The open-spots alert above stays quiet when the session
+  filled, which is exactly when a second field is worth considering, so
+  this one always fires.
+- **Set the number of fields** (1 or 2). Two fields means four teams
+  instead of two. Raising capacity at the same time promotes everyone it
+  can off the waitlist, in order, emailing each of them.
+- **Review and post teams.** After the roster locks, a first pass at
+  teams is generated automatically and the organizer gets a push. The
+  dashboard lets them move players between teams — all local, nothing is
+  written until **Save** — and then **Post** publishes them. Under each
+  team is a note naming any position nobody on it can cover.
+
+  The generator balances position coverage first, then team size, then
+  the gender split. Coverage is a bipartite matching between the nine
+  lineup slots and the players, not a count of who lists what: a player
+  fills exactly one position in an inning, so one "Anything" player
+  cannot be both the catcher and the shortstop. Two people sharing a
+  spot always land on the same team, and their team is judged on the
+  worse of the two cases, since either of them might be the one who
+  turns up. See `src/lib/teams.ts`.
 
 ## Setup
 
@@ -218,7 +249,7 @@ You need:
 
 ```sh
 npm run dev              # local dev server
-npm run setup:sheets     # create the Sessions/Signups/Players/Admins/Feedback tabs
+npm run setup:sheets     # create the data tabs, and add any newly added columns' headers
 npm run authorize-gmail-sender  # one-time OAuth flow for the sender account
 ```
 
@@ -229,7 +260,7 @@ npm run authorize-gmail-sender  # one-time OAuth flow for the sender account
 | `npm run dev` | Local dev server (Turbopack). |
 | `npm run build` / `npm start` | Production build / run. |
 | `npm run lint` | ESLint. |
-| `npm run setup:sheets` | Creates the five data tabs with headers, if they don't already exist. |
+| `npm run setup:sheets` | Creates the five data tabs with headers, and fills in headers for columns appended to the schema since. Never overwrites an existing label. |
 | `npm run authorize-gmail-sender` | One-time OAuth flow that prints a refresh token for `GMAIL_SENDER_REFRESH_TOKEN` — see `scripts/authorizeGmailSender.ts`. |
 
 `scripts/seedDummyData.ts` seeds a throwaway test session and signups
