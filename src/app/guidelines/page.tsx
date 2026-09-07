@@ -91,7 +91,10 @@ export default function GuidelinesPage() {
           Nothing to pay before that. Cancel earlier and someone from the waitlist simply takes your spot, with no
           money involved either way
         </li>
-        <li>Once the roster locks, cancelling doesn&apos;t remove what you owe: nobody replaces you, and the field is booked regardless</li>
+        <li>
+          Once the roster locks, cancelling doesn&apos;t remove what you owe. Please ET the organizer for your locked
+          spot
+        </li>
         <li>Payment happens outside the app. The organizer tracks who&apos;s paid</li>
       </Section>
 
