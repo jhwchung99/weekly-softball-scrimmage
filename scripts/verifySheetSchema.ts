@@ -17,13 +17,14 @@
  * See planner/2026-09-05-code-security-review.md, R1.
  */
 import { SPREADSHEET_ID, getValues } from '../src/sheets/client';
-import { SESSION_HEADERS, SIGNUP_HEADERS, PLAYER_HEADERS, ADMIN_HEADERS } from '../src/sheets/schema';
+import { SESSION_HEADERS, SIGNUP_HEADERS, PLAYER_HEADERS, ADMIN_HEADERS, FEEDBACK_HEADERS } from '../src/sheets/schema';
 
 const TABS: { tab: string; headers: readonly string[] }[] = [
   { tab: 'Sessions', headers: SESSION_HEADERS },
   { tab: 'Signups', headers: SIGNUP_HEADERS },
   { tab: 'Players', headers: PLAYER_HEADERS },
   { tab: 'Admins', headers: ADMIN_HEADERS },
+  { tab: 'Feedback', headers: FEEDBACK_HEADERS },
 ];
 
 async function verifyTab(tab: string, headers: readonly string[]): Promise<string[]> {
