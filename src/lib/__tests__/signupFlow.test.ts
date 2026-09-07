@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer, makeSignup } from '../../test/fakeSheets';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer, makeSignup , duringRegistration} from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 // See src/lib/__tests__/subRequestFlow.test.ts for notes on why the
@@ -22,9 +22,15 @@ const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirme
 beforeEach(() => {
   resetFakeStore(store);
   vi.clearAllMocks();
+  // Player signups are gated on the registration window now, so these
+  // run at a fixed instant inside it rather than at whatever time the
+  // suite happens to be run.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(duringRegistration());
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.useRealTimers();
 });
 
@@ -138,6 +144,11 @@ describe('computePaymentSummary', () => {
   });
 });
 
+// The cancellation tests below run the clock forward to game day, because
+// that is what they are about. Their signups still have to have happened
+// back when registration was actually open.
+const DURING_REGISTRATION = { now: duringRegistration('2026-07-10') };
+
 describe('signUpForSession', () => {
   it('confirms when under capacity and waitlists once full', async () => {
     store.sessions.set('2099-01-01', makeSession({ capacity: 1 }));
@@ -184,6 +195,67 @@ describe('signUpForSession', () => {
   });
 });
 
+/**
+ * The 2026-09-07 investigation: a session sat at status 'open' from the
+ * Friday before, so signups were being accepted ~7 hours ahead of the
+ * Monday 9am opening. `status` was the entire gate and nothing checked the
+ * clock, so any stray write that opened a session opened it for real.
+ */
+describe('signUpForSession: the registration window', () => {
+  const WINDOW = { opens: '2026-07-06T13:00:00.000Z', closes: '2026-07-07T04:00:00.000Z' };
+
+  function openSessionFor(email: string) {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00', capacity: 10 }));
+    store.players.set(email, makePlayer({ email }));
+  }
+
+  it('refuses a signup before Monday 9am, even though the session says open', async () => {
+    openSessionFor('a@dummy.test');
+    vi.setSystemTime(new Date(new Date(WINDOW.opens).getTime() - 60_000)); // one minute early
+    expect(store.sessions.get('2026-07-10')?.status).toBe('open');
+
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/opens Mon, Jul 6, 9:00 AM ET/);
+  });
+
+  it('accepts it once the window opens', async () => {
+    openSessionFor('a@dummy.test');
+    vi.setSystemTime(new Date(WINDOW.opens));
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).resolves.toBeDefined();
+  });
+
+  it('refuses after Tuesday midnight, so a close job that never ran cannot leave signups open', async () => {
+    openSessionFor('a@dummy.test');
+    vi.setSystemTime(new Date(WINDOW.closes));
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/closed Tue, Jul 7, 12:00 AM ET/);
+  });
+
+  it('applies to guest signups too, not just members', async () => {
+    openSessionFor('guest@dummy.test');
+    vi.setSystemTime(new Date(new Date(WINDOW.opens).getTime() - 60_000));
+    await expect(
+      signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', false, true)
+    ).rejects.toThrow(/opens Mon/);
+  });
+
+  it('still defers to status: an in-window signup on a closed session is refused', async () => {
+    openSessionFor('a@dummy.test');
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
+    vi.setSystemTime(new Date(WINDOW.opens));
+
+    // The window is a second condition, not a replacement for the first.
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/not currently open/);
+  });
+
+  it('lets an admin add someone outside the window, which is what the open-spots alert asks for', async () => {
+    openSessionFor('late@dummy.test');
+    vi.setSystemTime(new Date(WINDOW.closes)); // registration is over
+
+    await expect(
+      signUpForSession('2026-07-10', 'late@dummy.test', true, { bypassRegistrationWindow: true })
+    ).resolves.toBeDefined();
+  });
+});
+
 describe('cancelMySignup', () => {
   it('rejects cancelling someone else\'s signup without admin rights (IDOR check)', async () => {
     store.sessions.set('2099-01-01', makeSession());
@@ -220,8 +292,8 @@ describe('cancelMySignup', () => {
     store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
     store.players.set('b@dummy.test', makePlayer({ email: 'b@dummy.test' }));
 
-    const a = await signUpForSession('2026-07-10', 'a@dummy.test', true);
-    const b = await signUpForSession('2026-07-10', 'b@dummy.test', true);
+    const a = await signUpForSession('2026-07-10', 'a@dummy.test', true, DURING_REGISTRATION);
+    const b = await signUpForSession('2026-07-10', 'b@dummy.test', true, DURING_REGISTRATION);
     expect(b.status).toBe('waitlisted');
 
     const result = await cancelMySignup(a.signupId, 'a@dummy.test', false);
@@ -241,9 +313,9 @@ describe('cancelMySignup', () => {
     store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member One' }));
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest One' }));
 
-    const solo = await signUpForSession('2026-07-10', 'solo@dummy.test', true); // confirmed, fills capacity 1
-    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true); // waitlisted, unpaired
-    const member = await signUpForSession('2026-07-10', 'member@dummy.test', true); // waitlisted, pairs with guest
+    const solo = await signUpForSession('2026-07-10', 'solo@dummy.test', true, DURING_REGISTRATION); // confirmed, fills capacity 1
+    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // waitlisted, unpaired
+    const member = await signUpForSession('2026-07-10', 'member@dummy.test', true, DURING_REGISTRATION); // waitlisted, pairs with guest
     expect(guest.status).toBe('waitlisted');
     expect(member.status).toBe('waitlisted');
 
@@ -263,8 +335,8 @@ describe('cancelMySignup', () => {
     store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
     store.players.set('b@dummy.test', makePlayer({ email: 'b@dummy.test' }));
 
-    const a = await signUpForSession('2026-07-10', 'a@dummy.test', true);
-    const b = await signUpForSession('2026-07-10', 'b@dummy.test', true);
+    const a = await signUpForSession('2026-07-10', 'a@dummy.test', true, DURING_REGISTRATION);
+    const b = await signUpForSession('2026-07-10', 'b@dummy.test', true, DURING_REGISTRATION);
 
     const result = await cancelMySignup(a.signupId, 'a@dummy.test', false);
     expect(result.promoted).toEqual([]);
@@ -281,10 +353,10 @@ describe('cancelMySignup', () => {
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest One' }));
     store.players.set('c@dummy.test', makePlayer({ email: 'c@dummy.test' }));
 
-    const member = await signUpForSession('2026-07-10', 'member@dummy.test', true); // confirmed, fills capacity 1
-    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true); // pairs with member, confirmed
+    const member = await signUpForSession('2026-07-10', 'member@dummy.test', true, DURING_REGISTRATION); // confirmed, fills capacity 1
+    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // pairs with member, confirmed
     expect(guest.status).toBe('confirmed');
-    const c = await signUpForSession('2026-07-10', 'c@dummy.test', true); // waitlisted
+    const c = await signUpForSession('2026-07-10', 'c@dummy.test', true, DURING_REGISTRATION); // waitlisted
     expect(c.status).toBe('waitlisted');
 
     // Member cancels, but guest is still confirmed sharing the same pairId — slot stays occupied.
