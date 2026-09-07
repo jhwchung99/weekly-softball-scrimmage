@@ -1,6 +1,7 @@
 import { sendEmail } from './gmail';
 import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
+import { Team, teamNote } from './teams';
 import { formatLocation } from './location';
 import { getWeeklyMilestones } from './time';
 
@@ -61,6 +62,45 @@ export async function sendOpenSpotsAlert(session: Session, openSpots: number): P
   const message = `Registration just closed for the ${session.gameDate} ${session.gameTime} scrimmage with ${openSpots} of ${session.capacity} spots still open. Consider manually adding someone.`;
 
   await sendPush(title, message);
+}
+
+/**
+ * The roster locked and a first pass at teams is waiting for review.
+ *
+ * Priority 4: it wants attention within the hour, but it is not the
+ * five-minutes-to-fill-a-spot emergency that 5 is reserved for. The click
+ * target is the dashboard the message is telling them to open.
+ */
+export async function sendTeamsReadyAlert(session: Session, teams: Team[]): Promise<void> {
+  const players = teams.reduce((n, t) => n + t.members.length, 0);
+  const short = teams.filter((t) => t.deficiency > 0).map((t) => `${t.name}: ${teamNote(t)}`);
+
+  const parts = [`${players} players split into ${teams.length} teams for the ${session.gameDate} scrimmage.`];
+  parts.push(short.length > 0 ? short.join(' ') : 'Every team can field a full lineup.');
+  parts.push('Review and post them from the admin dashboard.');
+
+  const base = process.env.NEXTAUTH_URL;
+  await sendPush(`Teams ready for review: ${session.gameDate}`, parts.join(' '), {
+    priority: 4,
+    tags: ['busts_in_silhouette'],
+    click: base ? `${base}/admin` : undefined,
+  });
+}
+
+/**
+ * How many people got in, pushed the moment registration closes.
+ *
+ * Separate from sendOpenSpotsAlert, which stays silent when the session
+ * filled up — which is exactly the case where a second field is worth
+ * considering. This one always fires, because it is the signal to decide
+ * whether to book one.
+ */
+export async function sendHeadcountAlert(session: Session, confirmed: number, waitlisted: number): Promise<void> {
+  const parts = [`${confirmed} of ${session.capacity} spots filled for the ${session.gameDate} scrimmage.`];
+  if (waitlisted > 0) {
+    parts.push(`${waitlisted} on the waitlist. Raise capacity to let them in, and book a second field if you need one.`);
+  }
+  await sendPush(`Registration closed: ${confirmed} playing`, parts.join(' '), { priority: 3, tags: ['clipboard'] });
 }
 
 /** A waitlisted player has asked a specific signed-up player to share
