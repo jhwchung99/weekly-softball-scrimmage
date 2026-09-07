@@ -41,6 +41,8 @@ async function main() {
     locationArea: '',
     locationName: '',
     locationUrl: '',
+    numFields: 1,
+    teamsStatus: '',
     cost: 0,
   });
 
