@@ -8,7 +8,17 @@ const NTFY_PUBLISH_URL = 'https://ntfy.sh/';
  * (unguessable string = private channel), so it's a secret, not a
  * hardcoded constant.
  */
-export async function sendPush(title: string, message: string): Promise<void> {
+export interface PushOptions {
+  /** ntfy's 1-5 scale. 5 bypasses Do Not Disturb, so it's reserved for
+   * genuinely time-critical alerts; 3 is the ordinary default. */
+  priority?: number;
+  /** ntfy tag names, which render as the notification's emoji. */
+  tags?: string[];
+  /** URL opened when the notification itself is tapped. */
+  click?: string;
+}
+
+export async function sendPush(title: string, message: string, options: PushOptions = {}): Promise<void> {
   const topic = process.env.ORGANIZER_ALERT_NTFY_TOPIC;
   if (!topic) {
     throw new Error(
@@ -23,8 +33,14 @@ export async function sendPush(title: string, message: string): Promise<void> {
       topic,
       title,
       message,
-      priority: 5, // urgent — time-sensitive, last-minute alert
-      tags: ['rotating_light'],
+      // Defaults suit the original caller (the late-cancellation alert):
+      // urgent, because it's time-sensitive and the organizer has minutes
+      // to act. Anything less pressing passes its own priority.
+      priority: options.priority ?? 5,
+      tags: options.tags ?? ['rotating_light'],
+      // ntfy ignores the field when it's undefined, so an alert with
+      // nowhere useful to point simply doesn't get a tap action.
+      click: options.click,
     }),
   });
 
