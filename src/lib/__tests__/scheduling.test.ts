@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer } from '../../test/fakeSheets';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer , duringRegistration} from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 const store = vi.hoisted((): FakeStore => ({ sessions: new Map(), signups: new Map(), players: new Map() }));
@@ -20,6 +20,15 @@ beforeEach(() => {
   resetFakeStore(store);
   vi.clearAllMocks();
   sendPush.mockResolvedValue(undefined);
+  // Player signups are gated on the registration window now, so these
+  // run at a fixed instant inside it rather than at whatever time the
+  // suite happens to be run.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(duringRegistration('2026-07-10'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 // 2026-07-06T13:00:00Z is 9:00am EDT on Monday 2026-07-06; that week's
