@@ -98,6 +98,19 @@ export default function GuidelinesPage() {
         <li>Payment happens outside the app. The organizer tracks who&apos;s paid</li>
       </Section>
 
+      <Section title="Teams">
+        <li>Teams are drawn up after the roster locks, 5 hours before game time</li>
+        <li>They show up on the homepage once the organizer posts them</li>
+        <li>Teams are balanced on positions first, then size, then the mix of players</li>
+        <li>Two people sharing a spot are always on the same team</li>
+        <li>If someone cancels after teams go up, their team plays a person short</li>
+        <li>If you are down to 8 players, play without a rover</li>
+        <li>
+          The regular season rule about 3 girls on the field does not apply. Just make sure everyone gets equal
+          playing time
+        </li>
+      </Section>
+
       <Section title="Something not working?">
         <li>Use the <strong>Report a bug or send feedback</strong> link at the bottom of any page</li>
         <li>It&apos;s logged for the organizer, along with your email and the page you were on, and they get a
