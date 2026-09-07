@@ -141,6 +141,9 @@ describe('GET /api/home', () => {
 
     const body = await (await GET()).json();
 
-    expect(body.incomingSubRequests).toEqual([{ fromSignupId: expect.any(String), fromFullName: 'Asker' }]);
+    // A member subbing in, not a guest naming their inviter.
+    expect(body.incomingSubRequests).toEqual([
+      { fromSignupId: expect.any(String), fromFullName: 'Asker', fromGuestInvite: false },
+    ]);
   });
 });
