@@ -46,63 +46,107 @@ describe('WeeklyTimeline', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-03T12:00:00.000Z')); // Friday before the target Friday 2026-07-10's week
     render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="open" />);
-    // status is 'open' even though we're before the computed Monday —
-    // the status line should reflect the real closing schedule, not
-    // pretend registration hasn't opened.
-    expect(screen.getByText(/registration closes tue/i)).toBeInTheDocument();
+    // status is 'open' ahead of the computed Monday, but signups are gated on
+    // the window too (signupFlow), so telling a player registration is open
+    // would be wrong — they'd be refused.
+    expect(screen.getByText(/registration opens mon/i)).toBeInTheDocument();
   });
 });
 
 /**
- * Regression coverage: 'done' and 'current' used to render the same green, and
- * openDone ignored status === 'open' — so a session opened ahead of its
- * scheduled Monday showed both "Registration Opens" and "Registration Closes"
- * as green at the same time, with two milestones simultaneously current.
+ * Dots are moments, lines are periods.
+ *
+ * Two bugs live here. The first painted 'done' and 'current' the same green,
+ * so a finished milestone and the pending one were indistinguishable. The fix
+ * for that introduced the second: an amber "current" dot, which always landed
+ * on the milestone that had NOT happened yet and so read as "Registration
+ * Closes is happening now" while registration was merely open.
  */
-describe('WeeklyTimeline milestone states', () => {
+describe('WeeklyTimeline milestone marks', () => {
   function dotClasses(container: HTMLElement): string[] {
     return [...container.querySelectorAll('div.h-3.w-3')].map((d) => d.className);
   }
+  function lineClasses(container: HTMLElement): string[] {
+    return [...container.querySelectorAll('div.h-0\\.5')].map((d) => d.className);
+  }
 
-  it('marks exactly one milestone as current at a time', () => {
+  const WEEK = { gameDate: '2026-07-10', gameTime: '18:00' } as const;
+
+  it('never puts amber on a dot: a moment has either happened or it has not', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-08T12:00:00.000Z')); // Wednesday, registration open
-    const { container } = render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="open" />);
-
-    const current = dotClasses(container).filter((c) => c.includes('amber'));
-    expect(current).toHaveLength(1);
+    for (const t of ['2026-07-03T12:00:00.000Z', '2026-07-06T18:00:00.000Z', '2026-07-09T12:00:00.000Z', '2026-07-10T23:00:00.000Z']) {
+      vi.setSystemTime(new Date(t));
+      const { container, unmount } = render(<WeeklyTimeline {...WEEK} status="open" />);
+      expect(dotClasses(container).filter((c) => c.includes('amber'))).toHaveLength(0);
+      unmount();
+    }
   });
 
-  it('treats an early-opened session as having opened, not as pending', () => {
+  it('marks at most one stretch of the week as in progress', () => {
     vi.useFakeTimers();
-    // Before the scheduled Monday 9am, but an admin already opened it.
+    for (const t of ['2026-07-03T12:00:00.000Z', '2026-07-06T18:00:00.000Z', '2026-07-09T12:00:00.000Z', '2026-07-10T23:00:00.000Z']) {
+      vi.setSystemTime(new Date(t));
+      const { container, unmount } = render(<WeeklyTimeline {...WEEK} status="open" />);
+      expect(lineClasses(container).filter((c) => c.includes('amber')).length).toBeLessThanOrEqual(1);
+      unmount();
+    }
+  });
+
+  it('before the week starts: nothing has happened, nothing is in progress', () => {
+    vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-03T12:00:00.000Z'));
-    const { container } = render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="open" />);
+    const { container } = render(<WeeklyTimeline {...WEEK} status="closed" />);
+
+    expect(dotClasses(container).every((c) => c.includes('ring-slate-300'))).toBe(true);
+    expect(lineClasses(container).every((c) => c.includes('slate'))).toBe(true);
+  });
+
+  it('while registration is open: the opening is done and the registration stretch is amber', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-06T18:00:00.000Z')); // Monday afternoon
+    const { container } = render(<WeeklyTimeline {...WEEK} status="open" />);
 
     const [opens, closes, game] = dotClasses(container);
-    expect(opens).toContain('green'); // already happened
-    expect(closes).toContain('amber'); // the thing we're waiting on
-    expect(game).toContain('slate'); // still ahead
+    expect(opens).toContain('green');
+    expect(closes).toContain('ring-slate-300'); // hasn't happened yet
+    expect(game).toContain('ring-slate-300');
+
+    const [registration, preGame] = lineClasses(container);
+    expect(registration).toContain('amber'); // the stretch we're in
+    expect(preGame).toContain('slate');
   });
 
-  it('treats a not-yet-opened session as pending rather than finished', () => {
+  it('after the close, before the game: both registration dots green, the wait is amber', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-03T12:00:00.000Z')); // before the week starts
-    const { container } = render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="closed" />);
-
-    const [opens, closes] = dotClasses(container);
-    expect(opens).toContain('amber'); // next thing to happen
-    expect(closes).toContain('slate'); // not 'done' — it never opened
-  });
-
-  it('marks both registration milestones done once the window has run its course', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-09T12:00:00.000Z')); // Thursday, after Tuesday's close
-    const { container } = render(<WeeklyTimeline gameDate="2026-07-10" gameTime="18:00" status="closed" />);
+    vi.setSystemTime(new Date('2026-07-09T12:00:00.000Z')); // Thursday
+    const { container } = render(<WeeklyTimeline {...WEEK} status="closed" />);
 
     const [opens, closes, game] = dotClasses(container);
     expect(opens).toContain('green');
     expect(closes).toContain('green');
-    expect(game).toContain('amber'); // game day is what's next
+    expect(game).toContain('ring-slate-300');
+
+    const [registration, preGame] = lineClasses(container);
+    expect(registration).toContain('green'); // that stretch is over
+    expect(preGame).toContain('amber');
+  });
+
+  it('once the game has started every mark is green', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-10T23:00:00.000Z'));
+    const { container } = render(<WeeklyTimeline {...WEEK} status="closed" />);
+
+    expect(dotClasses(container).every((c) => c.includes('green'))).toBe(true);
+    expect(lineClasses(container).every((c) => c.includes('green'))).toBe(true);
+  });
+
+  it('an early-opened session still reads as not yet open, matching what signups do', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-03T12:00:00.000Z'));
+    const { container } = render(<WeeklyTimeline {...WEEK} status="open" />);
+
+    // The old status-driven version showed this as already opened, which
+    // contradicted the window gate that would refuse the signup.
+    expect(dotClasses(container)[0]).toContain('ring-slate-300');
   });
 });
