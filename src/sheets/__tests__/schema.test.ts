@@ -6,9 +6,13 @@ import {
   serializeSignupRow,
   parsePlayerRow,
   serializePlayerRow,
+  parseFeedbackRow,
+  serializeFeedbackRow,
   Session,
   Signup,
   Player,
+  Feedback,
+  FEEDBACK_HEADERS,
 } from '../schema';
 
 describe('Session row round-trip', () => {
@@ -110,5 +114,31 @@ describe('Player row round-trip', () => {
   it('preserves every field through serialize -> parse', () => {
     const player: Player = { email: 'a@dummy.test', fullName: 'A', gender: 'Other', savedPositions: 'Rover' };
     expect(parsePlayerRow(serializePlayerRow(player))).toEqual(player);
+  });
+});
+
+describe('Feedback row round-trip', () => {
+  const feedback: Feedback = {
+    feedbackId: 'fb-1',
+    submittedAt: '2026-09-07T14:30:00.000Z',
+    kind: 'bug',
+    email: 'jane@example.com',
+    fullName: 'Jane Doe',
+    message: 'The cancel button does nothing.',
+    pageUrl: '/guidelines',
+  };
+
+  it('preserves every field through serialize -> parse', () => {
+    expect(parseFeedbackRow(serializeFeedbackRow(feedback))).toEqual(feedback);
+  });
+
+  it('defaults a blank kind rather than producing an out-of-range value', () => {
+    expect(parseFeedbackRow({ ...serializeFeedbackRow(feedback), kind: '' }).kind).toBe('feedback');
+  });
+
+  it('lists every field of Feedback, since columns are mapped by position', () => {
+    // A field present on the interface but missing from FEEDBACK_HEADERS
+    // would silently never be written. `satisfies` catches the reverse.
+    expect([...FEEDBACK_HEADERS].sort()).toEqual(Object.keys(feedback).sort());
   });
 });
