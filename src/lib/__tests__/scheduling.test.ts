@@ -97,8 +97,12 @@ describe('closeRegistrationForCurrentSession', () => {
 
     await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
 
-    expect(sendPush).toHaveBeenCalledTimes(1);
-    expect(sendPush).toHaveBeenCalledWith(expect.stringContaining('4 open spots'), expect.stringContaining('2026-07-10'));
+    // Two now: the headcount, which always goes out, and the open-spots nudge.
+    expect(sendPush).toHaveBeenCalledTimes(2);
+    expect(sendPush).toHaveBeenCalledWith(
+      expect.stringContaining('4 open spots'),
+      expect.stringContaining('2026-07-10')
+    );
   });
 
   it('does not alert the organizer when capacity is already full', async () => {
@@ -108,7 +112,14 @@ describe('closeRegistrationForCurrentSession', () => {
 
     await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
 
-    expect(sendPush).not.toHaveBeenCalled();
+    // The open-spots nudge stays silent, but the headcount still goes out:
+    // a full session is exactly when a second field is worth considering.
+    expect(sendPush).toHaveBeenCalledTimes(1);
+    expect(sendPush).toHaveBeenCalledWith(
+      expect.stringContaining('1 playing'),
+      expect.stringContaining('1 of 1 spots filled'),
+      expect.anything()
+    );
   });
 
   it('still reports a successful close even if the organizer alert fails to send', async () => {
