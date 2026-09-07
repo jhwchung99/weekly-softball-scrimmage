@@ -78,6 +78,29 @@ export async function sendSubRequestEmail(target: Signup, requester: Signup, ses
   await sendEmail(target.email, subject, text);
 }
 
+/**
+ * A guest named this member as their inviter and is willing to share the
+ * member's spot. Distinct from sendSubRequestEmail because the member
+ * didn't ask for this and may not recognise the name: the mail has to say
+ * where the request came from, not just that one exists.
+ */
+export async function sendGuestPairRequestEmail(member: Signup, guest: Signup, session: Session): Promise<void> {
+  const subject = `${guest.fullName} would like to share your spot`;
+  const text = [
+    `Hi ${member.fullName},`,
+    '',
+    `${guest.fullName} signed up as a guest for the ${session.gameDate} scrimmage at ${session.gameTime}, named you as the member who invited them, and is willing to share your spot rather than take a separate one.`,
+    '',
+    "They're on the waitlist until you decide. Accepting means the two of you share one spot, and split its cost.",
+    '',
+    "If you don't know this person, decline. Nothing happens to your own spot either way.",
+    '',
+    'Log into the app to accept or decline.',
+  ].join('\n');
+
+  await sendEmail(member.email, subject, text);
+}
+
 /** Sent to both parties once a sub request is accepted and they're
  * sharing a spot. */
 export async function sendSubRequestAcceptedEmail(a: Signup, b: Signup, session: Session): Promise<void> {
