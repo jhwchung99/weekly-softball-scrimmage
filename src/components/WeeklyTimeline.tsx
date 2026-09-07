@@ -39,13 +39,31 @@ function formatRelative(target: Date, now: Date): string {
   return `in ${days} day${days === 1 ? '' : 's'}`;
 }
 
-type DotState = 'done' | 'current' | 'upcoming';
+/**
+ * A dot is a *moment* (registration opened; it closed; the game started),
+ * so it only has two readings: it has happened, or it hasn't.
+ *
+ * "In progress" is never true of a moment — it's true of the stretch
+ * between two of them, which is what the connecting lines are for. Giving
+ * dots a third, amber "current" look put that amber on the *next* dot,
+ * which read as "Registration Closes is happening now" when the truth was
+ * "registration is open and closing later".
+ */
+type DotState = 'done' | 'upcoming';
 
 const DOT_STYLES: Record<DotState, string> = {
-  // Three states need three looks. 'done' and 'current' used to share a colour,
-  // which made a finished milestone and the one in progress indistinguishable.
   done: 'bg-green-500',
-  current: 'bg-amber-500 ring-2 ring-amber-200',
+  // Hollow rather than filled grey: an empty ring reads as "not yet",
+  // where a filled dot reads as a state of its own.
+  upcoming: 'bg-white ring-2 ring-slate-300',
+};
+
+/** A line is a *period*, so it gets the three-way reading. */
+type LineState = 'done' | 'active' | 'upcoming';
+
+const LINE_STYLES: Record<LineState, string> = {
+  done: 'bg-green-500',
+  active: 'bg-amber-400',
   upcoming: 'bg-slate-200',
 };
 
@@ -53,19 +71,20 @@ function Dot({ state }: { state: DotState }) {
   return <div className={`h-3 w-3 shrink-0 rounded-full ${DOT_STYLES[state]}`} />;
 }
 
-function Line({ filled }: { filled: boolean }) {
-  return <div className={`mt-[5px] h-0.5 flex-1 ${filled ? 'bg-green-500' : 'bg-slate-200'}`} />;
+function Line({ state }: { state: LineState }) {
+  return <div className={`mt-[5px] h-0.5 flex-1 ${LINE_STYLES[state]}`} />;
 }
 
 /**
  * A horizontal stepper for the week's schedule — Registration Opens,
  * Registration Closes, Game Day — so a player can see at a glance where
  * the week stands without hunting for the information. The *dates*
- * shown are always the computed schedule (see getWeeklyMilestones); the
- * *current stage* is driven by the session's actual `status`, which is
- * the real source of truth for whether signups are accepted (an admin
- * can open/close early or late, which the computed schedule alone
- * wouldn't reflect). See planner/2026-09-05-visual-redesign-timeline-guidelines-plan.md.
+ * shown, the marks, and the status line all come from the same computed
+ * schedule (see getWeeklyMilestones), so they can't contradict each other.
+ * Green means a moment has passed; amber on a line means that stretch of
+ * the week is the one you're in. `status` only decides whether this renders
+ * at all (a cancelled session shows nothing).
+ * See planner/2026-09-05-visual-redesign-timeline-guidelines-plan.md.
  */
 export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelineProps) {
   // Re-render once a minute so "closes in 2 days" doesn't go stale on a
@@ -81,28 +100,38 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
   const now = new Date();
   const { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart } = getWeeklyMilestones(gameDate, gameTime);
 
-  // `status` is the source of truth for whether signups are being accepted, but
-  // 'closed' means two different things depending on when you ask: "hasn't
-  // opened yet" for a session created ahead of its week, or "opened and has
-  // since finished". The clock disambiguates those; nothing else here needs it.
-  const closeDone = status === 'closed' && now >= registrationOpensAt;
-  const openDone = status === 'open' || closeDone;
-  const gameDone = now >= gameStart;
+  // Driven by the clock, which is the same source as the dates printed under
+  // each dot, so the marks and the labels can never disagree. It's also the
+  // schedule the signup gate itself enforces now (see signupFlow), so an
+  // admin flipping a session open early no longer makes this claim
+  // registration is open when signups would still be refused.
+  const opened = now >= registrationOpensAt;
+  const closed = now >= registrationClosesAt;
+  const started = now >= gameStart;
 
-  const openState: DotState = openDone ? 'done' : 'current';
-  const closeState: DotState = closeDone ? 'done' : openDone ? 'current' : 'upcoming';
-  const gameState: DotState = gameDone ? 'done' : closeDone ? 'current' : 'upcoming';
+  const openState: DotState = opened ? 'done' : 'upcoming';
+  const closeState: DotState = closed ? 'done' : 'upcoming';
+  const gameState: DotState = started ? 'done' : 'upcoming';
 
+  // Each line is the stretch leading up to the dot on its right.
+  const registrationLine: LineState = closed ? 'done' : opened ? 'active' : 'upcoming';
+  const preGameLine: LineState = started ? 'done' : closed ? 'active' : 'upcoming';
+
+  // Ordered by phase rather than by `status`. The old chain tested
+  // status === 'closed' before the not-yet-open case, and since a session
+  // created ahead of its week sits at 'closed', a player looking on Sunday
+  // was told "Game starts Friday" instead of when they could actually sign
+  // up. The final branch was unreachable.
   let statusLine: string;
-  if (gameDone) {
+  if (started) {
     statusLine = "Today's game has started. See you on the field!";
-  } else if (status === 'open') {
-    statusLine = `Registration closes ${formatDateTime(registrationClosesAt)} (${formatRelative(registrationClosesAt, now)})`;
-  } else if (status === 'closed') {
+  } else if (closed) {
     statusLine =
       now >= cutoffStart
         ? `Game starts ${formatRelative(gameStart, now)}. Cancellations now won't trigger an auto-replacement`
         : `Game starts ${formatDateTime(gameStart)} (${formatRelative(gameStart, now)})`;
+  } else if (opened) {
+    statusLine = `Registration closes ${formatDateTime(registrationClosesAt)} (${formatRelative(registrationClosesAt, now)})`;
   } else {
     statusLine = `Registration opens ${formatDateTime(registrationOpensAt)} (${formatRelative(registrationOpensAt, now)})`;
   }
@@ -117,7 +146,7 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
           </p>
           <p className="text-xs text-slate-500">{formatDateTime(registrationOpensAt)}</p>
         </div>
-        <Line filled={openDone} />
+        <Line state={registrationLine} />
         <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <Dot state={closeState} />
           <p className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-900">
@@ -125,7 +154,7 @@ export function WeeklyTimeline({ gameDate, gameTime, status }: WeeklyTimelinePro
           </p>
           <p className="text-xs text-slate-500">{formatDateTime(registrationClosesAt)}</p>
         </div>
-        <Line filled={closeDone} />
+        <Line state={preGameLine} />
         <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <Dot state={gameState} />
           <p className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-900">
