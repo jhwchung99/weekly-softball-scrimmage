@@ -4,6 +4,7 @@ import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck, Lock, AlertTriangle } from 'lucide-react';
 import { POSITIONS } from '../lib/positions';
+import { GENDERS, normalizeGender } from '../lib/genders';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -731,7 +732,9 @@ export function ProfileForm(props: {
 }) {
   const { initialValues, onSaved, onCancel, busy, setBusy, setError } = props;
   const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
-  const [gender, setGender] = useState(initialValues?.gender ?? '');
+  // Normalized so a profile saved back when this was free text still
+  // pre-selects the right option instead of coming up blank.
+  const [gender, setGender] = useState(normalizeGender(initialValues?.gender ?? ''));
   const [positions, setPositions] = useState<string[]>(
     initialValues?.savedPositions
       ? initialValues.savedPositions
@@ -781,16 +784,24 @@ export function ProfileForm(props: {
           className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
         />
       </div>
-      <div>
-        <label htmlFor="profile-gender" className="block text-sm text-slate-700">Gender</label>
-        <input
-          id="profile-gender"
-          required
-          value={gender}
-          onChange={(e) => setGender(e.target.value)}
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
-        />
-      </div>
+      <fieldset>
+        <legend className="block text-sm text-slate-700">Gender</legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {GENDERS.map((g) => (
+            <label key={g} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-sm">
+              <input
+                type="radio"
+                name="profile-gender"
+                value={g}
+                required
+                checked={gender === g}
+                onChange={() => setGender(g)}
+              />
+              {g}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div>
         <label className="block text-sm text-slate-700">Positions you&apos;re comfortable playing</label>
         <div className="mt-1 flex flex-wrap gap-2">
