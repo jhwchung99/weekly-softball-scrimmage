@@ -2,7 +2,7 @@ import { getSessionByAnyId, createSession, updateSession } from '../sheets/sessi
 import { listSignupsForSession } from '../sheets/signups';
 import { currentWeekGameDayCandidates, isNearEasternTime, todayEastern } from './time';
 import { countConfirmedSlots, computeCostShare } from './payments';
-import { sendOpenSpotsAlert, sendGameDayReminderEmail } from './notifications';
+import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert } from './notifications';
 
 export const DEFAULT_GAME_TIME = process.env.SESSION_DEFAULT_GAME_TIME || '18:00';
 export const DEFAULT_CAPACITY = Number(process.env.SESSION_DEFAULT_CAPACITY) || 20;
@@ -54,6 +54,8 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
       locationArea: '',
       locationName: '',
       locationUrl: '',
+      numFields: 1,
+      teamsStatus: '',
       status: 'open',
     });
     return { sessionId: defaultSessionId, skipped: false };
@@ -91,7 +93,18 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
   await updateSession(existing.sessionId, { status: 'closed', registrationClosesAt: now.toISOString() });
 
   const signups = await listSignupsForSession(existing.sessionId);
-  const openSpots = existing.capacity - countConfirmedSlots(signups);
+  const confirmed = countConfirmedSlots(signups);
+  const openSpots = existing.capacity - confirmed;
+
+  // Always sent, unlike the open-spots alert below: the headcount is what the
+  // organizer needs to decide whether to raise capacity and book a second
+  // field, and that decision matters most precisely when the session filled.
+  try {
+    await sendHeadcountAlert(existing, confirmed, signups.filter((s) => s.status === 'waitlisted').length);
+  } catch (err) {
+    console.error(`Failed to send headcount alert for session ${existing.sessionId}:`, err);
+  }
+
   if (openSpots > 0) {
     try {
       await sendOpenSpotsAlert(existing, openSpots);
