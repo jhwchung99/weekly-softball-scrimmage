@@ -213,12 +213,6 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Weekly Softball Scrimmage</h1>
-      <p className="mt-2 text-slate-700">
-        Weekly Softball Scrimmage is the signup app for New Hope Fellowship&apos;s weekly pickup softball game. Each
-        week, members and their guests can sign up for a spot (first-come, first-served with an automatic waitlist),
-        see whether they&apos;re confirmed or waitlisted, and cancel if plans change. Sign in with your Google account
-        below to see this week&apos;s status and sign up.
-      </p>
       <p className="mt-2 text-sm text-slate-500">
         Read our <a href="/privacy" className="text-blue-600 hover:underline">privacy policy</a> or see the{' '}
         <a href="/guidelines" className="text-blue-600 hover:underline">full guidelines</a> for how signups, guests,
