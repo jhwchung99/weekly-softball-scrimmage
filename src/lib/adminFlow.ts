@@ -120,6 +120,8 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
     locationArea,
     locationName: '',
     locationUrl: '',
+    numFields: 1,
+    teamsStatus: '',
     status: input.openImmediately ? 'open' : 'closed',
   });
 }
