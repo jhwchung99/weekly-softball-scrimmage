@@ -1,5 +1,5 @@
 import { SPREADSHEET_ID, getOrCreateSheet, getSheetsClient } from '../src/sheets/client';
-import { SESSION_HEADERS, SIGNUP_HEADERS, PLAYER_HEADERS, ADMIN_HEADERS } from '../src/sheets/schema';
+import { SESSION_HEADERS, SIGNUP_HEADERS, PLAYER_HEADERS, ADMIN_HEADERS, FEEDBACK_HEADERS } from '../src/sheets/schema';
 
 async function ensureTabWithHeaders(tabName: string, headers: readonly string[]): Promise<void> {
   const tab = await getOrCreateSheet(SPREADSHEET_ID, tabName);
@@ -30,6 +30,7 @@ async function main() {
   await ensureTabWithHeaders('Signups', SIGNUP_HEADERS);
   await ensureTabWithHeaders('Players', PLAYER_HEADERS);
   await ensureTabWithHeaders('Admins', ADMIN_HEADERS);
+  await ensureTabWithHeaders('Feedback', FEEDBACK_HEADERS);
   console.log(`\nDone: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`);
 }
 
