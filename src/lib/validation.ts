@@ -1,5 +1,6 @@
 import { ApiError } from './apiErrors';
 import { POSITIONS } from './positions';
+import { GENDERS, normalizeGender } from './genders';
 import { normalizeEmail } from './email';
 import { FEEDBACK_KINDS, FeedbackKind, MAX_FEEDBACK_LENGTH } from './feedbackKinds';
 
@@ -8,7 +9,6 @@ import { FEEDBACK_KINDS, FeedbackKind, MAX_FEEDBACK_LENGTH } from './feedbackKin
 // planner/2026-09-04-security-hardening-plan.md, Step 2).
 
 const MAX_NAME_LENGTH = 100;
-const MAX_GENDER_LENGTH = 30;
 
 function requireTrimmedString(value: unknown, fieldName: string, maxLength: number): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -21,8 +21,14 @@ export function validateFullName(value: unknown): string {
   return requireTrimmedString(value, 'fullName', MAX_NAME_LENGTH);
 }
 
+/** One of GENDERS, normalized to its canonical casing. Checked against the
+ * same list the form's radio buttons are built from, like positions. */
 export function validateGender(value: unknown): string {
-  return requireTrimmedString(value, 'gender', MAX_GENDER_LENGTH);
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) throw new ApiError(400, 'gender is required.');
+  const match = normalizeGender(trimmed);
+  if (!match) throw new ApiError(400, `gender must be one of: ${GENDERS.join(', ')}.`);
+  return match;
 }
 
 /**
