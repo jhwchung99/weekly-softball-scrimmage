@@ -14,7 +14,7 @@ import {
 import { getPlayer } from '../sheets/players';
 import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
-import { isWithinPromotionCutoff } from './time';
+import { isWithinPromotionCutoff, getWeeklyMilestones } from './time';
 import { normalizeEmail } from './email';
 import { countConfirmedSlots, computeCostShare } from './payments';
 
@@ -48,11 +48,49 @@ async function computeCapacityStatus(sessionId: string, capacity: number): Promi
   return countConfirmedSlots(existing) < capacity ? 'confirmed' : 'waitlisted';
 }
 
-async function requireOpenSessionAndProfile(sessionId: string, email: string) {
+export interface SignupOptions {
+  /**
+   * Skips the registration-window check. For admin manual adds only
+   * (Section 8), which are explicitly allowed outside the window — it's
+   * what the open-spots alert exists to prompt.
+   */
+  bypassRegistrationWindow?: boolean;
+  now?: Date;
+}
+
+function formatEastern(d: Date): string {
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+async function requireOpenSessionAndProfile(sessionId: string, email: string, options: SignupOptions = {}) {
   const session = await getSession(sessionId);
   if (!session) throw new ApiError(404, 'No such session.');
   if (session.status !== 'open') {
     throw new ApiError(409, 'Registration is not currently open for this session.');
+  }
+
+  // `status` alone used to be the entire gate, which made it a single point
+  // of failure: anything that set a session open — a stray script run, a
+  // hand-edited cell, a mistimed cron — accepted signups immediately, and
+  // sessionIds are guessable dates. The schedule is computed from the game
+  // date, so it can disagree with a wrong status and win. See the 2026-09-07
+  // "was registration open before Monday 9am" investigation.
+  if (!options.bypassRegistrationWindow) {
+    const now = options.now ?? new Date();
+    const { registrationOpensAt, registrationClosesAt } = getWeeklyMilestones(session.gameDate, session.gameTime);
+    if (now < registrationOpensAt) {
+      throw new ApiError(409, `Registration for this session opens ${formatEastern(registrationOpensAt)} ET.`);
+    }
+    if (now >= registrationClosesAt) {
+      throw new ApiError(409, `Registration for this session closed ${formatEastern(registrationClosesAt)} ET.`);
+    }
   }
 
   const player = await getPlayer(email);
@@ -71,9 +109,14 @@ async function requireOpenSessionAndProfile(sessionId: string, email: string) {
 
 /** A member signing up for themselves. `waiverAccepted` is required
  * (Section 9) — every signup, no exceptions, needs an explicit yes. */
-export async function signUpForSession(sessionId: string, email: string, waiverAccepted: boolean): Promise<Signup> {
+export async function signUpForSession(
+  sessionId: string,
+  email: string,
+  waiverAccepted: boolean,
+  options: SignupOptions = {}
+): Promise<Signup> {
   requireWaiver(waiverAccepted);
-  const { session, player } = await requireOpenSessionAndProfile(sessionId, email);
+  const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
   const status = await computeCapacityStatus(sessionId, session.capacity);
 
   const created = await createSignup({
@@ -131,14 +174,15 @@ export async function signUpAsGuestForSession(
   email: string,
   invitedByName: string,
   willingToShare: boolean,
-  waiverAccepted: boolean
+  waiverAccepted: boolean,
+  options: SignupOptions = {}
 ): Promise<Signup> {
   requireWaiver(waiverAccepted);
   if (!invitedByName.trim()) {
     throw new ApiError(400, 'invitedByName is required for a guest signup.');
   }
 
-  const { session, player } = await requireOpenSessionAndProfile(sessionId, email);
+  const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
   const waiverFields = { waiverAcceptedAt: new Date().toISOString(), waiverText: WAIVER_TEXT };
 
   if (willingToShare) {
