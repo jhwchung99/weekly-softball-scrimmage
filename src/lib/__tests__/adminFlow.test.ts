@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer } from '../../test/fakeSheets';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer , duringRegistration} from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 
 const store = vi.hoisted((): FakeStore => ({ sessions: new Map(), signups: new Map(), players: new Map() }));
@@ -16,6 +16,15 @@ const { signUpForSession } = await import('../signupFlow');
 beforeEach(() => {
   resetFakeStore(store);
   vi.clearAllMocks();
+  // Player signups are gated on the registration window now, so these
+  // run at a fixed instant inside it rather than at whatever time the
+  // suite happens to be run.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(duringRegistration('2026-07-10'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('adminAddSignup', () => {
@@ -168,11 +177,27 @@ describe('a newly created session does not accept signups until it is opened', (
     await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/not currently open/);
   });
 
-  it('still allows an admin to open one immediately on purpose', async () => {
+  it('opens on purpose when asked, but still holds players to the registration window', async () => {
     const created = await adminCreateSession({ gameDate: '2027-01-08', openImmediately: true });
     expect(created.status).toBe('open');
 
     store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
+    // Status is no longer the whole gate. Flipping a session open months
+    // early doesn't let players in early — that is the entire point of the
+    // window check, and it can't tell a deliberate open from an accidental
+    // one. An admin who needs someone in early adds them directly.
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/opens Mon/);
+
+    await expect(
+      adminAddSignup({ sessionId: '2027-01-08', email: 'p@dummy.test', waiverAccepted: true })
+    ).resolves.toBeDefined();
+  });
+
+  it('lets a player sign up once the window is actually open', async () => {
+    await adminCreateSession({ gameDate: '2027-01-08', openImmediately: true });
+    store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
+
+    vi.setSystemTime(duringRegistration('2027-01-08'));
     await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).resolves.toBeDefined();
   });
 
