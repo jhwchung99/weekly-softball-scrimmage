@@ -97,6 +97,13 @@ export default function GuidelinesPage() {
         </li>
       </Section>
 
+      <Section title="Something not working?">
+        <li>Use the <strong>Report a bug or send feedback</strong> link at the bottom of any page</li>
+        <li>It&apos;s logged for the organizer, along with your email and the page you were on, and they get a
+          notification that it arrived</li>
+        <li>Suggestions are just as welcome as bug reports</li>
+      </Section>
+
       <Section title="A note on risk">
         <li>Softball carries a real risk of injury</li>
         <li>Every signup includes a plain acknowledgment of that: you&apos;re choosing to play</li>
