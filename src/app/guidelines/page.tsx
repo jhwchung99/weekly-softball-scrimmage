@@ -43,8 +43,13 @@ export default function GuidelinesPage() {
 
       <Section title="Bringing a guest">
         <li>Guests answer two extra questions: who invited them, and whether they&apos;re willing to share a roster slot with that member</li>
+        <li>
+          Sharing is a <strong>request, not automatic</strong>. If the guest is waitlisted, the member they named gets
+          asked, and nothing is shared unless that member accepts. Naming someone never takes their spot or changes
+          what they owe
+        </li>
         <li>Sharing only happens if the named member also signs up that week and isn&apos;t already sharing with someone else</li>
-        <li>Otherwise the guest just gets their own separate slot</li>
+        <li>Otherwise the guest just gets their own separate slot, in signup order like anyone else</li>
       </Section>
 
       <Section title="Cancelling">
