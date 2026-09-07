@@ -293,9 +293,10 @@ export default function Home() {
               locationName={scrimmage.locationName}
               locationUrl={scrimmage.locationUrl}
             />
-            {scrimmage.pricePerSpot > 0 && (
-              <p className="mt-1 text-sm text-slate-600">${scrimmage.pricePerSpot.toFixed(2)} per spot</p>
-            )}
+            <p className="mt-1 text-sm text-slate-600">
+              {scrimmage.capacity} spots
+              {scrimmage.pricePerSpot > 0 ? ` · $${scrimmage.pricePerSpot.toFixed(2)} each` : ''}
+            </p>
             {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s scrimmage has been cancelled.</p>}
             {scrimmage.status !== 'cancelled' && (
               <WeeklyTimeline gameDate={scrimmage.gameDate} gameTime={scrimmage.gameTime} status={scrimmage.status} />
@@ -370,7 +371,8 @@ export default function Home() {
           </h2>
           <div className="mt-2">
             <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount})
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount}
+              {scrimmage ? ` of ${scrimmage.capacity}` : ''})
             </h3>
             {roster.confirmed && (
               <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
