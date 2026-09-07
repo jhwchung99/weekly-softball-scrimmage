@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { getSession } from '../sheets/sessions';
 import {
   createSignup,
@@ -21,7 +20,7 @@ import { countConfirmedSlots, computeCostShare } from './payments';
 // Moved to lib/payments.ts so client components can share the implementation;
 // re-exported here because this has been their import site all along.
 export { countConfirmedSlots, computeCostShare, computePaymentSummary } from './payments';
-import { sendPromotionEmail, sendLateCancellationAlert } from './notifications';
+import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
 
@@ -107,6 +106,56 @@ async function requireOpenSessionAndProfile(sessionId: string, email: string, op
   return { session, player };
 }
 
+/**
+ * Offers `member` the chance to share their spot with `guest`, instead of
+ * merging the two on the spot.
+ *
+ * Pairing used to happen the instant a guest typed a member's name, which
+ * meant anyone could take a confirmed spot by naming a member off the
+ * roster: the guest inherited that member's status, jumped the whole
+ * waitlist, silently halved the member's bill, and the capacity numbers
+ * still looked right. Names are user-supplied, non-unique and editable, so
+ * they cannot stand in for consent. This routes the pairing through the
+ * same pending/accept/decline mechanism as a sub request, which the member
+ * already sees on the homepage. A wrong name now sends someone a request
+ * they can decline, rather than handing away their spot.
+ */
+async function proposeGuestPair(guest: Signup, member: Signup, session: Session): Promise<Signup> {
+  const updated = await updateSignup(guest.signupId, {
+    subRequestTargetEmail: member.email,
+    subRequestStatus: 'pending',
+    subRequestedAt: new Date().toISOString(),
+  });
+
+  // Same awaited-but-swallowed pattern as the promotion mail: the request
+  // itself already succeeded, and a mail failure shouldn't undo it.
+  try {
+    await sendGuestPairRequestEmail(member, updated, session);
+  } catch (err) {
+    console.error(`Failed to send guest pair request email for signup ${guest.signupId}:`, err);
+  }
+  return updated;
+}
+
+/**
+ * Whether a pairing can be offered at all. The guest must be waitlisted:
+ * one who already has their own confirmed slot gains nothing from sharing,
+ * and folding them into someone else's slot would drop the roster under
+ * capacity with no promotion to refill it — the same reason
+ * respondToSubRequest refuses a requester who isn't waitlisted.
+ */
+function canProposePair(guest: Signup, member: Signup | null): member is Signup {
+  return Boolean(
+    member &&
+      !member.pairId &&
+      member.status !== 'cancelled' &&
+      guest.status === 'waitlisted' &&
+      !guest.pairId &&
+      guest.subRequestStatus !== 'pending' &&
+      normalizeEmail(member.email) !== normalizeEmail(guest.email)
+  );
+}
+
 /** A member signing up for themselves. `waiverAccepted` is required
  * (Section 9) — every signup, no exceptions, needs an explicit yes. */
 export async function signUpForSession(
@@ -136,28 +185,13 @@ export async function signUpForSession(
     ...NEW_SIGNUP_EXTRAS,
   });
 
-  // Section 5: if a guest already named this member as their inviter and
-  // is willing to share, merge now.
-  //
-  // Both rows must end on the SAME status. A pair occupies one slot, so a
-  // pair split across statuses leaves the waitlisted half in limbo: the
-  // homepage tells them they're waitlisted, groupWaitlistUnits skips them
-  // (their pairId already has a confirmed row, so they're never promotable),
-  // and computeCostShare never bills them. Reachable whenever the guest took
-  // the last individual slot and the member then signed up into a full
-  // session. See planner/2026-09-05-code-security-review.md, Bug 3.
-  //
-  // The pair keeps the better of the two statuses, since the guest's
-  // confirmed row already holds the slot — merging must never demote it.
+  // Section 5: a guest may already have named this member as their inviter.
+  // That used to merge the two rows on the spot. It now only *offers* the
+  // pairing: the member is the one giving up sole use of their spot, and
+  // nobody asked them. See proposeGuestPair.
   const pendingGuest = await findPendingGuestInvite(sessionId, player.fullName);
-  if (pendingGuest) {
-    const pairId = randomUUID();
-    const status = pendingGuest.status === 'confirmed' ? 'confirmed' : created.status;
-    await batchUpdateSignups([
-      { signupId: created.signupId, updates: { pairId, status } },
-      { signupId: pendingGuest.signupId, updates: { pairId, status } },
-    ]);
-    return { ...created, pairId, status };
+  if (pendingGuest && canProposePair(pendingGuest, created)) {
+    await proposeGuestPair(pendingGuest, created, session);
   }
 
   return created;
@@ -185,38 +219,10 @@ export async function signUpAsGuestForSession(
   const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
   const waiverFields = { waiverAcceptedAt: new Date().toISOString(), waiverText: WAIVER_TEXT };
 
-  if (willingToShare) {
-    const memberSignup = await findMemberSignupByName(sessionId, invitedByName);
-    // Only pair if the member has signed up AND isn't already paired with
-    // someone else — a shared slot is exactly two people, never three.
-    if (memberSignup && !memberSignup.pairId) {
-      const pairId = randomUUID();
-      await updateSignup(memberSignup.signupId, { pairId });
-      return createSignup({
-        sessionId,
-        email,
-        fullName: player.fullName,
-        gender: player.gender,
-        memberStatus: 'guest',
-        invitedByName,
-        willingToShare: true,
-        pairId,
-        status: memberSignup.status, // mirrors the member's — they share one slot
-        timestamp: new Date().toISOString(),
-        positions: player.savedPositions,
-        ...waiverFields,
-        ...NEW_SIGNUP_EXTRAS,
-      });
-    }
-    // Member hasn't signed up yet (or is already paired with someone
-    // else) — fall through to a provisional individual slot below. If the
-    // member signs up later in the same window, signUpForSession's merge
-    // check will find this row (unpaired, willingToShare, matching name)
-    // and pair it then.
-  }
-
+  // Always their own slot, decided by capacity like anyone else's. Naming a
+  // member no longer short-circuits this into that member's slot.
   const status = await computeCapacityStatus(sessionId, session.capacity);
-  return createSignup({
+  const created = await createSignup({
     sessionId,
     email,
     fullName: player.fullName,
@@ -231,6 +237,16 @@ export async function signUpAsGuestForSession(
     ...waiverFields,
     ...NEW_SIGNUP_EXTRAS,
   });
+
+  // Only worth offering when the guest didn't get in on their own.
+  if (willingToShare) {
+    const memberSignup = await findMemberSignupByName(sessionId, invitedByName);
+    if (canProposePair(created, memberSignup)) {
+      return proposeGuestPair(created, memberSignup, session);
+    }
+  }
+
+  return created;
 }
 
 // Section 6 promotion order: 1) members, 2) sharing-willing guests, 3) other guests.
@@ -396,8 +412,12 @@ export async function cancelMySignup(
 
 export interface MyStatus {
   signup: Signup | null;
-  /** Other players' pending requests to share a slot with this caller. */
-  incomingSubRequests: { fromSignupId: string; fromFullName: string }[];
+  /** Other players' pending requests to share a slot with this caller.
+   * `fromGuestInvite` distinguishes a guest who named this caller as their
+   * inviter from a waitlisted player asking to sub in — accepting means the
+   * same thing mechanically, but the member is owed an accurate description
+   * of what they're agreeing to. */
+  incomingSubRequests: { fromSignupId: string; fromFullName: string; fromGuestInvite: boolean }[];
   /** This caller's own share of session.cost, or null if not priced yet
    * or the caller isn't confirmed. */
   costOwed: number | null;
@@ -420,7 +440,11 @@ export function buildMyStatus(session: Session | null, allSignups: Signup[], ema
 
   const incomingSubRequests = allSignups
     .filter((s) => s.subRequestStatus === 'pending' && normalizeEmail(s.subRequestTargetEmail) === normalized)
-    .map((s) => ({ fromSignupId: s.signupId, fromFullName: s.fullName }));
+    .map((s) => ({
+      fromSignupId: s.signupId,
+      fromFullName: s.fullName,
+      fromGuestInvite: s.memberStatus === 'guest' && s.willingToShare,
+    }));
 
   let costOwed: number | null = null;
   if (signup && signup.status === 'confirmed' && session) {
