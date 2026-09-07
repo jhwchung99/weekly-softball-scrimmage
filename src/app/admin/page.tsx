@@ -6,6 +6,7 @@ import { useSession, signIn } from 'next-auth/react';
 import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
 import { GENDERS } from '../../lib/genders';
+import { TeamEditor } from '../../components/TeamEditor';
 import { computePaymentSummary } from '../../lib/payments';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
@@ -19,6 +20,7 @@ interface SessionInfo {
   gameDate: string;
   gameTime: string;
   capacity: number;
+  numFields: number;
   status: SessionStatus;
   cost: number;
   pricePerSpot: number;
@@ -300,6 +302,17 @@ export default function AdminPage() {
                 >
                   {busy ? 'Processing...' : 'Save'}
                 </Button>
+                <label htmlFor="admin-fields" className="ml-3 text-sm text-slate-700">Fields</label>
+                <select
+                  id="admin-fields"
+                  value={scrimmage.numFields}
+                  disabled={busy}
+                  onChange={(e) => updateSession({ numFields: Number(e.target.value) })}
+                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                >
+                  <option value={1}>1 (two teams)</option>
+                  <option value={2}>2 (four teams)</option>
+                </select>
                 <label htmlFor="admin-cost" className="ml-3 text-sm text-slate-700">Cost ($)</label>
                 <input
                   id="admin-cost"
@@ -526,6 +539,8 @@ export default function AdminPage() {
               onAdded={() => loadRoster(sessionId)}
             />
           )}
+
+          {sessionId && <TeamEditor sessionId={sessionId} onChanged={() => loadRoster(sessionId)} />}
         </>
       )}
     </main>
