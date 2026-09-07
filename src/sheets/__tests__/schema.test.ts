@@ -34,7 +34,7 @@ describe('Session row round-trip', () => {
     expect(parseSessionRow(serializeSessionRow(session))).toEqual(session);
   });
 
-  it('defaults a blank status to open and blank cost/capacity to 0', () => {
+  it('defaults a blank status to closed and blank cost/capacity to 0', () => {
     const parsed = parseSessionRow({
       sessionId: 'x',
       gameDate: 'x',
@@ -49,7 +49,9 @@ describe('Session row round-trip', () => {
       locationName: '',
       locationUrl: '',
     });
-    expect(parsed.status).toBe('open');
+    // Closed, not open: a blank cell is the absence of a decision, and for
+    // "are signups accepted" the safe reading of silence is no.
+    expect(parsed.status).toBe('closed');
     expect(parsed.capacity).toBe(0);
     expect(parsed.cost).toBe(0);
   });
