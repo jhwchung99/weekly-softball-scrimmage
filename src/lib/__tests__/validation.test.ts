@@ -31,8 +31,20 @@ describe('validateFullName / validateGender / validateInvitedByName', () => {
     expect(validateFullName('=1+1')).toBe('=1+1');
   });
 
-  it('rejects an overlong gender', () => {
-    expect(() => validateGender('a'.repeat(31))).toThrow(/30 characters/);
+  it('accepts the two offered genders', () => {
+    expect(validateGender('  Male  ')).toBe('Male');
+    expect(validateGender('Female')).toBe('Female');
+  });
+
+  it('normalizes casing, so a row typed back when this was free text still resolves', () => {
+    expect(validateGender('male')).toBe('Male');
+    expect(validateGender('FEMALE')).toBe('Female');
+  });
+
+  it('rejects anything outside the list', () => {
+    expect(() => validateGender('Other')).toThrow(/must be one of/);
+    expect(() => validateGender('M')).toThrow(/must be one of/);
+    expect(() => validateGender('  ')).toThrow(/required/);
   });
 
   it('rejects an empty invitedByName', () => {
@@ -137,12 +149,12 @@ describe('validateGameTime', () => {
 
 describe('validatePlayerProfile', () => {
   it('validates every field together and returns a clean object', () => {
-    const result = validatePlayerProfile({ fullName: ' A ', gender: ' M ', savedPositions: 'Catcher' });
-    expect(result).toEqual({ fullName: 'A', gender: 'M', savedPositions: 'Catcher' });
+    const result = validatePlayerProfile({ fullName: ' A ', gender: ' male ', savedPositions: 'Catcher' });
+    expect(result).toEqual({ fullName: 'A', gender: 'Male', savedPositions: 'Catcher' });
   });
 
   it('propagates the first validation failure', () => {
-    expect(() => validatePlayerProfile({ fullName: '', gender: 'M' })).toThrow(/fullName/);
+    expect(() => validatePlayerProfile({ fullName: '', gender: 'Male' })).toThrow(/fullName/);
   });
 });
 
