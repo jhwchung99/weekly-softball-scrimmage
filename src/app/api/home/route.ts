@@ -6,6 +6,7 @@ import { getPlayer } from '../../../sheets/players';
 import { currentWeekGameDayCandidates } from '../../../lib/time';
 import { buildMyStatus } from '../../../lib/signupFlow';
 import { buildRosterView } from '../../../lib/roster';
+import { teamsFromSignups, teamCountFor } from '../../../lib/teamFlow';
 import { WAIVER_TEXT } from '../../../lib/waiver';
 import { handleApiError } from '../../../lib/apiErrors';
 
@@ -48,6 +49,7 @@ export async function GET() {
         costOwed: null,
         waitlistPosition: null,
         roster: null,
+        teams: null,
         waiverText: WAIVER_TEXT,
         // Deliberately omitted when signed out — see the note below.
         paymentInstructions: '',
@@ -68,6 +70,16 @@ export async function GET() {
       costOwed,
       waitlistPosition,
       roster: buildRosterView(allSignups, email),
+      /**
+       * Only once the organizer posts them. A 'draft' is theirs to edit, so
+       * players see nothing until they publish. Gated on being signed up for
+       * the week, the same boundary buildRosterView draws for names: someone
+       * who isn't playing has no business reading the lineup.
+       */
+      teams:
+        session.teamsStatus === 'posted' && signup
+          ? teamsFromSignups(allSignups, teamCountFor(session))
+          : null,
       waiverText: WAIVER_TEXT,
       /**
        * Sent from the server, to signed-in callers only, rather than exposed
