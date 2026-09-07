@@ -30,6 +30,8 @@ describe('Session row round-trip', () => {
       locationArea: 'Mississauga',
       locationName: 'Iceland Park Diamond 3',
       locationUrl: 'https://maps.example.com/iceland',
+      numFields: 2,
+      teamsStatus: 'posted',
     };
     expect(parseSessionRow(serializeSessionRow(session))).toEqual(session);
   });
@@ -48,12 +50,18 @@ describe('Session row round-trip', () => {
       locationArea: '',
       locationName: '',
       locationUrl: '',
+      numFields: '',
+      teamsStatus: '',
     });
     // Closed, not open: a blank cell is the absence of a decision, and for
     // "are signups accepted" the safe reading of silence is no.
     expect(parsed.status).toBe('closed');
     expect(parsed.capacity).toBe(0);
     expect(parsed.cost).toBe(0);
+    // One field is the historical behaviour, so a blank cell has to mean that
+    // rather than zero, which would ask the generator for no teams at all.
+    expect(parsed.numFields).toBe(1);
+    expect(parsed.teamsStatus).toBe('');
   });
 });
 
@@ -80,6 +88,7 @@ describe('Signup row round-trip', () => {
     subRequestTargetEmail: '',
     subRequestStatus: '',
     subRequestedAt: '',
+    teamName: 'Team 1',
   };
 
   it('preserves every field through serialize -> parse', () => {
