@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Providers } from './providers';
+import { FeedbackButton } from '../components/FeedbackButton';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -19,7 +20,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        {/* Inside Providers because the form reads the session to tell a
+            signed-in reporter from one who needs to sign in first. */}
+        <Providers>
+          {children}
+          <FeedbackButton />
+        </Providers>
       </body>
     </html>
   );
