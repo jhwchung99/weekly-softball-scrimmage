@@ -18,6 +18,7 @@ vi.mock('../../lib/gmail', () => ({ sendEmail }));
 vi.mock('../../lib/ntfy', () => ({ sendPush }));
 
 const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSlots, computeCostShare, computePaymentSummary } = await import('../signupFlow');
+const { respondToSubRequest } = await import('../subRequestFlow');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -30,7 +31,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.useRealTimers();
 });
 
@@ -179,19 +179,39 @@ describe('signUpForSession', () => {
     await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/not currently open/);
   });
 
-  it('merges with a pending guest invite that named this member (guest signed up first)', async () => {
-    store.sessions.set('2099-01-01', makeSession({ capacity: 5 }));
+  it('offers the member a pairing when a guest named them, rather than merging silently', async () => {
+    store.sessions.set('2099-01-01', makeSession({ capacity: 1 }));
+    store.players.set('taken@dummy.test', makePlayer({ email: 'taken@dummy.test', fullName: 'Taken' }));
     store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member One' }));
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest One' }));
 
+    await signUpForSession('2099-01-01', 'taken@dummy.test', true); // fills the only slot
     const guest = await signUpAsGuestForSession('2099-01-01', 'guest@dummy.test', 'Member One', true, true);
     expect(guest.pairId).toBe(''); // member hasn't signed up yet
 
     const member = await signUpForSession('2099-01-01', 'member@dummy.test', true);
-    expect(member.pairId).toBeTruthy();
 
-    const guestRow = store.signups.get(guest.signupId);
-    expect(guestRow?.pairId).toBe(member.pairId);
+    // A request the member can decline, not a pair they never agreed to.
+    expect(member.pairId).toBe('');
+    const guestRow = store.signups.get(guest.signupId)!;
+    expect(guestRow.pairId).toBe('');
+    expect(guestRow.subRequestStatus).toBe('pending');
+    expect(guestRow.subRequestTargetEmail).toBe('member@dummy.test');
+  });
+
+  it('will not hand a confirmed spot to someone who just types a member name', async () => {
+    // The 2026-09-07 finding: naming any member off the roster used to
+    // inherit their status outright, jumping the whole waitlist.
+    store.sessions.set('2099-01-01', makeSession({ capacity: 1 }));
+    store.players.set('victim@dummy.test', makePlayer({ email: 'victim@dummy.test', fullName: 'Victim Member' }));
+    store.players.set('attacker@dummy.test', makePlayer({ email: 'attacker@dummy.test', fullName: 'Attacker' }));
+
+    const victim = await signUpForSession('2099-01-01', 'victim@dummy.test', true);
+    const attacker = await signUpAsGuestForSession('2099-01-01', 'attacker@dummy.test', 'Victim Member', true, true);
+
+    expect(attacker.status).toBe('waitlisted');
+    expect(attacker.pairId).toBe('');
+    expect(store.signups.get(victim.signupId)?.pairId).toBe(''); // victim untouched
   });
 });
 
@@ -314,10 +334,14 @@ describe('cancelMySignup', () => {
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest One' }));
 
     const solo = await signUpForSession('2026-07-10', 'solo@dummy.test', true, DURING_REGISTRATION); // confirmed, fills capacity 1
-    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // waitlisted, unpaired
-    const member = await signUpForSession('2026-07-10', 'member@dummy.test', true, DURING_REGISTRATION); // waitlisted, pairs with guest
+    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // waitlisted
+    const member = await signUpForSession('2026-07-10', 'member@dummy.test', true, DURING_REGISTRATION); // waitlisted
     expect(guest.status).toBe('waitlisted');
     expect(member.status).toBe('waitlisted');
+
+    // The pair now only exists once the member accepts the guest's request.
+    await respondToSubRequest(guest.signupId, 'member@dummy.test', true);
+    sendEmail.mockClear(); // ignore the acceptance mail; this test is about promotion
 
     await cancelMySignup(solo.signupId, 'solo@dummy.test', false);
 
@@ -354,8 +378,9 @@ describe('cancelMySignup', () => {
     store.players.set('c@dummy.test', makePlayer({ email: 'c@dummy.test' }));
 
     const member = await signUpForSession('2026-07-10', 'member@dummy.test', true, DURING_REGISTRATION); // confirmed, fills capacity 1
-    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // pairs with member, confirmed
-    expect(guest.status).toBe('confirmed');
+    const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // waitlisted + request
+    await respondToSubRequest(guest.signupId, 'member@dummy.test', true); // member accepts: now sharing one slot
+    expect(store.signups.get(guest.signupId)?.status).toBe('confirmed');
     const c = await signUpForSession('2026-07-10', 'c@dummy.test', true, DURING_REGISTRATION); // waitlisted
     expect(c.status).toBe('waitlisted');
 
