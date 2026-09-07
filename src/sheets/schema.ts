@@ -9,6 +9,7 @@ import { FeedbackKind } from '../lib/feedbackKinds';
 export type SessionStatus = 'open' | 'closed' | 'cancelled';
 export type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
 export type MemberStatus = 'member' | 'guest';
+export type TeamsStatus = '' | 'draft' | 'posted';
 
 export interface Session {
   sessionId: string;
@@ -31,6 +32,12 @@ export interface Session {
   locationName: string; // the specific field, filled in once booked — e.g.
   // "Iceland Park Diamond 3". '' until then.
   locationUrl: string; // optional map link for locationName; '' if none.
+  numFields: number; // how many diamonds are booked. Teams = numFields * 2, so
+  // a second field means four teams. 0/1 both read as one field.
+  teamsStatus: TeamsStatus; // '' none yet, 'draft' generated and editable by
+  // the admin, 'posted' visible to players. Three states rather than two
+  // booleans because the generate cron's idempotency check is `=== ''` and the
+  // Post button is the draft -> posted transition.
 }
 
 export interface Signup {
@@ -67,6 +74,9 @@ export interface Signup {
   // No 'accepted' value: on acceptance the pair is formed via pairId (the
   // permanent record) and these three fields reset back to ''/empty.
   subRequestedAt: string; // ISO datetime, '' when no request is outstanding
+  teamName: string; // which team this player was put on; '' before teams are
+  // generated. Written on the signup rather than a separate tab so reading a
+  // session's teams costs no extra Sheets read.
 }
 
 export interface Player {
@@ -89,6 +99,8 @@ export const SESSION_HEADERS = [
   'locationArea',
   'locationName',
   'locationUrl',
+  'numFields',
+  'teamsStatus',
 ] as const satisfies readonly (keyof Session)[];
 
 export const SIGNUP_HEADERS = [
@@ -113,6 +125,7 @@ export const SIGNUP_HEADERS = [
   'amountPaid',
   'paidAt',
   'attended',
+  'teamName',
 ] as const satisfies readonly (keyof Signup)[];
 
 export const PLAYER_HEADERS = [
@@ -172,6 +185,9 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     status: (row.status || 'closed') as SessionStatus,
     cost: Number(row.cost) || 0,
     pricePerSpot: Number(row.pricePerSpot) || 0,
+    // A blank cell means one field, the way it has always worked.
+    numFields: Number(row.numFields) || 1,
+    teamsStatus: (row.teamsStatus || '') as TeamsStatus,
   };
 }
 
@@ -181,6 +197,7 @@ export function serializeSessionRow(session: Session): RawRow<Session> {
     capacity: String(session.capacity),
     cost: String(session.cost),
     pricePerSpot: String(session.pricePerSpot),
+    numFields: String(session.numFields),
   };
 }
 
