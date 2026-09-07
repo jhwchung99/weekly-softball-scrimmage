@@ -17,7 +17,7 @@ const sendPush = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 vi.mock('../../lib/ntfy', () => ({ sendPush }));
 
-const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSlots, computeCostShare, computePaymentSummary } = await import('../signupFlow');
+const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSlots, computeCostShare, computePaymentSummary, fillOpenSpots } = await import('../signupFlow');
 const { respondToSubRequest } = await import('../subRequestFlow');
 
 beforeEach(() => {
@@ -391,3 +391,53 @@ describe('cancelMySignup', () => {
   });
 });
 
+
+/**
+ * Raising capacity is how the organizer opens a second field. It used to
+ * promote nobody: the admin route wrote the new number through and nothing
+ * re-examined the waitlist. See planner/2026-09-07-team-generation-plan.md.
+ */
+describe('fillOpenSpots', () => {
+  it('promotes the whole waitlist when capacity is raised past it', async () => {
+    store.sessions.set('2099-01-01', makeSession({ capacity: 2 }));
+    for (const e of ['a', 'b', 'c', 'd', 'e']) {
+      store.players.set(`${e}@dummy.test`, makePlayer({ email: `${e}@dummy.test`, fullName: e.toUpperCase() }));
+      await signUpForSession('2099-01-01', `${e}@dummy.test`, true);
+    }
+    expect([...store.signups.values()].filter((s) => s.status === 'waitlisted')).toHaveLength(3);
+
+    store.sessions.set('2099-01-01', { ...store.sessions.get('2099-01-01')!, capacity: 5 });
+    const promoted = await fillOpenSpots('2099-01-01');
+
+    expect(promoted).toHaveLength(3);
+    expect([...store.signups.values()].every((s) => s.status === 'confirmed')).toBe(true);
+    expect(sendEmail).toHaveBeenCalledTimes(3); // everyone promoted hears about it
+  });
+
+  it('only fills up to the new capacity, in waitlist order', async () => {
+    store.sessions.set('2099-01-01', makeSession({ capacity: 1 }));
+    for (const e of ['a', 'b', 'c']) {
+      store.players.set(`${e}@dummy.test`, makePlayer({ email: `${e}@dummy.test`, fullName: e.toUpperCase() }));
+      await signUpForSession('2099-01-01', `${e}@dummy.test`, true);
+    }
+
+    store.sessions.set('2099-01-01', { ...store.sessions.get('2099-01-01')!, capacity: 2 });
+    const promoted = await fillOpenSpots('2099-01-01');
+
+    expect(promoted).toHaveLength(1);
+    expect(promoted[0].email).toBe('b@dummy.test'); // signed up before c
+  });
+
+  it('does nothing when the roster is already at capacity', async () => {
+    store.sessions.set('2099-01-01', makeSession({ capacity: 1 }));
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    await signUpForSession('2099-01-01', 'a@dummy.test', true);
+
+    await expect(fillOpenSpots('2099-01-01')).resolves.toEqual([]);
+  });
+
+  it('does nothing when nobody is waiting', async () => {
+    store.sessions.set('2099-01-01', makeSession({ capacity: 10 }));
+    await expect(fillOpenSpots('2099-01-01')).resolves.toEqual([]);
+  });
+});
