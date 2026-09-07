@@ -213,6 +213,8 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     locationArea: '',
     locationName: '',
     locationUrl: '',
+    numFields: 1,
+    teamsStatus: '' as const,
     ...overrides,
   };
 }
@@ -243,6 +245,7 @@ export function makeSignup(overrides: Partial<Signup> = {}): Signup {
     subRequestTargetEmail: '',
     subRequestStatus: '',
     subRequestedAt: '',
+    teamName: '',
     ...overrides,
   };
 }
