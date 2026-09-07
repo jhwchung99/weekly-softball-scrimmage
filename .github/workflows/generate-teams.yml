@@ -1,0 +1,21 @@
+# Teams are drawn up once the roster locks, which is game time minus five
+# hours. That is not a fixed clock time — it moves with the session's game
+# time — so unlike the other three workflows this cannot be scheduled at the
+# moment it should happen. It runs hourly on game days instead and the endpoint
+# decides whether it is due; `teamsStatus` keeps it idempotent, so the extra
+# runs are no-ops and DST needs no special handling here.
+name: Generate teams
+
+on:
+  schedule:
+    - cron: '0 * * * 5,6,0'
+  workflow_dispatch:
+
+jobs:
+  generate-teams:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the generate-teams endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.APP_URL }}/api/cron/generate-teams" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
