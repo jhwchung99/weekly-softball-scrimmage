@@ -11,9 +11,10 @@ backed by a Google Sheet as its database.
 
 - **Next.js app** (`src/app`) — the signup UI, the admin dashboard, and
   every API route. Deployed on Vercel.
-- **Google Sheet** (`src/sheets`) — the database. Four tabs: `Sessions`
+- **Google Sheet** (`src/sheets`) — the database. Five tabs: `Sessions`
   (one row per week's game), `Signups`, `Players` (saved profiles),
-  `Admins` (allowlist of admin emails). Read and written via a service
+  `Admins` (allowlist of admin emails), and `Feedback` (append-only log
+  of bug reports and suggestions). Read and written via a service
   account through the Sheets API, not a spreadsheet UI a player ever
   touches directly. Columns are mapped **by position**, so the header
   arrays in `src/sheets/schema.ts` are the physical layout — run
@@ -26,8 +27,9 @@ backed by a Google Sheet as its database.
   Authorized once against a dedicated Gmail account
   (`scripts/authorizeGmailSender.ts`), not per player — and with
   send-only permission, so the app cannot read anyone's mail.
-- **ntfy.sh** — a push notification to the organizer for a cancellation
-  too close to game time to auto-promote anyone.
+- **ntfy.sh** — push notifications to the organizer: a cancellation too
+  close to game time to auto-promote anyone, and a heads-up whenever
+  someone files feedback from the site's feedback button.
 - **GitHub Actions** (`.github/workflows`) — three scheduled jobs:
   opening registration Monday, closing it Tuesday, and the game-day
   reminder.
@@ -166,6 +168,21 @@ in addition to the regular player view. Across the same week:
 - Gets an **open-spots push alert** the moment registration closes
   Tuesday if the session still has room under capacity — a nudge to
   manually add someone rather than book a permit for an empty spot.
+- **Reads bug reports and feedback** on the `Feedback` tab. A signed-in
+  player uses the feedback button in the site footer; the report lands as
+  a row with the time it was submitted, which kind it is, who sent it,
+  their message, and the page they were on.
+
+  The organizer also gets a **push** saying a report arrived and from
+  whom, which opens the spreadsheet when tapped. Deliberately it does
+  *not* repeat the message: a notification is easy to swipe away and
+  impossible to search later, so the row is the record and the push is
+  only a nudge to go read it. Sent at normal priority, unlike the two
+  alerts above, so a 2am suggestion doesn't ring like an emergency.
+
+  Capped at five reports per person per hour, and it costs one Sheets
+  write and no reads, so a burst of feedback can't eat into the read
+  quota signups depend on.
 - **Track payments.** Ticking someone as paid records what they paid and
   when, and the session card shows collected vs expected vs the permit
   cost, so over- or under-collection is visible rather than implicit.
@@ -197,7 +214,7 @@ You need:
 
 ```sh
 npm run dev              # local dev server
-npm run setup:sheets     # create the Sessions/Signups/Players/Admins tabs
+npm run setup:sheets     # create the Sessions/Signups/Players/Admins/Feedback tabs
 npm run authorize-gmail-sender  # one-time OAuth flow for the sender account
 ```
 
@@ -208,7 +225,7 @@ npm run authorize-gmail-sender  # one-time OAuth flow for the sender account
 | `npm run dev` | Local dev server (Turbopack). |
 | `npm run build` / `npm start` | Production build / run. |
 | `npm run lint` | ESLint. |
-| `npm run setup:sheets` | Creates the four data tabs with headers, if they don't already exist. |
+| `npm run setup:sheets` | Creates the five data tabs with headers, if they don't already exist. |
 | `npm run authorize-gmail-sender` | One-time OAuth flow that prints a refresh token for `GMAIL_SENDER_REFRESH_TOKEN` — see `scripts/authorizeGmailSender.ts`. |
 
 `scripts/seedDummyData.ts` seeds a throwaway test session and signups
