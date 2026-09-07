@@ -40,6 +40,7 @@ const NEW_SIGNUP_EXTRAS = {
   subRequestTargetEmail: '',
   subRequestStatus: '' as const,
   subRequestedAt: '',
+  teamName: '',
 };
 
 async function computeCapacityStatus(sessionId: string, capacity: number): Promise<'confirmed' | 'waitlisted'> {
@@ -310,12 +311,16 @@ function groupWaitlistUnits(allSignupsForSession: Signup[]): WaitlistUnit[] {
  * requests: this used to return only winner.signupIds[0], so the second
  * member of any promoted pair never got notified).
  */
-async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Signup[]> {
+function nextWaitlistUnit(allSignupsForSession: Signup[]): WaitlistUnit | null {
   const units = groupWaitlistUnits(allSignupsForSession);
-  if (units.length === 0) return [];
-
+  if (units.length === 0) return null;
   units.sort((a, b) => a.tier - b.tier || a.timestamp.localeCompare(b.timestamp));
-  const winner = units[0];
+  return units[0];
+}
+
+async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Signup[]> {
+  const winner = nextWaitlistUnit(allSignupsForSession);
+  if (!winner) return [];
   // One batched call both confirms every row in the winning unit and
   // returns the updated rows — previously a loop of individual writes
   // followed by a loop of individual reads.
@@ -409,6 +414,54 @@ export async function cancelMySignup(
   return { promoted: promotedSignups };
 }
 
+
+/**
+ * Promotes waitlisted players until the roster reaches capacity or the
+ * waitlist runs out, and returns everyone who moved.
+ *
+ * Raising capacity used to promote nobody: the admin route wrote the new
+ * number straight through and nothing re-examined the waitlist, so anyone
+ * above the old capacity stayed waitlisted indefinitely and only trickled in
+ * as a side effect of other people cancelling. That is the whole point of
+ * raising it, so it has to cascade. See
+ * planner/2026-09-07-team-generation-plan.md.
+ *
+ * The whole cascade is worked out in memory first, so this costs one read and
+ * one batched write however many spots just opened, rather than a read and a
+ * write per person.
+ */
+export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
+  const session = await getSession(sessionId);
+  if (!session) throw new ApiError(404, 'No such session.');
+
+  let signups = await listSignupsForSession(sessionId);
+  const toConfirm: string[] = [];
+
+  while (countConfirmedSlots(signups) < session.capacity) {
+    const winner = nextWaitlistUnit(signups);
+    if (!winner) break;
+    toConfirm.push(...winner.signupIds);
+    signups = signups.map((s) =>
+      winner.signupIds.includes(s.signupId) ? { ...s, status: 'confirmed' as const } : s
+    );
+  }
+
+  if (toConfirm.length === 0) return [];
+
+  const promoted = await batchUpdateSignups(
+    toConfirm.map((signupId) => ({ signupId, updates: { status: 'confirmed' as const } }))
+  );
+
+  for (const p of promoted) {
+    await clearOwnPendingRequest(p);
+    try {
+      await sendPromotionEmail(p, session);
+    } catch (err) {
+      console.error(`Failed to send promotion email to ${p.email}:`, err);
+    }
+  }
+  return promoted;
+}
 
 export interface MyStatus {
   signup: Signup | null;
