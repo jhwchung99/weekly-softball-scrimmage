@@ -12,12 +12,14 @@ import { WeeklyTimeline } from '../components/WeeklyTimeline';
 import { getWeeklyMilestones } from '../lib/time';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
+import { TeamRosters, TeamView } from '../components/TeamRosters';
 
 export interface SessionInfo {
   sessionId: string;
   gameDate: string;
   gameTime: string;
   capacity: number;
+  numFields: number;
   status: 'open' | 'closed' | 'cancelled';
   pricePerSpot: number;
   locationArea: string;
@@ -85,6 +87,7 @@ export default function Home() {
   // organizer's payment address isn't published to anyone who loads the page.
   const [paymentInstructions, setPaymentInstructions] = useState('');
   const [roster, setRoster] = useState<Roster | null>(null);
+  const [teams, setTeams] = useState<TeamView[] | null>(null);
   const [playerDataLoaded, setPlayerDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,11 +111,13 @@ export default function Home() {
         costOwed: number | null;
         waitlistPosition: number | null;
         roster: Roster | null;
+        teams: TeamView[] | null;
         waiverText: string;
         paymentInstructions: string;
       }>('/api/home');
 
       setScrimmage(d.session);
+      setTeams(d.teams);
       setMySignup(d.signup);
       setIncomingSubRequests(d.incomingSubRequests);
       setCostOwed(d.costOwed);
@@ -409,6 +414,10 @@ export default function Home() {
             </p>
           )}
         </Card>
+      )}
+
+      {teams && scrimmage && (
+        <TeamRosters teams={teams} numFields={scrimmage.numFields} highlightSignupId={mySignup?.signupId} />
       )}
     </main>
   );
