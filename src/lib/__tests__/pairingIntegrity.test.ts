@@ -30,53 +30,82 @@ afterEach(() => {
 });
 
 /**
- * Regression coverage for Bug 3 in planner/2026-09-05-code-security-review.md.
- * The two pairing paths were asymmetric: the guest-side merge synced status,
- * the member-side merge only wrote pairId. A pair split across statuses left
- * the waitlisted half permanently unpromotable (groupWaitlistUnits skips any
- * pairId that already has a confirmed row) and unbilled.
+ * Bug 3 (planner/2026-09-05-code-security-review.md) was a pair split across
+ * statuses, left behind by the two asymmetric auto-merge paths. Those paths
+ * are gone: since the 2026-09-07 consent change a pair is only ever created
+ * by respondToSubRequest, which writes one status to both rows at once, so a
+ * split pair can no longer be constructed at signup time at all.
  */
-describe('member/guest merge keeps the pair on one status', () => {
-  it('promotes the late-arriving member onto the guest\'s confirmed slot', async () => {
-    store.sessions.set(SESSION, makeSession({ capacity: 1 }));
-    store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
-    store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member M' }));
-
-    // Guest signs up first naming a member who hasn't signed up yet, taking
-    // the last individual slot.
-    const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true);
-    expect(store.signups.get(g.signupId)?.status).toBe('confirmed');
-
-    // Member signs up into a now-full session, then merges with their guest.
-    const m = await signUpForSession(SESSION, 'member@dummy.test', true);
-
-    const memberRow = store.signups.get(m.signupId)!;
-    const guestRow = store.signups.get(g.signupId)!;
-    expect(memberRow.pairId).toBeTruthy();
-    expect(memberRow.pairId).toBe(guestRow.pairId);
-    expect(memberRow.status).toBe('confirmed'); // was 'waitlisted' — the bug
-    expect(guestRow.status).toBe('confirmed'); // merging never demotes the slot-holder
-    expect(countConfirmedSlots([...store.signups.values()])).toBe(1); // still one slot
-
-    // And the member is billed for their half rather than silently skipped.
-    store.sessions.set(SESSION, { ...store.sessions.get(SESSION)!, pricePerSpot: 20 });
-    const status = await getMyStatusForSession(SESSION, 'member@dummy.test');
-    expect(status.costOwed).toBe(10); // one spot's price, split with the guest
-  });
-
-  it('leaves both on the waitlist when the guest was waitlisted too', async () => {
+describe('pairing requires the member to accept', () => {
+  it('offers rather than merges, and the guest waits on the answer', async () => {
     store.sessions.set(SESSION, makeSession({ capacity: 1 }));
     store.players.set('taken@dummy.test', makePlayer({ email: 'taken@dummy.test', fullName: 'Taken T' }));
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
     store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member M' }));
 
     await signUpForSession(SESSION, 'taken@dummy.test', true); // takes the only slot
-    const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true); // waitlisted
-    const m = await signUpForSession(SESSION, 'member@dummy.test', true); // waitlisted, then merges
+    const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true);
+    const m = await signUpForSession(SESSION, 'member@dummy.test', true);
 
-    expect(store.signups.get(g.signupId)?.status).toBe('waitlisted');
-    expect(store.signups.get(m.signupId)?.status).toBe('waitlisted');
-    expect(store.signups.get(m.signupId)?.pairId).toBe(store.signups.get(g.signupId)?.pairId);
+    // A request, not a pair.
+    expect(store.signups.get(g.signupId)?.subRequestStatus).toBe('pending');
+    expect(store.signups.get(g.signupId)?.pairId).toBe('');
+    expect(store.signups.get(m.signupId)?.pairId).toBe('');
+  });
+
+  it('puts both on one status once the member accepts', async () => {
+    store.sessions.set(SESSION, makeSession({ capacity: 1, pricePerSpot: 20 }));
+    store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
+    store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member M' }));
+
+    const m = await signUpForSession(SESSION, 'member@dummy.test', true); // confirmed, fills capacity 1
+    const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true); // waitlisted + request
+    expect(store.signups.get(g.signupId)?.subRequestStatus).toBe('pending');
+
+    await respondToSubRequest(g.signupId, 'member@dummy.test', true);
+
+    const memberRow = store.signups.get(m.signupId)!;
+    const guestRow = store.signups.get(g.signupId)!;
+    expect(guestRow.pairId).toBeTruthy();
+    expect(guestRow.pairId).toBe(memberRow.pairId);
+    expect(guestRow.status).toBe('confirmed');
+    expect(memberRow.status).toBe('confirmed');
+    expect(countConfirmedSlots([...store.signups.values()])).toBe(1); // still one slot
+
+    // And both are billed for their half rather than either being skipped.
+    const status = await getMyStatusForSession(SESSION, 'member@dummy.test');
+    expect(status.costOwed).toBe(10);
+  });
+
+  it('declining leaves the guest on the waitlist with their own place in line', async () => {
+    store.sessions.set(SESSION, makeSession({ capacity: 1 }));
+    store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
+    store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member M' }));
+
+    await signUpForSession(SESSION, 'member@dummy.test', true);
+    const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true);
+
+    await respondToSubRequest(g.signupId, 'member@dummy.test', false);
+
+    const guestRow = store.signups.get(g.signupId)!;
+    expect(guestRow.subRequestStatus).toBe('declined');
+    expect(guestRow.pairId).toBe('');
+    expect(guestRow.status).toBe('waitlisted');
+  });
+
+  it('never offers a pairing to a guest who already has their own confirmed slot', async () => {
+    // Folding a confirmed guest into someone else's slot would drop the
+    // roster under capacity with nothing to refill it.
+    store.sessions.set(SESSION, makeSession({ capacity: 5 }));
+    store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
+    store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member M' }));
+
+    const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true);
+    const m = await signUpForSession(SESSION, 'member@dummy.test', true);
+
+    expect(store.signups.get(g.signupId)?.status).toBe('confirmed');
+    expect(store.signups.get(g.signupId)?.subRequestStatus).toBe('');
+    expect(store.signups.get(m.signupId)?.pairId).toBe('');
   });
 });
 
