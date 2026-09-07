@@ -10,6 +10,7 @@ import {
   validateGameDate,
   validateGameTime,
   validatePlayerProfile,
+  validateFeedback,
 } from '../validation';
 
 describe('validateFullName / validateGender / validateInvitedByName', () => {
@@ -142,5 +143,43 @@ describe('validatePlayerProfile', () => {
 
   it('propagates the first validation failure', () => {
     expect(() => validatePlayerProfile({ fullName: '', gender: 'M' })).toThrow(/fullName/);
+  });
+});
+
+describe('validateFeedback', () => {
+  it('accepts a well-formed report', () => {
+    expect(validateFeedback({ kind: 'bug', message: '  Cancel does nothing.  ', pageUrl: '/' })).toEqual({
+      kind: 'bug',
+      message: 'Cancel does nothing.',
+      pageUrl: '/',
+    });
+  });
+
+  it('rejects a kind that is not one of the two offered', () => {
+    expect(() => validateFeedback({ kind: 'complaint', message: 'x' })).toThrow(/kind must be one of/);
+    expect(() => validateFeedback({ message: 'x' })).toThrow(/kind must be one of/);
+  });
+
+  it('requires a non-empty message', () => {
+    expect(() => validateFeedback({ kind: 'bug', message: '   ' })).toThrow(/message is required/);
+  });
+
+  it('caps the message so a notification stays readable', () => {
+    expect(() => validateFeedback({ kind: 'bug', message: 'x'.repeat(1001) })).toThrow(/1000 characters or fewer/);
+  });
+
+  it('drops a pageUrl that is not a same-site path', () => {
+    // The organizer may well tap this in a notification, so an absolute URL
+    // from the request body must never survive into the push.
+    expect(validateFeedback({ kind: 'bug', message: 'x', pageUrl: 'https://evil.example/' }).pageUrl).toBe('');
+    expect(validateFeedback({ kind: 'bug', message: 'x', pageUrl: 'javascript:alert(1)' }).pageUrl).toBe('');
+    // Protocol-relative: starts with '/', but a browser resolves it to
+    // https://evil.example, so it must not survive either.
+    expect(validateFeedback({ kind: 'bug', message: 'x', pageUrl: '//evil.example/' }).pageUrl).toBe('');
+    expect(validateFeedback({ kind: 'bug', message: 'x', pageUrl: 42 }).pageUrl).toBe('');
+  });
+
+  it('keeps a same-site path', () => {
+    expect(validateFeedback({ kind: 'feedback', message: 'x', pageUrl: '/guidelines' }).pageUrl).toBe('/guidelines');
   });
 });
