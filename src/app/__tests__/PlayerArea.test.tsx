@@ -13,6 +13,7 @@ const scrimmage = {
   locationArea: '',
   locationName: '',
   locationUrl: '',
+  numFields: 1,
 };
 
 const baseProps = {
