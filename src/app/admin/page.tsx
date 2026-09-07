@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
+import { GENDERS } from '../../lib/genders';
 import { computePaymentSummary } from '../../lib/payments';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
@@ -740,14 +741,22 @@ function AddSignupForm(props: {
               onChange={(e) => setFullName(e.target.value)}
               className="w-full rounded border border-slate-300 px-2 py-1.5"
             />
-            <input
-              required
-              aria-label="Gender"
-              placeholder="Gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              className="w-full rounded border border-slate-300 px-2 py-1.5"
-            />
+            <fieldset className="flex flex-wrap items-center gap-2">
+              <legend className="sr-only">Gender</legend>
+              {GENDERS.map((g) => (
+                <label key={g} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs">
+                  <input
+                    type="radio"
+                    name="admin-gender"
+                    value={g}
+                    required
+                    checked={gender === g}
+                    onChange={() => setGender(g)}
+                  />
+                  {g}
+                </label>
+              ))}
+            </fieldset>
             <div className="flex flex-wrap gap-2">
               {POSITIONS.map((p) => (
                 <label key={p} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs">
