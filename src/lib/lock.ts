@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Redis } from '@upstash/redis';
+import { getRedis } from './redis';
 import { ApiError } from './apiErrors';
 
 // Serializes every signup/cancel/sub-request mutation across all
@@ -32,27 +32,6 @@ const LOCK_KEY = 'weekly-softball-scrimmage:mutation-lock';
 const LOCK_TTL_SECONDS = 60;
 const ACQUIRE_RETRY_DELAY_MS = 250;
 const ACQUIRE_TIMEOUT_MS = 10000;
-
-let redisClient: Redis | undefined;
-let warnedNotConfigured = false;
-
-function getRedis(): Redis | null {
-  if (redisClient) return redisClient;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    if (!warnedNotConfigured) {
-      console.warn(
-        'UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set — mutation requests are running ' +
-          'unlocked. See planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md for setup.'
-      );
-      warnedNotConfigured = true;
-    }
-    return null;
-  }
-  redisClient = new Redis({ url, token });
-  return redisClient;
-}
 
 /**
  * Runs `fn` while holding the single global mutation lock. Fails open
