@@ -15,6 +15,10 @@ describe('ProfileForm', () => {
   it('renders empty fields by default (first-time signup)', () => {
     render(<ProfileForm onSaved={vi.fn()} busy={false} setBusy={vi.fn()} setError={vi.fn()} />);
     expect(screen.getByLabelText('Full name')).toHaveValue('');
+    // Gender is a two-option radio group now, so nothing is pre-selected
+    // for a first-time player rather than an empty text box.
+    expect(screen.getByRole('radio', { name: 'Male' })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Female' })).not.toBeChecked();
     expect(screen.getByText(/first time here/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /save and continue/i })).toBeInTheDocument();
   });
@@ -30,7 +34,8 @@ describe('ProfileForm', () => {
       />
     );
     expect(screen.getByLabelText('Full name')).toHaveValue('Jane Doe');
-    expect(screen.getByLabelText('Gender')).toHaveValue('Female');
+    expect(screen.getByRole('radio', { name: 'Female' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Male' })).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Catcher' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'SS' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Outfield' })).not.toBeChecked();
@@ -47,12 +52,23 @@ describe('ProfileForm', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('allows only one gender at a time, and swaps rather than accumulating', async () => {
+    render(<ProfileForm onSaved={vi.fn()} busy={false} setBusy={vi.fn()} setError={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Male' }));
+    expect(screen.getByRole('radio', { name: 'Male' })).toBeChecked();
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Female' }));
+    expect(screen.getByRole('radio', { name: 'Female' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Male' })).not.toBeChecked();
+  });
+
   it('submits the entered values to PUT /api/players/me', async () => {
     const onSaved = vi.fn();
     render(<ProfileForm onSaved={onSaved} busy={false} setBusy={vi.fn()} setError={vi.fn()} />);
 
     await userEvent.type(screen.getByLabelText('Full name'), 'New Player');
-    await userEvent.type(screen.getByLabelText('Gender'), 'Male');
+    await userEvent.click(screen.getByRole('radio', { name: 'Male' }));
     await userEvent.click(screen.getByRole('checkbox', { name: 'Rover' }));
     await userEvent.click(screen.getByRole('button', { name: /save and continue/i }));
 
