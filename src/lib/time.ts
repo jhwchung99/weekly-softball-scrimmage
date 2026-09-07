@@ -70,8 +70,10 @@ export interface WeeklyMilestones {
  * runs) or reflect an admin manually opening things early rather than
  * the intended schedule. This computes the *schedule*, independent of
  * whether it's actually been hit yet — pairs with the session's own
- * `status` field (the actual source of truth for whether signups are
- * currently accepted) rather than replacing it. No server-only APIs
+ * `status` field rather than replacing it. Since 2026-09-07 the signup
+ * gate requires BOTH (see signupFlow's requireOpenSessionAndProfile):
+ * status alone was a single point of failure, because anything that set a
+ * session open accepted signups immediately, whatever the calendar said. No server-only APIs
  * used, safe to import from a client component too.
  *
  * Game day can be Friday, Saturday, or Sunday (validateGameDate
