@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "setup:sheets": "tsx scripts/createDataTabs.ts",
+    "setup:sheets": "tsx --env-file=.env.local scripts/createDataTabs.ts",
     "authorize-gmail-sender": "tsx --env-file=.env.local scripts/authorizeGmailSender.ts",
     "verify:schema": "tsx --env-file=.env.local scripts/verifySheetSchema.ts"
   },
