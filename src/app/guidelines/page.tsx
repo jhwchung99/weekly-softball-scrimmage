@@ -23,20 +23,18 @@ export default function GuidelinesPage() {
       <Section title="When to sign up">
         <li><strong>Signups open Monday at 9:00am ET</strong></li>
         <li><strong>Signups close Tuesday at 12:00am ET</strong> (midnight, i.e. the end of Monday)</li>
-        <li>
-          That window is short on purpose: it lets the organizer book a field sized to the actual headcount for the
-          rest of the week
-        </li>
-        <li>Miss it and you&apos;re out for that week, so it&apos;s worth signing up Monday</li>
+        <li>No one will be added after the deadline</li>
         <li>Games are Friday, Saturday, or Sunday. Check the homepage for which one this week is</li>
       </Section>
 
       <Section title="Signing up">
         <li>First-come, first-served</li>
         <li>Once capacity fills, new signups go on an automatic waitlist, in order</li>
-        <li>First time signing up: fill out a short profile (name, gender, positions)</li>
-        <li>Profile is saved for future weeks. Update it any time from the homepage</li>
-        <li>Waitlisted? The homepage shows where you are in line</li>
+        <li>
+          First time signing up: fill out a short profile (name, gender, positions) which is saved for future weeks.
+          Update it any time from the homepage
+        </li>
+        <li>If you are waitlisted, the homepage shows where you are in line</li>
         <li>You can see who else is playing once you&apos;re signed up for that week</li>
         <li>Confirmed players get a reminder email on game-day morning, and can add the game to their calendar</li>
       </Section>
@@ -59,17 +57,16 @@ export default function GuidelinesPage() {
           automatically confirmed and emailed. Nothing is owed yet at this point, so there&apos;s no money to sort out
         </li>
         <li>
-          <strong>Within 5 hours of game time:</strong> no automatic replacement. The organizer gets a push alert to
-          fill it manually
-        </li>
-        <li>
-          Cancelling this late <strong>doesn&apos;t clear what you owe</strong>, so send it anyway. If the organizer
-          finds someone to fill in for you, collecting from that person is up to you, not the organizer
+          <strong>Within 5 hours of game time:</strong> no automatic replacement. Cancelling this late{' '}
+          <strong>doesn&apos;t clear what you owe</strong>, so send it anyway
         </li>
       </Section>
 
       <Section title="Requesting a sub">
-        <li>Waitlisted? Ask someone confirmed (or also waitlisted) to share their spot with you, from the homepage</li>
+        <li>
+          If you are waitlisted, ask someone confirmed (or also waitlisted) to share their spot with you, from the
+          homepage
+        </li>
         <li>
           <strong>Please reach out to them outside the app first</strong>, as a courtesy
         </li>
@@ -85,10 +82,10 @@ export default function GuidelinesPage() {
 
       <Section title="Cost">
         <li>A fixed price per spot, shown before you sign up. It doesn&apos;t change with headcount</li>
-        <li>Sharing a spot with someone? You each pay half</li>
+        <li>If you are sharing a spot with someone, you each pay half</li>
         <li>
           <strong>Payment opens 5 hours before game time</strong>, when the roster locks. Pay any time between then
-          and the start of the game
+          and the start of the game. Please be diligent with sending ETs to the organizer
         </li>
         <li>
           Nothing to pay before that. Cancel earlier and someone from the waitlist simply takes your spot, with no
@@ -96,10 +93,6 @@ export default function GuidelinesPage() {
         </li>
         <li>Once the roster locks, cancelling doesn&apos;t remove what you owe: nobody replaces you, and the field is booked regardless</li>
         <li>Payment happens outside the app. The organizer tracks who&apos;s paid</li>
-        <li>
-          Payment opening at the lock is deliberate: it means nobody who has paid can then be replaced, so there are
-          never refunds or transfers between players to work out
-        </li>
       </Section>
 
       <Section title="Something not working?">
