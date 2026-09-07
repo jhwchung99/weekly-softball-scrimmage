@@ -1,8 +1,10 @@
-// Types and Sheet<->object (de)serialization for the three data tabs
-// described in PROJECT_GUIDELINES.md Section 3. Sheets cells are always
+// Types and Sheet<->object (de)serialization for the data tabs described
+// in PROJECT_GUIDELINES.md Section 3, plus the Feedback tab added later. Sheets cells are always
 // strings, so every row type has a serialize/parse pair here rather than
 // scattering `String(x)` / `x === 'TRUE'` conversions through repository
 // code.
+
+import { FeedbackKind } from '../lib/feedbackKinds';
 
 export type SessionStatus = 'open' | 'closed' | 'cancelled';
 export type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
@@ -128,6 +130,34 @@ export interface Admin {
 
 export const ADMIN_HEADERS = ['email'] as const satisfies readonly (keyof Admin)[];
 
+/**
+ * A bug report or suggestion sent from the site's feedback button.
+ *
+ * Append-only and deliberately separate from the weekly data: nothing in
+ * the app ever reads this tab back, it exists so the organizer has a
+ * durable, searchable record instead of a push notification they might
+ * swipe away. `submittedAt` is what makes it a log rather than a pile.
+ */
+export interface Feedback {
+  feedbackId: string;
+  submittedAt: string; // ISO datetime the report was received
+  kind: FeedbackKind;
+  email: string; // from the verified session, so it's who to reply to
+  fullName: string; // the Google account's display name; '' if it had none
+  message: string;
+  pageUrl: string; // the path they were on, '' when not a same-site path
+}
+
+export const FEEDBACK_HEADERS = [
+  'feedbackId',
+  'submittedAt',
+  'kind',
+  'email',
+  'fullName',
+  'message',
+  'pageUrl',
+] as const satisfies readonly (keyof Feedback)[];
+
 // Raw row shape as read back from the sheet: same keys, every value a string.
 export type RawRow<T> = { [K in keyof T]: string };
 
@@ -183,4 +213,14 @@ export function parsePlayerRow(row: RawRow<Player>): Player {
 
 export function serializePlayerRow(player: Player): RawRow<Player> {
   return { ...player };
+}
+
+/** Like Player's, near-identity transforms — `kind` is the one field with a
+ * narrower type than the string the sheet hands back. */
+export function parseFeedbackRow(row: RawRow<Feedback>): Feedback {
+  return { ...row, kind: (row.kind || 'feedback') as FeedbackKind };
+}
+
+export function serializeFeedbackRow(feedback: Feedback): RawRow<Feedback> {
+  return { ...feedback };
 }
