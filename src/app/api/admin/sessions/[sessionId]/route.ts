@@ -5,9 +5,11 @@ import { adminRescheduleSession } from '../../../../../lib/adminFlow';
 import { withMutationLock } from '../../../../../lib/lock';
 import { Session, SessionStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { fillOpenSpots } from '../../../../../lib/signupFlow';
 import {
   validateCost,
   validateCapacity,
+  validateNumFields,
   validateLocationArea,
   validateLocationName,
   validateLocationUrl,
@@ -61,6 +63,7 @@ export async function PATCH(request: Request, { params }: Params) {
       body?.gameDate !== undefined ||
       body?.gameTime !== undefined ||
       body?.capacity !== undefined ||
+      body?.numFields !== undefined ||
       body?.status !== undefined ||
       body?.cost !== undefined ||
       body?.pricePerSpot !== undefined ||
@@ -70,7 +73,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!fieldsProvided) {
       throw new ApiError(
         400,
-        'Provide at least one of: gameDate, gameTime, capacity, status, cost, pricePerSpot, locationArea, locationName, locationUrl.'
+        'Provide at least one of: gameDate, gameTime, capacity, numFields, status, cost, pricePerSpot, locationArea, locationName, locationUrl.'
       );
     }
 
@@ -88,6 +91,10 @@ export async function PATCH(request: Request, { params }: Params) {
 
     if (body.capacity !== undefined) {
       updates.capacity = validateCapacity(body.capacity);
+    }
+
+    if (body.numFields !== undefined) {
+      updates.numFields = validateNumFields(body.numFields);
     }
 
     if (body.pricePerSpot !== undefined) {
@@ -121,7 +128,16 @@ export async function PATCH(request: Request, { params }: Params) {
       session = await updateSession(currentSessionId, updates);
     }
 
-    return NextResponse.json({ session });
+    // Raising capacity is how the organizer opens a second field, so it has to
+    // actually let people in. Without this the new spots stay empty and
+    // everyone above the old capacity keeps waiting. Same lock as every other
+    // capacity mutation, since this runs the same accounting.
+    let promoted: Awaited<ReturnType<typeof fillOpenSpots>> = [];
+    if (updates.capacity !== undefined && updates.capacity > existing.capacity) {
+      promoted = await withMutationLock(() => fillOpenSpots(currentSessionId));
+    }
+
+    return NextResponse.json({ session, promoted: promoted.length });
   } catch (err) {
     return handleApiError(err);
   }
