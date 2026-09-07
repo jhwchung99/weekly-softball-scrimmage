@@ -51,16 +51,23 @@ export async function adminAddSignup(input: AdminAddSignupInput): Promise<Signup
     await upsertPlayer({ email: input.email, ...profile });
   }
 
+  // Section 8 lets an admin add someone regardless of the schedule — most
+  // often *after* registration closes, which is exactly what the open-spots
+  // alert nudges them to do. So this path opts out of the window check that
+  // guards player-initiated signups; `status` still applies.
+  const options = { bypassRegistrationWindow: true };
+
   if (input.invitedByName) {
     return signUpAsGuestForSession(
       input.sessionId,
       input.email,
       validateInvitedByName(input.invitedByName),
       Boolean(input.willingToShare),
-      input.waiverAccepted
+      input.waiverAccepted,
+      options
     );
   }
-  return signUpForSession(input.sessionId, input.email, input.waiverAccepted);
+  return signUpForSession(input.sessionId, input.email, input.waiverAccepted, options);
 }
 
 export interface AdminCreateSessionInput {
