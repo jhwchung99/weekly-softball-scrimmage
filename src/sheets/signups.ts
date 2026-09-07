@@ -141,9 +141,15 @@ export async function batchUpdateSignups(updates: { signupId: string; updates: P
 
 /**
  * Section 5: a guest who named `memberFullName` as their inviter, is
- * willing to share a slot, and isn't paired yet — i.e. someone the member
- * should merge with if/when they sign up. FIFO if more than one guest
- * named the same member (only the first pairs; see signupFlow.ts).
+ * willing to share a slot, and isn't paired yet — i.e. someone to *offer*
+ * the member a pairing with when they sign up. FIFO if more than one guest
+ * named the same member (only the first is offered; see signupFlow.ts).
+ *
+ * Waitlisted only, and only if they aren't already waiting on an answer.
+ * A guest who got their own confirmed slot has nothing to gain from
+ * sharing, and folding them into someone else's slot would drop the roster
+ * under capacity with no promotion to refill it (the same reason
+ * respondToSubRequest refuses a non-waitlisted requester).
  */
 export async function findPendingGuestInvite(sessionId: string, memberFullName: string): Promise<Signup | null> {
   const signups = await listSignupsForSession(sessionId);
@@ -153,7 +159,8 @@ export async function findPendingGuestInvite(sessionId: string, memberFullName: 
         s.memberStatus === 'guest' &&
         s.willingToShare &&
         !s.pairId &&
-        s.status !== 'cancelled' &&
+        s.status === 'waitlisted' &&
+        s.subRequestStatus !== 'pending' &&
         s.invitedByName.trim().toLowerCase() === memberFullName.trim().toLowerCase()
     )
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
