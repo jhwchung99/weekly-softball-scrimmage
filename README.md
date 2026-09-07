@@ -97,7 +97,11 @@ sequenceDiagram
    waiver, every time. You can sign up for yourself, or bring a guest
    (who answers two extra questions: who invited them, and whether
    they're willing to share a slot with that member rather than take a
-   separate spot). This window is intentionally short — it gives the
+   separate spot). Sharing is a *request*: the guest gets their own place
+   in the queue like anyone else, and if they're waitlisted the member
+   they named is asked to accept. Naming a member never takes their spot,
+   moves them, or changes what they owe — names are typed by hand and
+   can't stand in for consent. This window is intentionally short — it gives the
    organizer the rest of the week to book a permit sized to the actual
    headcount.
 3. **You're told immediately** whether you're confirmed or on the
