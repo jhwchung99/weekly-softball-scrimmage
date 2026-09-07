@@ -38,6 +38,9 @@ export interface SignupInfo {
 export interface IncomingSubRequest {
   fromSignupId: string;
   fromFullName: string;
+  /** A guest who named this player as their inviter, as opposed to a
+   * waitlisted player asking to sub in. */
+  fromGuestInvite: boolean;
 }
 
 export interface PlayerInfo {
@@ -337,7 +340,11 @@ export default function Home() {
           <ul className="mt-2 space-y-2">
             {incomingSubRequests.map((r) => (
               <li key={r.fromSignupId} className="flex items-center justify-between gap-2 text-sm text-slate-700">
-                <span>{r.fromFullName} would like to sub with you.</span>
+                <span>
+                  {r.fromGuestInvite
+                    ? `${r.fromFullName} signed up as your guest and would like to share your spot.`
+                    : `${r.fromFullName} would like to sub with you.`}
+                </span>
                 <span className="flex gap-2">
                   <Button
                     variant="success"
