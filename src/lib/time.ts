@@ -160,6 +160,11 @@ export function currentWeekGameDayCandidates(now: Date = new Date(), timeZone: s
  * fixed Eastern wall-clock time has to be scheduled at BOTH possible UTC
  * offsets, and the endpoint itself decides which firing is the real one
  * versus the seasonal duplicate to discard.
+ *
+ * Distance is measured circularly, because minutes-since-midnight wrap:
+ * 23:59 is one minute from a 00:00 target, not 1,439. Only a midnight-target
+ * caller can hit that, and there is none today (closeRegistration stopped
+ * using this), but the arithmetic should be right regardless of target.
  */
 export function isNearEasternTime(
   targetHour: number,
@@ -172,5 +177,6 @@ export function isNearEasternTime(
   const parts = Object.fromEntries(dtf.formatToParts(now).map((p) => [p.type, p.value]));
   const nowMinutes = (Number(parts.hour) % 24) * 60 + Number(parts.minute);
   const targetMinutes = targetHour * 60 + targetMinute;
-  return Math.abs(nowMinutes - targetMinutes) <= toleranceMinutes;
+  const diff = Math.abs(nowMinutes - targetMinutes);
+  return Math.min(diff, 24 * 60 - diff) <= toleranceMinutes;
 }

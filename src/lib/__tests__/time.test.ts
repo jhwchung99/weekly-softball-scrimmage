@@ -88,6 +88,16 @@ describe('isNearEasternTime', () => {
     // 30-minute tolerance.
     expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T14:00:00.000Z'))).toBe(false);
   });
+
+  it('measures distance circularly around midnight', () => {
+    // 11:45pm ET is 15 minutes from a midnight target, not 1,425. Plain
+    // subtraction got this backwards and rejected everything just before
+    // midnight — which was the entire pre-close window for the Tuesday job.
+    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T03:45:00.000Z'))).toBe(true);
+    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T04:15:00.000Z'))).toBe(true);
+    // Still an hour off, so the seasonal duplicate stays rejected.
+    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T05:00:00.000Z'))).toBe(false);
+  });
 });
 
 describe('getWeeklyMilestones', () => {

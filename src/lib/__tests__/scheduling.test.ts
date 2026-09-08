@@ -79,13 +79,39 @@ describe('closeRegistrationForCurrentSession', () => {
     expect(result).toEqual({ sessionId: '2026-07-10', skipped: true, reason: expect.stringMatching(/no session exists/i) });
   });
 
-  it('skips without touching the sheet when not near 12am ET (DST-offset duplicate firing)', async () => {
-    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'open' }));
+  it('discards the DST-offset duplicate firing because the session is no longer open', async () => {
+    // The real firing already closed it; this is the seasonal duplicate an
+    // hour later. Rejected on state, not on the clock — which is what makes
+    // it safe for either firing to be the one that arrives first.
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
 
-    // 1 hour after the real 12am ET instant — the seasonal EST/EDT duplicate.
     const result = await closeRegistrationForCurrentSession(new Date('2026-07-07T05:00:00.000Z'));
 
     expect(result.skipped).toBe(true);
+    expect(result.reason).toMatch(/already closed/i);
+    expect(sendPush).not.toHaveBeenCalled();
+  });
+
+  it('still closes when GitHub Actions fires hours late', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'open' }));
+
+    // 5am ET — five hours past the intended midnight close. The old
+    // clock-window guard skipped this, which is why registration silently
+    // never closed; delays this long are routine on GitHub's scheduler.
+    const result = await closeRegistrationForCurrentSession(new Date('2026-07-07T09:00:00.000Z'));
+
+    expect(result).toEqual({ sessionId: '2026-07-10', skipped: false });
+    expect(store.sessions.get('2026-07-10')?.status).toBe('closed');
+    expect(sendPush).toHaveBeenCalled();
+  });
+
+  it("does not close early when the week's close time hasn't arrived yet", async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'open' }));
+
+    const result = await closeRegistrationForCurrentSession(MONDAY_9AM);
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toMatch(/does not close until/i);
     expect(store.sessions.get('2026-07-10')?.status).toBe('open');
     expect(sendPush).not.toHaveBeenCalled();
   });

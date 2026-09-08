@@ -1,6 +1,6 @@
 import { getSessionByAnyId, createSession, updateSession } from '../sheets/sessions';
 import { listSignupsForSession } from '../sheets/signups';
-import { currentWeekGameDayCandidates, isNearEasternTime, todayEastern } from './time';
+import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, todayEastern } from './time';
 import { countConfirmedSlots, computeCostShare } from './payments';
 import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert } from './notifications';
 
@@ -11,11 +11,14 @@ export const DEFAULT_CAPACITY = Number(process.env.SESSION_DEFAULT_CAPACITY) || 
 // planner/2026-09-05-location-payments-qol-plan.md, section 3.
 export const DEFAULT_PRICE_PER_SPOT = Number(process.env.SESSION_DEFAULT_PRICE_PER_SPOT) || 0;
 
-// GitHub Actions can be several minutes late firing a scheduled workflow,
-// but the "wrong DST offset" duplicate firing is a full hour off — this
-// window is wide enough to absorb normal scheduling jitter while still
-// clearly rejecting that duplicate.
-const CRON_TOLERANCE_MINUTES = 30;
+// GitHub Actions can be badly late firing a scheduled workflow (delays of
+// 2-5 hours have been observed on this repo), but the "wrong DST offset"
+// duplicate firing is a full hour off — so 59 is the hard ceiling here, not
+// a tuning choice: at 60+ BOTH firings fall inside the window and the job
+// runs twice. Jobs that need to survive longer delays than this cannot use a
+// clock window at all, and should key off their own already-done state the
+// way closeRegistrationForCurrentSession does.
+const CRON_TOLERANCE_MINUTES = 59;
 
 export interface ScheduleResult {
   sessionId: string;
@@ -71,6 +74,20 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
  * Short on purpose (~15 hours after Monday's open) — gives the organizer
  * the rest of the week to book a permit sized to the actual headcount.
  *
+ * Deliberately NOT clock-gated the way the 9am jobs are. This ran for a week
+ * without ever closing a session: GitHub fires the workflow hours late, the
+ * old "is it within 30 minutes of midnight ET?" check read that as the DST
+ * duplicate, and skipped — returning 200, so the workflow went green while
+ * nothing happened. Widening the window cannot fix it either, since the two
+ * firings are only an hour apart (see CRON_TOLERANCE_MINUTES).
+ *
+ * So the duplicate is rejected by state rather than by the clock: whichever
+ * firing arrives first closes the session, and any later one finds it no
+ * longer 'open' and does nothing. That is correct no matter how late either
+ * one lands, at the cost of one Sheets read on the duplicate firing — the
+ * old version could skip before reading, this one has to look at the row to
+ * know whether the work is already done.
+ *
  * If capacity still has room once registration closes, the organizer
  * gets pushed an alert (not in the original guidelines) so an empty
  * permit slot doesn't go unnoticed until game day — same
@@ -81,13 +98,32 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
 export async function closeRegistrationForCurrentSession(now: Date = new Date()): Promise<ScheduleResult> {
   const candidates = currentWeekGameDayCandidates(now);
 
-  if (!isNearEasternTime(0, 0, CRON_TOLERANCE_MINUTES, now)) {
-    return { sessionId: candidates[0], skipped: true, reason: 'Not currently ~12am ET — likely the DST-offset duplicate cron firing.' };
-  }
-
   const existing = await getSessionByAnyId(candidates);
   if (!existing) {
     return { sessionId: candidates[0], skipped: true, reason: 'No session exists for this week — nothing to close.' };
+  }
+
+  // The idempotency guard, and so the thing that discards the DST duplicate:
+  // only an open session is closeable. Also covers an admin having closed or
+  // cancelled it by hand, which should likewise not re-fire the alerts.
+  if (existing.status !== 'open') {
+    return {
+      sessionId: existing.sessionId,
+      skipped: true,
+      reason: `Registration is already ${existing.status} — nothing to close.`,
+    };
+  }
+
+  // Derived from the game date rather than the clock, so an early firing is
+  // rejected on the schedule it was meant to keep, not on how close it
+  // happens to be to midnight.
+  const { registrationClosesAt } = getWeeklyMilestones(existing.gameDate, existing.gameTime);
+  if (now < registrationClosesAt) {
+    return {
+      sessionId: existing.sessionId,
+      skipped: true,
+      reason: `Registration does not close until ${registrationClosesAt.toISOString()}.`,
+    };
   }
 
   await updateSession(existing.sessionId, { status: 'closed', registrationClosesAt: now.toISOString() });
