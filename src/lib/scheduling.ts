@@ -210,6 +210,9 @@ export async function sendGameDayReminders(now: Date = new Date()): Promise<Remi
   }
 
   const owed = computeCostShare(session, signups);
+  // Decides whether the reminder closes with the nudge to cancel: that line
+  // only makes sense while somebody is actually waiting for a spot.
+  const hasWaitlist = signups.some((s) => s.status === 'waitlisted');
 
   let sent = 0;
   let failed = 0;
@@ -217,7 +220,7 @@ export async function sendGameDayReminders(now: Date = new Date()): Promise<Remi
     try {
       // `now` is threaded through so the email's "payment opens at …" wording is
       // decided by the same clock the job is running against, not wall time.
-      await sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, now);
+      await sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now);
       sent += 1;
     } catch (err) {
       failed += 1;

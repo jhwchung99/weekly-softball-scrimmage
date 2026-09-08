@@ -198,6 +198,43 @@ describe('sendGameDayReminders', () => {
     expect(body).not.toMatch(/you still owe/i);
   });
 
+  it('asks players to cancel only while someone is actually waiting', async () => {
+    // Capacity 1, two signups: 'a' is confirmed, 'b' lands on the waitlist.
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 1, status: 'open' })
+    );
+    for (const n of ['a', 'b']) {
+      store.players.set(`${n}@dummy.test`, makePlayer({ email: `${n}@dummy.test` }));
+      await signUpForSession('2026-07-10', `${n}@dummy.test`, true);
+    }
+
+    await sendGameDayReminders(GAME_DAY_9AM);
+
+    // Only the confirmed player is emailed at all.
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail.mock.calls[0][2]).toContain(
+      "If you can't make it, please cancel so someone on the waitlist can take your spot."
+    );
+  });
+
+  it('leaves the cancel nudge out when the waitlist is empty', async () => {
+    // The nudge's whole argument is that someone else wants the spot, so with
+    // nobody waiting it is just noise.
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5, status: 'open' })
+    );
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    await signUpForSession('2026-07-10', 'a@dummy.test', true);
+
+    await sendGameDayReminders(GAME_DAY_9AM);
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail.mock.calls[0][2]).not.toMatch(/waitlist/i);
+    expect(sendEmail.mock.calls[0][2]).not.toMatch(/cancel/i);
+  });
+
   it('skips when the game is later in the weekend, not today', async () => {
     store.sessions.set(
       '2026-07-12',

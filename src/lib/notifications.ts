@@ -173,11 +173,17 @@ function whenAndWhere(session: Session): string {
  * Game-day reminder for a confirmed player: when, where, and what they still
  * owe. The only bulk send in the app — see sendGameDayReminders in
  * scheduling.ts for why that matters.
+ *
+ * `hasWaitlist` decides whether the closing nudge to cancel appears at all:
+ * its entire argument is that someone else is waiting for the spot, which is
+ * not true when nobody is. Required rather than defaulted so a new caller has
+ * to state which it is, instead of silently dropping the line.
  */
 export async function sendGameDayReminderEmail(
   signup: Signup,
   session: Session,
   amountOwed: number,
+  hasWaitlist: boolean,
   now: Date = new Date()
 ): Promise<void> {
   const subject = `Softball this ${session.gameDate} at ${session.gameTime}`;
@@ -213,7 +219,9 @@ export async function sendGameDayReminderEmail(
     if (instructions) lines.push(instructions);
   }
 
-  lines.push('', "Can't make it? Cancel in the app so someone on the waitlist can take your spot.");
+  if (hasWaitlist) {
+    lines.push('', "If you can't make it, please cancel so someone on the waitlist can take your spot.");
+  }
 
   await sendEmail(signup.email, subject, lines.join('\n'));
 }
