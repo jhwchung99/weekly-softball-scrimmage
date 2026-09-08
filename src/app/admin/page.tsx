@@ -7,7 +7,7 @@ import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
 import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
-import { computePaymentSummary } from '../../lib/payments';
+import { computePaymentSummary, countConfirmedSlots } from '../../lib/payments';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -349,6 +349,37 @@ export default function AdminPage() {
                 >
                   {busy ? 'Processing...' : 'Save'}
                 </Button>
+                {(() => {
+                  // Fills the price box rather than saving it: the division is a
+                  // suggestion, not a rule. Once saved, pricePerSpot stays a fixed
+                  // stored number — a later cancellation must not silently re-price
+                  // people who have already paid (see computeCostShare).
+                  //
+                  // Divides by confirmed *slots*, not people, because a pair pays
+                  // one spot's price between them — dividing by heads would
+                  // under-collect by exactly the number of shared spots.
+                  const slots = countConfirmedSlots(roster ?? []);
+                  const total = Number(costInput);
+                  const canSplit = total > 0 && slots > 0;
+                  const each = canSplit ? Math.round((total / slots) * 100) / 100 : 0;
+                  return (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy || !canSplit}
+                        onClick={() => setPriceInput(String(each))}
+                      >
+                        Split across roster
+                      </Button>
+                      {canSplit && (
+                        <span className="ml-2 text-xs text-slate-500">
+                          ${total.toFixed(2)} / {slots} confirmed = ${each.toFixed(2)} each
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
                 {scrimmage.status !== 'cancelled' && (
                   <Button
                     size="sm"
