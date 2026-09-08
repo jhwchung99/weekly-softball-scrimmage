@@ -1,0 +1,19 @@
+name: Self test
+
+# Manual only — no schedule. This is the "is production actually wired up?"
+# button: it proves APP_URL and CRON_SECRET reach the app, and that Sheets,
+# ntfy and Gmail all work with whatever env Vercel currently holds. The
+# endpoint writes nothing and mails only the organizer, so it is safe to run
+# at any hour, unlike the four real jobs (which are gated to a wall-clock
+# window, or email every confirmed player).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call self-test endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.APP_URL }}/api/cron/self-test" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
