@@ -24,8 +24,10 @@ backed by a Google Sheet as its database.
 - **Google OAuth** (`next-auth`) — player identity. A signed-in Google
   account's email is the identity used everywhere (no separate
   username/password).
-- **Gmail API** — sends the app's automated emails: "you moved up from
-  the waitlist", sub-request notifications, and a game-day reminder.
+- **Gmail API** — sends the app's emails: the automatic ones ("you moved
+  up from the waitlist", sub-request notifications, a game-day reminder)
+  and the two the organizer sends by hand from the dashboard (session
+  details changed or cancelled, and a payment nudge).
   Authorized once against a dedicated Gmail account
   (`scripts/authorizeGmailSender.ts`), not per player — and with
   send-only permission, so the app cannot read anyone's mail.
@@ -75,6 +77,10 @@ sequenceDiagram
 
     Note over Player,Admin: Tuesday close → game day
     Admin->>App: Books a permit sized to the headcount, sets the field + map link
+    opt Details worth telling people (field booked, rainout, reschedule)
+        Admin->>App: Notify players
+        App->>Gmail: email the current details, or that the game is off
+    end
     Player->>App: Cancel signup (still allowed, still auto-promotes a replacement)
 
     Note over Cron,App: Game day, 9am ET
@@ -85,6 +91,10 @@ sequenceDiagram
     Note over Player,Admin: Cancellations no longer auto-promote, so payment opens
     Player->>App: Pays for their spot (outside the app)
     Admin->>Sheet: record the payment
+    opt Anyone still unpaid
+        Admin->>App: Remind unpaid
+        App->>Gmail: email each of them what they owe
+    end
 
     Note over Player,Admin: Game day — Friday, Saturday or Sunday
     Note over Player,Admin: Scrimmage happens, admin records attendance
@@ -164,6 +174,20 @@ in addition to the regular player view. Across the same week:
   **cancel the whole session** (e.g. a rainout). Cancelling doesn't
   bulk-cancel existing signups, so there's a record of who would've
   played if it gets rescheduled.
+- **Notify players** about any of that, with a button. None of the edits
+  above email anyone on their own: booking a permit takes several saves
+  (area, then field, then map link, then the price) and players don't
+  need one email per save, so the organizer decides when the details have
+  settled enough to be worth sending. The email carries the current date,
+  time and field rather than a list of what changed, plus an optional
+  sentence of the organizer's own — the difference between "the field
+  moved" and "the field moved because the city double-booked diamond 3".
+
+  A cancellation goes to the waitlist as well as confirmed players, since
+  someone waiting for a spot needs to know there's no longer a spot to
+  wait for. Every other change goes to confirmed players only: a
+  waitlisted player isn't turning up at the field, and if they're promoted
+  later that email carries the current details anyway.
 - **Open or close registration by hand.** New sessions are created
   **closed** so a future week can't be signed up for early; the Monday
   cron opens whichever session belongs to the current week.
@@ -200,6 +224,17 @@ in addition to the regular player view. Across the same week:
 - **Track payments.** Ticking someone as paid records what they paid and
   when, and the session card shows collected vs expected vs the permit
   cost, so over- or under-collection is visible rather than implicit.
+- **Nudge whoever hasn't paid**, with a button beside that summary. One
+  email each to the confirmed players who still owe, saying what their
+  spot costs. Pressed before the roster locks, the email says when payment
+  opens instead of asking for the money — the same wording the game-day
+  reminder uses, from the same code, so the two can't disagree about when
+  someone is actually expected to pay.
+
+  It says nothing about any other week, because there is no cross-week
+  ledger to say anything about. Someone who cancelled late still owes but
+  isn't on the roster this reads; the late-cancellation push has already
+  told the organizer that one is theirs to chase personally.
 - **Track attendance.** A per-signup checkbox for who actually turned
   up. Admin-only — nothing is shown to players and nothing happens
   automatically; it's just a record.
@@ -243,7 +278,10 @@ You need:
 3. A `.env.local` with (see each module for exactly how it's used):
    `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXTAUTH_SECRET`,
    `NEXTAUTH_URL`, `GMAIL_SENDER_EMAIL`, `GMAIL_SENDER_REFRESH_TOKEN`,
-   `ORGANIZER_ALERT_NTFY_TOPIC`, `CRON_SECRET`.
+   `ORGANIZER_ALERT_NTFY_TOPIC`, `CRON_SECRET`, and
+   `PAYMENT_INSTRUCTIONS` (how to actually send the money — appended to
+   every email that asks for it, and shown to signed-in players on the
+   homepage; the nudge button is mostly noise without it).
 4. The Sheet shared with the service account's
    `...@...iam.gserviceaccount.com` email as an **Editor**.
 

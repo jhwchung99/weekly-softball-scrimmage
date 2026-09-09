@@ -155,12 +155,15 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
 /**
  * Game-day reminder to everyone confirmed: when, where, and what they owe.
  *
- * This is the app's only *bulk* send — every other email goes to one or two
- * people — which drives two decisions:
+ * This was the app's first *bulk* send, which drove two decisions:
  *
  * 1. **It runs from the cron, not a request handler.** ~20 sequential Gmail
  *    calls is ~10s of wall clock, uncomfortably close to serverless function
- *    limits. GitHub Actions has a far more generous time budget.
+ *    limits. GitHub Actions has a far more generous time budget. The
+ *    admin-triggered announcements in announcements.ts are the deliberate
+ *    exception — they exist to be pressed by a person watching for the
+ *    result, so they pay that cost in a request and raise `maxDuration` to
+ *    cover it.
  * 2. **Sends are sequential with a small gap.** The Gmail API costs ~100 quota
  *    units per send against ~250 units/user/second, so a Promise.all burst
  *    would trip the rate limit. Volume is not the constraint — ~20 emails a
@@ -169,8 +172,12 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
  *
  * One failure never aborts the rest: same awaited-but-swallowed pattern as
  * every other notification here.
+ *
+ * Exported because that second point is a property of the Gmail account, not
+ * of this job: every bulk send in the app has to pace itself the same way, and
+ * a second copy of the number would be a second thing to get wrong.
  */
-const SEND_GAP_MS = 500;
+export const SEND_GAP_MS = 500;
 
 export interface ReminderResult {
   sessionId: string;
