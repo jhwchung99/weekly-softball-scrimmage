@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateFullName,
+  validateAnnouncementNote,
   validateGender,
   validateSavedPositions,
   validateInvitedByName,
@@ -193,5 +194,23 @@ describe('validateFeedback', () => {
 
   it('keeps a same-site path', () => {
     expect(validateFeedback({ kind: 'feedback', message: 'x', pageUrl: '/guidelines' }).pageUrl).toBe('/guidelines');
+  });
+});
+
+describe('validateAnnouncementNote', () => {
+  it('treats an absent or blank note as no note, since the email stands without one', () => {
+    expect(validateAnnouncementNote(undefined)).toBe('');
+    expect(validateAnnouncementNote('   ')).toBe('');
+    expect(validateAnnouncementNote(42)).toBe('');
+  });
+
+  it('trims but otherwise keeps what the organizer wrote', () => {
+    // Including a link: this goes into a plain-text email body written by an
+    // admin, not a header or a tappable push, so there is nothing to escape.
+    expect(validateAnnouncementNote('  Moved to https://maps.app.goo.gl/x  ')).toBe('Moved to https://maps.app.goo.gl/x');
+  });
+
+  it('caps the length so it stays a note rather than a newsletter', () => {
+    expect(() => validateAnnouncementNote('x'.repeat(501))).toThrow(/500 characters or fewer/);
   });
 });

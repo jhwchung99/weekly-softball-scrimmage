@@ -170,9 +170,47 @@ function whenAndWhere(session: Session): string {
 }
 
 /**
+ * What an unpaid player is told they owe, in the one wording every email
+ * that mentions money uses.
+ *
+ * The before/after split is the whole reason this is shared. Payment opens
+ * at the roster lock, five hours before the game, and nothing is payable
+ * until it does (see PaymentPrompt in app/page.tsx for why the two are
+ * deliberately tied together). The game-day reminder goes out at 9am, which
+ * for an evening game is *before* that moment, while a nudge sent by hand
+ * could land on either side of it. Two copies of this sentence would
+ * eventually disagree about when someone is actually expected to pay.
+ *
+ * Returns a leading '' so callers can spread it straight into a line list as
+ * its own paragraph, and [] when there is nothing owed to talk about.
+ */
+function paymentLines(session: Session, amountOwed: number, now: Date): string[] {
+  if (amountOwed <= 0) return [];
+
+  const { cutoffStart } = getWeeklyMilestones(session.gameDate, session.gameTime);
+  const opensAt = cutoffStart.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  const lines = [
+    '',
+    now < cutoffStart
+      ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks. Send it any time between then and the game.`
+      : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`,
+  ];
+
+  const instructions = process.env.PAYMENT_INSTRUCTIONS;
+  if (instructions) lines.push(instructions);
+  return lines;
+}
+
+/**
  * Game-day reminder for a confirmed player: when, where, and what they still
- * owe. The only bulk send in the app — see sendGameDayReminders in
- * scheduling.ts for why that matters.
+ * owe. Sent in bulk — see sendGameDayReminders in scheduling.ts for why that
+ * matters, and fanOut in announcements.ts for the same pacing applied to the
+ * organizer's manual sends.
  *
  * `hasWaitlist` decides whether the closing nudge to cancel appears at all:
  * its entire argument is that someone else is waiting for the spot, which is
@@ -197,31 +235,109 @@ export async function sendGameDayReminderEmail(
     lines.push('', `Field: ${session.locationUrl}`);
   }
 
-  if (amountOwed > 0 && !signup.paid) {
-    // This email goes out on game-day morning, which for an evening game is
-    // before payment opens: the roster doesn't lock until 5 hours before the
-    // first pitch, and nothing is payable until it does (see PaymentPrompt in
-    // app/page.tsx for why the two are deliberately tied together).
-    const { cutoffStart } = getWeeklyMilestones(session.gameDate, session.gameTime);
-    const opensAt = cutoffStart.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-
-    lines.push(
-      '',
-      now < cutoffStart
-        ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks. Send it any time between then and the game.`
-        : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`
-    );
-    const instructions = process.env.PAYMENT_INSTRUCTIONS;
-    if (instructions) lines.push(instructions);
+  if (!signup.paid) {
+    lines.push(...paymentLines(session, amountOwed, now));
   }
 
   if (hasWaitlist) {
     lines.push('', "If you can't make it, please cancel so someone on the waitlist can take your spot.");
   }
+
+  await sendEmail(signup.email, subject, lines.join('\n'));
+}
+
+/**
+ * The two emails behind the admin dashboard's "Notify players" button.
+ *
+ * Deliberately sent by hand rather than fired from the PATCH route on every
+ * field change. Booking a permit takes several saves — area, then field, then
+ * map link, then the price — and a player does not need four emails to learn
+ * one thing. The organizer decides when the details have settled enough to be
+ * worth telling people, which also means they can add a sentence of their own
+ * explaining why.
+ *
+ * They do NOT try to describe what changed. That would mean storing the last
+ * state anyone was told about and diffing against it, and a diff is the wrong
+ * shape anyway: what a player needs on Thursday is the current details in full,
+ * not a list of edits since Monday.
+ */
+export async function sendSessionUpdateEmail(signup: Signup, session: Session, note: string): Promise<void> {
+  const subject = `Updated details: softball on ${session.gameDate}`;
+  const location = formatLocation({
+    area: session.locationArea,
+    name: session.locationName,
+    url: session.locationUrl,
+  });
+
+  const lines = [
+    `Hi ${signup.fullName},`,
+    '',
+    "Here are the current details for this week's scrimmage:",
+    '',
+    `When: ${session.gameDate} at ${session.gameTime}`,
+    `Where: ${location || 'still to be confirmed'}`,
+  ];
+
+  if (session.locationUrl) lines.push(`Field: ${session.locationUrl}`);
+  if (note) lines.push('', note);
+
+  lines.push(
+    '',
+    "You're confirmed to play. If you can't make it, please cancel in the app so someone else can take your spot."
+  );
+
+  await sendEmail(signup.email, subject, lines.join('\n'));
+}
+
+/**
+ * Goes to waitlisted players as well as confirmed ones, unlike the update
+ * above: someone waiting for a spot needs to know there is no longer a spot
+ * to wait for, and unlike a change of field, it is not something a later
+ * promotion email would tell them anyway.
+ */
+export async function sendSessionCancelledEmail(signup: Signup, session: Session, note: string): Promise<void> {
+  const subject = `Cancelled: softball on ${session.gameDate}`;
+  const lines = [
+    `Hi ${signup.fullName},`,
+    '',
+    `The scrimmage on ${session.gameDate} at ${session.gameTime} has been cancelled. There's no game — please don't head to the field.`,
+  ];
+
+  if (note) lines.push('', note);
+
+  // Cancelling a session deliberately leaves its signups alone (see the PATCH
+  // route), so this is a description of what actually happens to their row,
+  // not a reassurance invented for the email.
+  lines.push('', "Your signup is kept on record in case the game is rescheduled. There's nothing you need to do.");
+
+  await sendEmail(signup.email, subject, lines.join('\n'));
+}
+
+/**
+ * The admin dashboard's "Remind unpaid" button: one player, one nudge about
+ * one week's spot.
+ *
+ * Says nothing about any other week on purpose. There is no cross-week ledger
+ * — `paid` is per signup — so the app genuinely does not know whether someone
+ * settled up in August, and an email implying a running balance would be
+ * making a claim the data cannot support (see the Signup.paid comment in
+ * sheets/schema.ts).
+ */
+export async function sendPaymentNudgeEmail(
+  signup: Signup,
+  session: Session,
+  amountOwed: number,
+  now: Date = new Date()
+): Promise<void> {
+  const subject = `Payment for the ${session.gameDate} scrimmage`;
+  const lines = [
+    `Hi ${signup.fullName},`,
+    '',
+    `A quick reminder about your spot for the scrimmage ${whenAndWhere(session)}.`,
+    ...paymentLines(session, amountOwed, now),
+    '',
+    'Thanks!',
+  ];
 
   await sendEmail(signup.email, subject, lines.join('\n'));
 }

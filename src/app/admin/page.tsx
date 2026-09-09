@@ -8,6 +8,7 @@ import { POSITIONS } from '../../lib/positions';
 import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
 import { computePaymentSummary, countConfirmedSlots } from '../../lib/payments';
+import { sessionChangeAudience, unpaidAudience } from '../../lib/audiences';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -68,6 +69,10 @@ export default function AdminPage() {
   const [roster, setRoster] = useState<AdminSignup[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sending email is the one thing here with no visible effect on the page,
+  // so it needs somewhere to report what it did.
+  const [notice, setNotice] = useState<string | null>(null);
+  const [noteInput, setNoteInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [capacityInput, setCapacityInput] = useState('');
   const [costInput, setCostInput] = useState('');
@@ -86,6 +91,7 @@ export default function AdminPage() {
   async function loadRoster(id: string) {
     if (!id) return;
     setError(null);
+    setNotice(null);
     setForbidden(false);
     setScrimmage(null);
     try {
@@ -144,6 +150,49 @@ export default function AdminPage() {
       const newSessionId: string = data?.session?.sessionId || sessionId;
       setSessionId(newSessionId);
       await loadRoster(newSessionId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Behind both of the dashboard's email buttons. Confirms first for the same
+   * reason the destructive actions below do: this one can't be taken back
+   * either — an email is out of the building the moment it sends, and the
+   * audience is everyone.
+   */
+  async function sendAnnouncement(path: string, confirmMessage: string, body: Record<string, unknown> = {}) {
+    if (!window.confirm(confirmMessage)) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Send failed');
+
+      // An empty audience isn't an error — "everyone has already paid" is the
+      // answer to the question the button asks.
+      if (data.skipped) {
+        setNotice(`Nothing sent — ${data.reason}`);
+        return;
+      }
+
+      // Names, not just a count. "Emailed 12 players" is impossible to check,
+      // and the thing an organizer wants to know afterwards is whether one
+      // particular person was on the list.
+      const who = ((data.recipients as string[]) ?? []).join(', ');
+      setNotice(
+        data.failed > 0
+          ? `Emailed ${data.sent}: ${who}. ${data.failed} failed to send — check the logs.`
+          : `Emailed ${data.sent}: ${who}.`
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -246,6 +295,7 @@ export default function AdminPage() {
           </div>
 
           {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {notice && <p className="mt-4 rounded bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}</p>}
 
           <CreateSessionForm busy={busy} setBusy={setBusy} setError={setError} onCreated={(id) => setSessionId(id)} />
 
@@ -465,6 +515,15 @@ export default function AdminPage() {
                   {busy ? 'Processing...' : 'Save location'}
                 </Button>
               </div>
+
+              <NotifyPlayersPanel
+                session={scrimmage}
+                roster={roster ?? []}
+                note={noteInput}
+                setNote={setNoteInput}
+                busy={busy}
+                onSend={(confirmMessage, body) => sendAnnouncement('notify', confirmMessage, body)}
+              />
             </Card>
           )}
 
@@ -477,19 +536,27 @@ export default function AdminPage() {
                 // would overstate what's owed.
                 const summary = computePaymentSummary(scrimmage, roster);
                 return (
-                  <p className="mt-1 text-sm text-slate-600">
-                    Collected <strong>${summary.collected.toFixed(2)}</strong> of ${summary.expected.toFixed(2)} expected
-                    {summary.permitCost > 0 && (
-                      <>
-                        {' · '}permit ${summary.permitCost.toFixed(2)}
-                        {' · '}
-                        <span className={summary.surplus < 0 ? 'text-red-700' : 'text-green-700'}>
-                          {summary.surplus < 0 ? 'short' : 'surplus'} ${Math.abs(summary.surplus).toFixed(2)}
-                        </span>
-                      </>
-                    )}
-                    {' · '}{summary.unpaidCount} unpaid
-                  </p>
+                  <>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Collected <strong>${summary.collected.toFixed(2)}</strong> of ${summary.expected.toFixed(2)} expected
+                      {summary.permitCost > 0 && (
+                        <>
+                          {' · '}permit ${summary.permitCost.toFixed(2)}
+                          {' · '}
+                          <span className={summary.surplus < 0 ? 'text-red-700' : 'text-green-700'}>
+                            {summary.surplus < 0 ? 'short' : 'surplus'} ${Math.abs(summary.surplus).toFixed(2)}
+                          </span>
+                        </>
+                      )}
+                      {' · '}{summary.unpaidCount} unpaid
+                    </p>
+                    <RemindUnpaidButton
+                      session={scrimmage}
+                      roster={roster}
+                      busy={busy}
+                      onSend={(confirmMessage) => sendAnnouncement('payment-reminders', confirmMessage)}
+                    />
+                  </>
                 );
               })()}
               <div className="mt-2 overflow-x-auto">
@@ -575,6 +642,103 @@ export default function AdminPage() {
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * The "Notify players" control on the session card.
+ *
+ * Nothing else on that card emails anybody. Booking a permit takes several
+ * saves — area, then field, then map link — and players don't need one email
+ * per save, so telling them is a separate decision made here. See
+ * lib/announcements.ts.
+ */
+export function NotifyPlayersPanel(props: {
+  session: Pick<SessionInfo, 'status'>;
+  roster: AdminSignup[];
+  note: string;
+  setNote: (note: string) => void;
+  busy: boolean;
+  onSend: (confirmMessage: string, body: Record<string, unknown>) => void;
+}) {
+  const { session, roster, note, setNote, busy, onSend } = props;
+  const cancelled = session.status === 'cancelled';
+  // The same rule the server sends by, so the count on the button is the
+  // number of emails that actually go out.
+  const audience = sessionChangeAudience(session, roster);
+  const people = `${audience.length} player${audience.length === 1 ? '' : 's'}`;
+
+  return (
+    <div className="mt-2 border-t border-slate-100 pt-2">
+      <label htmlFor="admin-note" className="block text-sm text-slate-700">
+        Notify players {cancelled ? '(confirmed and waitlisted)' : '(confirmed only)'}
+      </label>
+      <textarea
+        id="admin-note"
+        rows={2}
+        maxLength={500}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional note, included in the email — e.g. why the field moved"
+        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+      />
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={cancelled ? 'danger' : 'secondary'}
+          disabled={busy || audience.length === 0}
+          onClick={() =>
+            onSend(`Email ${people} about ${cancelled ? 'the cancellation' : 'these details'}?`, { note })
+          }
+        >
+          {busy ? 'Sending...' : `Notify ${people}`}
+        </Button>
+        <span className="text-xs text-slate-500">
+          {cancelled
+            ? 'Tells everyone still signed up that the game is off, waitlist included.'
+            : 'Emails the current date, time and field. Waitlisted players get the details with their promotion instead.'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The "Remind unpaid" control beside the payment summary.
+ *
+ * Renders nothing when nobody owes, so the dashboard doesn't offer a button
+ * whose only possible outcome is "nothing sent".
+ */
+export function RemindUnpaidButton(props: {
+  session: Pick<SessionInfo, 'pricePerSpot'>;
+  roster: AdminSignup[];
+  busy: boolean;
+  onSend: (confirmMessage: string) => void;
+}) {
+  const { session, roster, busy, onSend } = props;
+  // Not the summary's unpaidCount: that counts everyone confirmed and unpaid,
+  // including anyone whose share works out to nothing. This button's audience
+  // is the people who actually owe.
+  const toNudge = unpaidAudience(session, roster);
+  if (toNudge.length === 0) return null;
+
+  const people = `${toNudge.length} unpaid player${toNudge.length === 1 ? '' : 's'}`;
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={busy}
+        onClick={() => onSend(`Email ${people} about what they owe?`)}
+      >
+        {busy ? 'Sending...' : `Remind ${toNudge.length} unpaid`}
+      </Button>
+      <span className="text-xs text-slate-500">
+        Skips anyone already ticked as paid. Before the roster locks the email says when payment opens rather than
+        asking for it.
+      </span>
+    </div>
   );
 }
 

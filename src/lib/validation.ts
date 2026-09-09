@@ -227,3 +227,26 @@ export function validateFeedback(input: { kind?: unknown; message?: unknown; pag
 
   return { kind, message, pageUrl };
 }
+
+const MAX_ANNOUNCEMENT_NOTE_LENGTH = 500;
+
+/**
+ * The optional sentence an admin can attach to a "Notify players" email.
+ *
+ * Optional in a way the other validators here are not: '' is a valid answer,
+ * because the email stands on its own without it. So this returns '' rather
+ * than throwing on an empty value, and only rejects one that is too long to
+ * belong in a short email.
+ *
+ * No escaping or link-stripping, unlike validateFeedback's pageUrl. The author
+ * is an admin, the destination is a plain-text email body rather than a header
+ * or a notification the organizer might tap, and an organizer who wants to
+ * paste a map link into their own note should be able to.
+ */
+export function validateAnnouncementNote(value: unknown): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed.length > MAX_ANNOUNCEMENT_NOTE_LENGTH) {
+    throw new ApiError(400, `note must be ${MAX_ANNOUNCEMENT_NOTE_LENGTH} characters or fewer.`);
+  }
+  return trimmed;
+}
