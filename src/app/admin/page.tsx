@@ -9,6 +9,7 @@ import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
 import { computePaymentSummary, countConfirmedSlots } from '../../lib/payments';
 import { sessionChangeAudience, unpaidAudience } from '../../lib/audiences';
+import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/adminRoster';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -529,7 +530,18 @@ export default function AdminPage() {
 
           {roster && (
             <Card className="mt-4">
-              <h2 className="font-semibold text-slate-900">Roster ({roster.length})</h2>
+              {(() => {
+                // The heading used to count every row, so a week with three
+                // re-signups claimed a roster three larger than the number of
+                // people actually playing.
+                const counts = countRoster(roster);
+                return (
+                  <h2 className="font-semibold text-slate-900">
+                    Roster ({counts.active} active
+                    {counts.cancelled > 0 && ` · ${counts.cancelled} cancelled`})
+                  </h2>
+                );
+              })()}
               {scrimmage && scrimmage.pricePerSpot > 0 && (() => {
                 // Shared with the server rather than recomputed here: a pair
                 // splits one spot's price, so counting confirmed *people*
@@ -559,72 +571,14 @@ export default function AdminPage() {
                   </>
                 );
               })()}
-              <div className="mt-2 overflow-x-auto">
-                <table className="w-full min-w-[640px] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-left text-slate-500">
-                      <th className="py-1 pr-2">Name</th>
-                      <th className="py-1 pr-2">Type</th>
-                      <th className="py-1 pr-2">Positions</th>
-                      <th className="py-1 pr-2">Status</th>
-                      <th className="py-1 pr-2">Paid</th>
-                      <th className="py-1 pr-2">Here</th>
-                      <th className="py-1 pr-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roster.map((s) => (
-                      <tr key={s.signupId} className="border-b border-slate-100">
-                        <td className="py-1.5 pr-2">{s.fullName}</td>
-                        <td className="py-1.5 pr-2">{s.memberStatus === 'guest' ? `guest of ${s.invitedByName}` : 'member'}</td>
-                        <td className="py-1.5 pr-2">{s.positions}</td>
-                        <td className="py-1.5 pr-2">
-                          <select
-                            value={s.status}
-                            disabled={busy}
-                            onChange={(e) => updateSignupStatus(s.signupId, e.target.value as SignupStatus)}
-                            className="rounded border border-slate-300 px-1 py-0.5"
-                          >
-                            <option value="confirmed">confirmed</option>
-                            <option value="waitlisted">waitlisted</option>
-                            <option value="cancelled">cancelled</option>
-                          </select>
-                        </td>
-                        <td className="py-1.5 pr-2 whitespace-nowrap">
-                          <input
-                            type="checkbox"
-                            aria-label={`Paid: ${s.fullName}`}
-                            checked={s.paid}
-                            disabled={busy}
-                            onChange={(e) => updateSignupPaid(s.signupId, e.target.checked)}
-                          />
-                          {s.paid && s.amountPaid > 0 && (
-                            <span className="ml-1 text-xs text-slate-500">${s.amountPaid.toFixed(2)}</span>
-                          )}
-                        </td>
-                        <td className="py-1.5 pr-2">
-                          <input
-                            type="checkbox"
-                            aria-label={`Attended: ${s.fullName}`}
-                            checked={s.attended}
-                            disabled={busy}
-                            onChange={(e) => updateSignupAttended(s.signupId, e.target.checked)}
-                          />
-                        </td>
-                        <td className="py-1.5 pr-2">
-                          <button
-                            disabled={busy}
-                            onClick={() => removeSignup(s.signupId, s.fullName)}
-                            className="text-red-600 hover:underline disabled:opacity-50"
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <RosterTable
+                roster={roster}
+                busy={busy}
+                onStatusChange={updateSignupStatus}
+                onPaidChange={updateSignupPaid}
+                onAttendedChange={updateSignupAttended}
+                onRemove={removeSignup}
+              />
             </Card>
           )}
 
@@ -642,6 +596,144 @@ export default function AdminPage() {
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * The full roster, grouped by person.
+ *
+ * Unlike the player-facing view this shows cancelled rows too — an admin needs
+ * the complete picture. Rendered flat in sheet order they read as separate
+ * people, which is how a stale row from a re-signup ends up looking like a
+ * duplicate. Grouping is the fix; lib/adminRoster.ts holds the rules.
+ */
+export function RosterTable(props: {
+  roster: AdminSignup[];
+  busy: boolean;
+  onStatusChange: (signupId: string, status: SignupStatus) => void;
+  onPaidChange: (signupId: string, paid: boolean) => void;
+  onAttendedChange: (signupId: string, attended: boolean) => void;
+  onRemove: (signupId: string, fullName: string) => void;
+}) {
+  const { roster, busy, onStatusChange, onPaidChange, onAttendedChange, onRemove } = props;
+
+  return (
+    <div className="mt-2 overflow-x-auto">
+      <table className="w-full min-w-[640px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-left text-slate-500">
+            <th className="py-1 pr-2">Name</th>
+            <th className="py-1 pr-2">Type</th>
+            <th className="py-1 pr-2">Positions</th>
+            <th className="py-1 pr-2">Status</th>
+            <th className="py-1 pr-2">Paid</th>
+            <th className="py-1 pr-2">Here</th>
+            <th className="py-1 pr-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupRosterByPerson(roster).flatMap((group) =>
+            group.rows.map((s, indexInGroup) => {
+              const active = isActiveSignup(s);
+              const isRepeat = indexInGroup > 0;
+              // The rule sits under the person rather than under every row, so
+              // one person's rows read as a block.
+              const endsGroup = indexInGroup === group.rows.length - 1;
+              // Two rows can belong to one person, so a bare name doesn't
+              // identify a control — "Paid: Kevin Kim" would name two
+              // checkboxes. Screen readers get the same distinction the table
+              // draws visually.
+              const rowLabel = isRepeat
+                ? `${s.fullName} (${active ? 'second active signup' : 'earlier signup'})`
+                : s.fullName;
+
+              return (
+                <tr
+                  key={s.signupId}
+                  className={`${endsGroup ? 'border-b border-slate-100' : ''} ${active ? '' : 'text-slate-400'}`}
+                >
+                  <td className="py-1.5 pr-2">
+                    {isRepeat ? (
+                      // Repeat rows say nothing where the name goes: the name
+                      // belongs to the group, and repeating it is what made one
+                      // person look like two. An extra *active* row isn't
+                      // history, though — it's the double-booking the badge
+                      // below is warning about.
+                      <span className="ml-3 text-xs italic">
+                        {active ? '↳ second active signup' : '↳ earlier signup'}
+                      </span>
+                    ) : (
+                      <>
+                        {s.fullName}
+                        {group.activeCount > 1 && (
+                          <span
+                            className="ml-1 rounded bg-red-100 px-1 text-xs font-medium text-red-700"
+                            title="This person has more than one active signup — they are taking two spots and will be billed twice. Cancel or remove one."
+                          >
+                            duplicate
+                          </span>
+                        )}
+                        {/* Two rows named "Kevin Kim" are otherwise
+                            indistinguishable; the email is the identity
+                            everything else in the app keys on. */}
+                        <span className="block text-xs font-normal text-slate-400">{group.email}</span>
+                      </>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    {s.memberStatus === 'guest' ? `guest of ${s.invitedByName}` : 'member'}
+                  </td>
+                  <td className="py-1.5 pr-2">{s.positions}</td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      value={s.status}
+                      aria-label={`Status: ${rowLabel}`}
+                      disabled={busy}
+                      onChange={(e) => onStatusChange(s.signupId, e.target.value as SignupStatus)}
+                      className="rounded border border-slate-300 px-1 py-0.5"
+                    >
+                      <option value="confirmed">confirmed</option>
+                      <option value="waitlisted">waitlisted</option>
+                      <option value="cancelled">cancelled</option>
+                    </select>
+                  </td>
+                  <td className="py-1.5 pr-2 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      aria-label={`Paid: ${rowLabel}`}
+                      checked={s.paid}
+                      disabled={busy}
+                      onChange={(e) => onPaidChange(s.signupId, e.target.checked)}
+                    />
+                    {s.paid && s.amountPaid > 0 && (
+                      <span className="ml-1 text-xs text-slate-500">${s.amountPaid.toFixed(2)}</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`Attended: ${rowLabel}`}
+                      checked={s.attended}
+                      disabled={busy}
+                      onChange={(e) => onAttendedChange(s.signupId, e.target.checked)}
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <button
+                      disabled={busy}
+                      onClick={() => onRemove(s.signupId, s.fullName)}
+                      className="text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -4,6 +4,7 @@ import { getSignup, updateSignup, deleteSignup, listSignupsForSession } from '..
 import { getSession } from '../../../../../sheets/sessions';
 import { computeCostShare } from '../../../../../lib/signupFlow';
 import { validateCost } from '../../../../../lib/validation';
+import { activeRowsForEmail } from '../../../../../lib/adminRoster';
 import { Signup, SignupStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
@@ -29,10 +30,55 @@ export async function PATCH(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
     const updates: Partial<Signup> = {};
 
+    // Both branches below may need this session's other rows. Read once and
+    // reuse: all Sheets traffic shares one 60-reads-per-minute service-account
+    // quota, so a route that reads the same tab twice costs twice as much of
+    // it (see api/home/route.ts).
+    let cachedSessionSignups: Signup[] | null = null;
+    const sessionSignups = async () =>
+      (cachedSessionSignups ??= await listSignupsForSession(existing.sessionId));
+
     if (body?.status !== undefined) {
       if (!VALID_STATUSES.includes(body.status)) {
         throw new ApiError(400, `status must be one of: ${VALID_STATUSES.join(', ')}.`);
       }
+
+      /**
+       * Bringing a cancelled row back is the one status move that can put the
+       * same person on the roster twice.
+       *
+       * It is an easy mistake to make from the dashboard: someone who cancels
+       * and signs up again leaves a stale cancelled row behind, and setting
+       * that one back to 'confirmed' looks like undoing a cancellation. It
+       * isn't — their real row is already there, and the result is a person
+       * holding two capacity slots, billed twice by computeCostShare, counted
+       * twice in the roster, and sent two of every email. Nothing downstream
+       * would flag it, because everything downstream trusts that a person has
+       * at most one active row.
+       *
+       * createSignup enforces that on the signup path. This is the same rule
+       * on the override path, which never had it.
+       *
+       * Checked only on cancelled -> active: an already-active row moving
+       * between confirmed and waitlisted creates no new duplicate, and
+       * blocking it would get in the way of repairing a roster that is already
+       * in this state. Cancelling is always allowed, which is how the repair
+       * is done.
+       */
+      const reviving = existing.status === 'cancelled' && body.status !== 'cancelled';
+      if (reviving) {
+        const [conflict] = activeRowsForEmail(await sessionSignups(), existing.email).filter(
+          (s) => s.signupId !== signupId
+        );
+        if (conflict) {
+          throw new ApiError(
+            409,
+            `${existing.fullName || existing.email} already has an active signup for this session (${conflict.status}). ` +
+              'Cancel or remove that row first, or leave this one cancelled — it is the record of a signup they already withdrew.'
+          );
+        }
+      }
+
       updates.status = body.status;
       // A status override invalidates any sub request on this row: the
       // request only made sense while this person was waitlisted, and
@@ -62,7 +108,7 @@ export async function PATCH(request: Request, { params }: Params) {
           updates.amountPaid = explicit;
         } else {
           const session = await getSession(existing.sessionId);
-          const signups = await listSignupsForSession(existing.sessionId);
+          const signups = await sessionSignups();
           updates.amountPaid = session ? computeCostShare(session, signups)[signupId] ?? 0 : 0;
         }
         updates.paidAt = new Date().toISOString();
