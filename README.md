@@ -169,6 +169,24 @@ in addition to the regular player view. Across the same week:
 - **View the full roster and waitlist** at any time — unlike the
   player-facing view, this shows every signup regardless of status
   (including cancelled ones), for the complete picture.
+
+  Rows are **grouped by person**, because cancelling never deletes a row
+  and signing up again always writes a new one. That's deliberate — each
+  row carries its own waiver acceptance, its own FIFO timestamp and its
+  own payment record, and reviving the old row would either destroy that
+  evidence or hand back a queue position the person gave up. But shown
+  flat in sheet order, someone's stale row and their new one sit apart
+  and read as two different people with the same name. Grouped, the
+  cancelled row folds under the current one as `↳ earlier signup`, greyed
+  out. The heading counts people rather than rows (`Roster (12 active · 2
+  cancelled)`), and every row shows the email, since that's the identity
+  the rest of the app keys on and the only way to tell two same-named
+  players apart.
+
+  A person with **two active rows** is flagged `duplicate` in red: they'd
+  be holding two spots, billed twice, and sent two of every email. The
+  signup path can't produce that state, and as of this change neither can
+  the status override below — but a hand-edited sheet still can.
 - **Adjust that week's capacity and price per spot**, **reschedule** it
   (including to a different day or week — existing signups follow), or
   **cancel the whole session** (e.g. a rainout). Cancelling doesn't
@@ -201,6 +219,16 @@ in addition to the regular player view. Across the same week:
   cancelled) or remove a signup entirely — a direct override that
   deliberately skips the automatic promotion/email side effects, since a
   manual admin action already is the explicit decision.
+
+  The one move it refuses is bringing a **cancelled row back when that
+  person already has an active one**. It looks like undoing a
+  cancellation, but their real signup is already there, so the result is
+  one person in two capacity slots — billed twice by `computeCostShare`,
+  counted twice in the roster, sent two of every email, with nothing
+  downstream to flag it, since everything downstream assumes one active
+  row per person. `createSignup` has always enforced that on the signup
+  path; this is the same rule on the override path. Cancelling is never
+  blocked, which is how a roster already in that state gets repaired.
 - Gets the **late-cancellation push alert** described above whenever
   anyone cancels within 5 hours of game time.
 - Gets an **open-spots push alert** the moment registration closes
