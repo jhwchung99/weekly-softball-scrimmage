@@ -3,7 +3,7 @@ import { listSignupsForSession, batchUpdateSignups } from '../sheets/signups';
 import { Session, Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { buildTeams, Team } from './teams';
-import { sendTeamsReadyAlert } from './notifications';
+import { sendTeamsReadyAlert, deliver } from './notifications';
 import { phaseOf, isRosterLocked } from './sessionPhase';
 import { withMutationLock } from './lock';
 
@@ -63,11 +63,7 @@ export async function generateTeamsIfDue(
 
     // Awaited but swallowed, like every other organizer alert: the teams are
     // already saved, and a failed push shouldn't undo that.
-    try {
-      await sendTeamsReadyAlert(session, teams);
-    } catch (err) {
-      console.error(`Failed to send teams-ready alert for session ${sessionId}:`, err);
-    }
+    await deliver(`teams-ready alert for session ${sessionId}`, () => sendTeamsReadyAlert(session, teams));
     return { generated: true };
   });
 }

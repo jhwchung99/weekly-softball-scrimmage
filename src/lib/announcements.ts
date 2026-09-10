@@ -3,6 +3,7 @@ import { listSignupsForSession } from '../sheets/signups';
 import { sessionChangeAudience, unpaidAudience } from './audiences';
 import { SEND_GAP_MS } from './scheduling';
 import { Signup } from '../sheets/schema';
+import { deliver } from './notifications';
 import {
   sendSessionUpdateEmail,
   sendSessionCancelledEmail,
@@ -60,13 +61,11 @@ async function fanOut(
   const recipients: string[] = [];
 
   for (const [index, signup] of signups.entries()) {
-    try {
-      await send(signup);
+    if (await deliver(`announcement to ${signup.email}`, () => send(signup))) {
       sent += 1;
       recipients.push(signup.fullName || signup.email);
-    } catch (err) {
+    } else {
       failed += 1;
-      console.error(`Failed to send announcement to ${signup.email}:`, err);
     }
     // No trailing wait: the gap is there to space out sends, and there is
     // nothing after the last one to space it from.

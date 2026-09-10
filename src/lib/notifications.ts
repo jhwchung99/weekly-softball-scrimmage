@@ -7,6 +7,43 @@ import { getWeeklyMilestones } from './time';
 import { phaseOf, isRosterLocked } from './sessionPhase';
 
 /**
+ * Sends a notification without letting it fail the thing that triggered it.
+ *
+ * A player who cancels has cancelled, whether or not the organizer's push went
+ * out; a promoted player is promoted, whether or not the email did. The write
+ * has already happened by the time anything is sent, so a mail outage must not
+ * turn a completed action into an error the caller sees.
+ *
+ * That guarantee was previously re-promised by hand at thirteen call sites
+ * across seven modules — the same try/catch, written out each time, with
+ * nothing testing that it was there. Removing one would have turned a failed
+ * email into a failed request for a player, and no test would have noticed.
+ * It is one function now, so a new notification gets the guarantee by
+ * construction rather than by the author remembering.
+ *
+ * It is also the single seam to substitute in tests: replace this and every
+ * notification in the app is accounted for, rather than reaching past it to
+ * whichever transport a given message happens to use.
+ *
+ * `what` names the attempt, so a swallowed failure is still findable in the
+ * logs — silent failure is exactly what the production self-test endpoint
+ * exists to catch, and it went unnoticed for a week once already.
+ *
+ * Returns whether it got through, for the two callers that send to a list and
+ * report a sent/failed tally. Swallowing is the guarantee; staying silent
+ * about the outcome is not part of it.
+ */
+export async function deliver(what: string, send: () => Promise<void>): Promise<boolean> {
+  try {
+    await send();
+    return true;
+  } catch (err) {
+    console.error(`Failed to send ${what}:`, err);
+    return false;
+  }
+}
+
+/**
  * The one email type Step 8 covers (Section 7): a promoted player is told
  * they're in. No reminder emails for already-confirmed players.
  */
