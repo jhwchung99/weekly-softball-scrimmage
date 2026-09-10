@@ -1,6 +1,7 @@
 import { Signup } from '../sheets/schema';
 import { normalizeEmail } from './email';
 import { analyzeTeam } from './teams';
+import { partnerOf } from './pair';
 
 /**
  * What may cross to the client, and nothing else.
@@ -46,10 +47,7 @@ export interface RosterView {
 }
 
 function toRosterEntry(s: Signup, active: Signup[]): RosterEntry {
-  const pairedWith = s.pairId
-    ? active.find((o) => o.pairId === s.pairId && o.signupId !== s.signupId)?.fullName ?? null
-    : null;
-  return { fullName: s.fullName, positions: s.positions, pairedWith };
+  return { fullName: s.fullName, positions: s.positions, pairedWith: partnerOf(s, active)?.fullName ?? null };
 }
 
 /**

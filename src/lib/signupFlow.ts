@@ -15,6 +15,7 @@ import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { getWeeklyMilestones } from './time';
 import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
+import { isPaired, slotsFor, slotKey } from './pair';
 import { normalizeEmail } from './email';
 import { countConfirmedSlots, computeCostShare } from './payments';
 
@@ -154,10 +155,10 @@ async function proposeGuestPair(guest: Signup, member: Signup, session: Session)
 function canProposePair(guest: Signup, member: Signup | null): member is Signup {
   return Boolean(
     member &&
-      !member.pairId &&
+      !isPaired(member) &&
       member.status !== 'cancelled' &&
       guest.status === 'waitlisted' &&
-      !guest.pairId &&
+      !isPaired(guest) &&
       guest.subRequestStatus !== 'pending' &&
       normalizeEmail(member.email) !== normalizeEmail(guest.email)
   );
@@ -286,31 +287,27 @@ interface WaitlistUnit {
  */
 function groupWaitlistUnits(allSignupsForSession: Signup[]): WaitlistUnit[] {
   const waitlisted = allSignupsForSession.filter((s) => s.status === 'waitlisted');
-  const confirmedPairIds = new Set(
-    allSignupsForSession.filter((s) => s.status === 'confirmed' && s.pairId).map((s) => s.pairId)
+  // Spots already held by a confirmed row. Only shared spots can appear here,
+  // since an unpaired row's key is its own — so a solo waitlister can never
+  // match one.
+  const confirmedSharedSlots = new Set(
+    allSignupsForSession.filter((s) => s.status === 'confirmed' && isPaired(s)).map(slotKey)
   );
 
-  const units: WaitlistUnit[] = [];
-  const byPairId = new Map<string, Signup[]>();
-
-  for (const s of waitlisted) {
-    if (!s.pairId) {
-      units.push({ signupIds: [s.signupId], tier: tierOf(s), timestamp: s.timestamp });
-      continue;
-    }
-    if (confirmedPairIds.has(s.pairId)) continue; // partner already confirmed elsewhere
-    if (!byPairId.has(s.pairId)) byPairId.set(s.pairId, []);
-    byPairId.get(s.pairId)!.push(s);
-  }
-
-  for (const group of byPairId.values()) {
-    const memberRow = group.find((s) => s.memberStatus === 'member');
-    const tier = memberRow ? 0 : Math.min(...group.map(tierOf));
-    const timestamp = group.reduce((min, s) => (s.timestamp < min ? s.timestamp : min), group[0].timestamp);
-    units.push({ signupIds: group.map((s) => s.signupId), tier, timestamp });
-  }
-
-  return units;
+  return slotsFor(waitlisted)
+    // A pair with a row already confirmed has its spot via the other partner,
+    // so the waitlisted row is along for the ride rather than waiting.
+    .filter((slot) => !confirmedSharedSlots.has(slotKey(slot[0])))
+    .map((slot) => {
+      // A slot goes as one: the best tier and the earliest timestamp among its
+      // rows, so sharing never costs the pair its place in the queue.
+      const memberRow = slot.find((s) => s.memberStatus === 'member');
+      return {
+        signupIds: slot.map((s) => s.signupId),
+        tier: memberRow ? 0 : Math.min(...slot.map(tierOf)),
+        timestamp: slot.reduce((min, s) => (s.timestamp < min ? s.timestamp : min), slot[0].timestamp),
+      };
+    });
 }
 
 /**
