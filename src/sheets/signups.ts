@@ -141,13 +141,13 @@ export async function batchUpdateSignups(updates: { signupId: string; updates: P
 
 /**
  * Section 5: a guest who named `memberFullName` as their inviter, is
- * willing to share a slot, and isn't paired yet — i.e. someone to *offer*
+ * willing to share a spot, and isn't paired yet — i.e. someone to *offer*
  * the member a pairing with when they sign up. FIFO if more than one guest
  * named the same member (only the first is offered; see signupFlow.ts).
  *
  * Waitlisted only, and only if they aren't already waiting on an answer.
- * A guest who got their own confirmed slot has nothing to gain from
- * sharing, and folding them into someone else's slot would drop the roster
+ * A guest who got their own confirmed spot has nothing to gain from
+ * sharing, and folding them into someone else's spot would drop the roster
  * under capacity with no promotion to refill it (the same reason
  * respondToSubRequest refuses a non-waitlisted requester).
  */

@@ -1,5 +1,5 @@
 import { Signup } from '../sheets/schema';
-import { slotsFor, countSlots, isPaired } from './pair';
+import { spotsFor, countSpots, isPaired } from './pair';
 
 /**
  * What one team puts on the field. The counts matter: "can this team cover
@@ -82,9 +82,9 @@ function matchSlots(squad: Rosterable[]): (number | null)[] {
 
 /** Every combination of which half of each shared spot turns up. */
 function attendanceScenarios(members: Rosterable[]): Rosterable[][] {
-  const slots = slotsFor(members);
-  const solo = slots.filter((s) => s.length === 1).map((s) => s[0]);
-  const groups = slots.filter((s) => s.length > 1);
+  const spots = spotsFor(members);
+  const solo = spots.filter((s) => s.length === 1).map((s) => s[0]);
+  const groups = spots.filter((s) => s.length > 1);
   if (groups.length === 0) return [solo];
 
   const scenarios: Rosterable[][] = [];
@@ -136,7 +136,7 @@ function femaleWeight(members: Rosterable[]): number {
 function scoreTeams(teams: Rosterable[][]): number {
   let score = 0;
   for (const t of teams) score += W_DEFICIT * analyzeTeam(t).deficiency;
-  score += W_SIZE * spread(teams.map((t) => countSlots(t)));
+  score += W_SIZE * spread(teams.map((t) => countSpots(t)));
   score += W_GENDER * spread(teams.map(femaleWeight));
   return score;
 }
@@ -170,7 +170,7 @@ const RESTARTS = 20;
 export function buildTeams(players: Rosterable[], teamCount: number, restarts: number = RESTARTS): Team[] {
   const count = Math.max(1, Math.floor(teamCount));
   // Solo players, plus each shared spot as one indivisible unit.
-  const units = slotsFor(players);
+  const units = spotsFor(players);
   const name = (i: number) => `Team ${i + 1}`;
 
   if (units.length === 0) {

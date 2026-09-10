@@ -1,5 +1,5 @@
 import { Signup, Session } from '../sheets/schema';
-import { countSlots, slotsFor } from './pair';
+import { countSpots, spotsFor } from './pair';
 
 // Pure capacity and payment maths. Deliberately free of Sheets or other
 // server-only imports so client components — the admin dashboard's payment
@@ -11,19 +11,20 @@ import { countSlots, slotsFor } from './pair';
 
 type SpotPriced = Pick<Session, 'pricePerSpot'>;
 type Costed = SpotPriced & Pick<Session, 'cost'>;
-type Slottable = Pick<Signup, 'signupId' | 'status' | 'pairId'>;
-type Payable = Slottable & Pick<Signup, 'paid' | 'amountPaid'>;
+/** What a row must carry for us to know which spot it occupies. */
+type SpotOccupant = Pick<Signup, 'signupId' | 'status' | 'pairId'>;
+type Payable = SpotOccupant & Pick<Signup, 'paid' | 'amountPaid'>;
 
 /**
- * A pair (linked via pairId) occupies exactly ONE slot combined (Section
- * 5) — so counting "confirmed slots" means counting distinct pairIds
+ * A pair (linked via pairId) occupies exactly ONE spot combined (Section
+ * 5) — so counting "confirmed spots" means counting distinct pairIds
  * once, not once per row. This is also what makes the "either partner can
- * cancel without freeing the slot" rule work for free: as long as at
+ * cancel without freeing the spot" rule work for free: as long as at
  * least one row for a given pairId is still 'confirmed', that pairId is
- * still counted, so the slot stays occupied.
+ * still counted, so the spot stays occupied.
  */
-export function countConfirmedSlots(signups: Slottable[]): number {
-  return countSlots(signups.filter((s) => s.status === 'confirmed'));
+export function countConfirmedSpots(signups: SpotOccupant[]): number {
+  return countSpots(signups.filter((s) => s.status === 'confirmed'));
 }
 
 /**
@@ -31,7 +32,7 @@ export function countConfirmedSlots(signups: Slottable[]): number {
  * between the two people sharing a spot when there's a pairId.
  *
  * This used to divide the permit total (`session.cost`) across confirmed
- * slots. That worked for settling up *after* the game, but not for payment
+ * spots. That worked for settling up *after* the game, but not for payment
  * before it, because the divisor keeps moving: $100 across 12 confirmed is
  * $8.33 each until someone cancels and it becomes $10.00. Nobody paying on
  * Wednesday could be quoted a number that would still be true on Friday, and
@@ -49,7 +50,7 @@ export function countConfirmedSlots(signups: Slottable[]): number {
  * storing it would let it drift. What they actually *paid* is a fact, and that
  * is stored (Signup.amountPaid).
  */
-export function computeCostShare(session: SpotPriced, signups: Slottable[]): Record<string, number> {
+export function computeCostShare(session: SpotPriced, signups: SpotOccupant[]): Record<string, number> {
   if (!session.pricePerSpot) return {};
 
   const confirmed = signups.filter((s) => s.status === 'confirmed');
@@ -58,9 +59,9 @@ export function computeCostShare(session: SpotPriced, signups: Slottable[]): Rec
   // A shared spot costs one spot's price between its occupants, keeping the
   // existing "sharing is cheaper" incentive. Split across the rows actually
   // confirmed, so a partner who cancelled doesn't leave the other paying half.
-  for (const slot of slotsFor(confirmed)) {
-    const each = Math.round((session.pricePerSpot / slot.length) * 100) / 100;
-    for (const s of slot) perPerson[s.signupId] = each;
+  for (const spot of spotsFor(confirmed)) {
+    const each = Math.round((session.pricePerSpot / spot.length) * 100) / 100;
+    for (const s of spot) perPerson[s.signupId] = each;
   }
   return perPerson;
 }

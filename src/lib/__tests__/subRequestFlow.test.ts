@@ -82,12 +82,12 @@ describe('requestSub', () => {
     );
   });
 
-  it('rejects requesting someone already sharing a slot with someone else', async () => {
+  it('rejects requesting someone already sharing a spot with someone else', async () => {
     const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
     store.signups.set(confirmed.signupId, { ...confirmed, pairId: 'already-paired' });
 
     await expect(requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test')).rejects.toThrow(
-      /already sharing a slot/
+      /already sharing a spot/
     );
   });
 
@@ -175,7 +175,7 @@ describe('respondToSubRequest', () => {
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
     store.signups.set(confirmed.signupId, { ...store.signups.get(confirmed.signupId)!, pairId: 'someone-else-pair' });
 
-    await expect(respondToSubRequest(waitlisted.signupId, 'confirmed@dummy.test', true)).rejects.toThrow(/already sharing a slot/);
+    await expect(respondToSubRequest(waitlisted.signupId, 'confirmed@dummy.test', true)).rejects.toThrow(/already sharing a spot/);
   });
 });
 

@@ -27,7 +27,7 @@ export function isActiveSignup(signup: Rostered): boolean {
 /**
  * The active rows belonging to one person.
  *
- * More than one is a corrupt roster: they'd occupy two capacity slots, be
+ * More than one is a corrupt roster: they'd occupy two capacity spots, be
  * billed twice by computeCostShare, and get two of every email. The signup
  * path can't produce it (createSignup rejects a second active row), so this
  * exists for the paths that could — the admin status override, and anyone

@@ -905,7 +905,7 @@ export function SignupForm(props: {
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={willingToShare} onChange={(e) => setWillingToShare(e.target.checked)} />
-            {"We're willing to share one roster slot between us"}
+            {"We're willing to share one spot between us"}
           </label>
         </div>
       )}
