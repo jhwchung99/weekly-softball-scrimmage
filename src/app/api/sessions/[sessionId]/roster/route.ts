@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSignedIn } from '../../../../../lib/auth';
 import { listSignupsForSession } from '../../../../../sheets/signups';
 import { rosterView } from '../../../../../lib/views';
-import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ sessionId: string }> };
 

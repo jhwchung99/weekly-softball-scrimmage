@@ -13,7 +13,13 @@ import {
   Player,
   Feedback,
   FEEDBACK_HEADERS,
+  SESSION_HEADERS,
+  SIGNUP_HEADERS,
+  PLAYER_HEADERS,
+  ADMIN_HEADERS,
+  Admin,
 } from '../schema';
+import { makeSession, makeSignup, makePlayer } from '../../test/fakeSheets';
 
 describe('Session row round-trip', () => {
   it('preserves every field through serialize -> parse', () => {
@@ -151,5 +157,28 @@ describe('Feedback row round-trip', () => {
     // A field present on the interface but missing from FEEDBACK_HEADERS
     // would silently never be written. `satisfies` catches the reverse.
     expect([...FEEDBACK_HEADERS].sort()).toEqual(Object.keys(feedback).sort());
+  });
+});
+
+/**
+ * The same check the Feedback tab already had, for the other four.
+ *
+ * `as const satisfies readonly (keyof T)[]` checks that every header *is* a
+ * key. It does not check that every key is a header, and columns here map by
+ * **position** — so a field added to an interface and forgotten in its header
+ * list compiles, never gets written, and reads back as `''` forever. That is
+ * the direction that was unguarded on the tab most likely to gain a column.
+ *
+ * The fixtures are annotated with their interface, so tsc requires them to be
+ * complete; `Object.keys` then makes that completeness observable at runtime.
+ */
+describe('header lists name every field of their row type', () => {
+  it.each([
+    ['Session', SESSION_HEADERS, makeSession()],
+    ['Signup', SIGNUP_HEADERS, makeSignup()],
+    ['Player', PLAYER_HEADERS, makePlayer()],
+    ['Admin', ADMIN_HEADERS, { email: 'admin@dummy.test' } satisfies Admin],
+  ])('%s', (_name, headers, row) => {
+    expect([...headers].sort()).toEqual(Object.keys(row).sort());
   });
 });
