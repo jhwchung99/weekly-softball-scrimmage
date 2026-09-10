@@ -1,0 +1,63 @@
+name: CI
+
+# The first workflow in this repository that runs the code rather than poking a
+# deployed endpoint. The other five are cron jobs that `curl` /api/cron/*; none
+# of them has ever run vitest, eslint or tsc, so 700-odd tests, a lint config
+# and a type checker existed and executed only when someone remembered to run
+# them locally. Two written decisions (docs/adr/0001, docs/adr/0002) rest on
+# tests that nothing automated.
+#
+# `pull_request` is what gates a merge; `push` to main catches anything that
+# lands without one.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+# A second push to the same branch cancels the run still going for the first.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the floor Next 16 declares (>=20.9.0) and the version this
+          # is developed on. Bump both together, not one of them.
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Every check runs even after an earlier one fails, so one push reports
+      # everything wrong with it rather than the first thing wrong with it.
+      # `!cancelled()` rather than `always()` so cancelling a run still stops it.
+      - name: Typecheck
+        if: '!cancelled()'
+        run: npm run typecheck
+
+      - name: Lint
+        if: '!cancelled()'
+        run: npm run lint
+
+      - name: Test
+        if: '!cancelled()'
+        run: npm test
+
+      # Builds with no environment file at all, which is the point: every
+      # /api/* route is dynamic, so nothing should need a credential to
+      # compile. If this starts failing for want of a secret, something began
+      # reading one at module scope and would break the deploy too.
+      - name: Build
+        if: '!cancelled()'
+        run: npm run build
