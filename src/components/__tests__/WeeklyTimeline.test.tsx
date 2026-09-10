@@ -63,11 +63,27 @@ describe('WeeklyTimeline', () => {
  * Closes is happening now" while registration was merely open.
  */
 describe('WeeklyTimeline milestone marks', () => {
+  /**
+   * The three milestone dots and the two stretches between them.
+   *
+   * Both helpers assert they found something, and that is the load-bearing
+   * part. They select on a Tailwind size class, so renaming it returns an
+   * empty list — and every assertion below is an `.every()` or a
+   * `filter(...).toHaveLength(0)`, both of which are **true of nothing**. All
+   * three dots could vanish from the page and this suite would stay green.
+   */
+  const MILESTONES = 3;
+
   function dotClasses(container: HTMLElement): string[] {
-    return [...container.querySelectorAll('div.h-3.w-3')].map((d) => d.className);
+    const dots = [...container.querySelectorAll('div.h-3.w-3')].map((d) => d.className);
+    expect(dots, 'no milestone dots matched — the assertions below would pass vacuously').toHaveLength(MILESTONES);
+    return dots;
   }
+
   function lineClasses(container: HTMLElement): string[] {
-    return [...container.querySelectorAll('div.h-0\\.5')].map((d) => d.className);
+    const lines = [...container.querySelectorAll('div.h-0\\.5')].map((d) => d.className);
+    expect(lines, 'no stretches matched — the assertions below would pass vacuously').toHaveLength(MILESTONES - 1);
+    return lines;
   }
 
   const WEEK = { gameDate: '2026-07-10', gameTime: '18:00' } as const;

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makeSignup } from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
-import { LOCK_TTL_SECONDS } from '../lock';
+import { LOCK_TTL_SECONDS, ACQUIRE_TIMEOUT_MS } from '../lock';
 import { RATE_LIMIT_RETRY_DELAYS_MS } from '../../sheets/client';
 
 /**
@@ -99,6 +99,10 @@ describe('the mutation lock TTL covers the longest hold', () => {
   it('keeps the TTL above the acquisition timeout, so a waiter never outlives the holder', async () => {
     // A caller waits up to ACQUIRE_TIMEOUT_MS. A TTL shorter than that would
     // let the key expire while someone is still queueing for it.
-    expect(LOCK_TTL_SECONDS * 1000).toBeGreaterThan(10_000);
+    //
+    // Read from the module, not pasted: this said `> 10_000` while the comment
+    // named the constant, so raising the timeout would have left the test
+    // written to protect that relationship passing anyway.
+    expect(LOCK_TTL_SECONDS * 1000).toBeGreaterThan(ACQUIRE_TIMEOUT_MS);
   });
 });

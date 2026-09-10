@@ -36,7 +36,9 @@ const LOCK_KEY = 'weekly-softball-scrimmage:mutation-lock';
 // remembered. See ADR-0001.
 export const LOCK_TTL_SECONDS = 120;
 const ACQUIRE_RETRY_DELAY_MS = 250;
-const ACQUIRE_TIMEOUT_MS = 10000;
+/** Exported so the tests that reason about it read the real value rather than
+ * a copy — see lib/__tests__/lockBudget.test.ts. */
+export const ACQUIRE_TIMEOUT_MS = 10000;
 
 /**
  * Whether the current async call path is already inside a hold.

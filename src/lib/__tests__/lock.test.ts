@@ -106,8 +106,8 @@ describe('withMutationLock', () => {
     expect(fake.store.get('weekly-softball-scrimmage:mutation-lock')?.value).toBe('someone-elses-token');
   });
 
-  it('sets a TTL long enough to outlast worst-case Sheets retry backoff', async () => {
-    const { withMutationLock } = await import('../lock');
+  it('acquires with the configured TTL', async () => {
+    const { withMutationLock, LOCK_TTL_SECONDS } = await import('../lock');
     let ttlSeconds = 0;
     const setSpy = vi.spyOn(fake, 'set').mockImplementation(async (key, value, opts) => {
       ttlSeconds = opts.ex ?? 0;
@@ -117,10 +117,16 @@ describe('withMutationLock', () => {
 
     await withMutationLock(async () => 'x');
 
-    // cancelMySignup makes ~6 sequential Sheets calls, each able to sleep 7s
-    // on rate-limit backoff. A TTL below that expires mid-operation and lets a
-    // second request in alongside the first (review Bug 5).
-    expect(ttlSeconds).toBeGreaterThanOrEqual(42);
+    // What this asserts is that acquisition uses the *configured* TTL — not
+    // that the configured TTL is big enough. lockBudget.test.ts answers that,
+    // by counting the Sheets calls a real revision makes and multiplying by
+    // the real backoff.
+    //
+    // It used to say `>= 42`, from a comment about cancelMySignup's ~6 calls.
+    // ADR-0001 now puts the worst case at ~63s, so that assertion would have
+    // passed at a TTL the ADR itself calls broken — and it duplicated the
+    // reasoning rather than reading it.
+    expect(ttlSeconds).toBe(LOCK_TTL_SECONDS);
     setSpy.mockRestore();
   });
 
