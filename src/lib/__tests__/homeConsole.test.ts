@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { requestFor, failureMessage, type PlayerAction } from '../homeConsole';
+import { requestFor, type PlayerAction } from '../homeConsole';
 
 /**
  * The homepage's request policy was four near-identical handlers closed over
@@ -61,29 +61,7 @@ describe('requestFor', () => {
   });
 });
 
-describe('failureMessage', () => {
-  it('prefers the server’s own words, which are written for players', () => {
-    expect(failureMessage({ error: "You're already signed up for this week" }, 'Cancel failed')).toBe(
-      "You're already signed up for this week"
-    );
-  });
-
-  it('falls back when the response carries no message', () => {
-    // A failure with no body is a network or infrastructure problem rather
-    // than a refusal, and there is nothing better to say.
-    expect(failureMessage({}, 'Cancel failed')).toBe('Cancel failed');
-    expect(failureMessage(null, 'Request failed')).toBe('Request failed');
-    expect(failureMessage(undefined, 'Response failed')).toBe('Response failed');
-  });
-
-  it('falls back rather than showing an empty line', () => {
-    expect(failureMessage({ error: '' }, 'Cancel failed')).toBe('Cancel failed');
-  });
-
-  it('falls back when the error is not a string', () => {
-    expect(failureMessage({ error: { code: 500 } }, 'Cancel failed')).toBe('Cancel failed');
-  });
-
+describe('requestFor fallbacks', () => {
   it('gives each action its own fallback, so a failure says which one failed', () => {
     expect(requestFor({ kind: 'cancel', signupId: 's1' }).fallbackError).toBe('Cancel failed');
     expect(requestFor({ kind: 'requestSub', signupId: 's1', targetEmail: 'x@y.test' }).fallbackError).toBe('Request failed');

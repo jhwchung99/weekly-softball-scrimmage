@@ -10,7 +10,8 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
 import { paymentStateOf, paymentOpensAt } from '../lib/payments';
-import { requestFor, failureMessage, type PlayerAction } from '../lib/homeConsole';
+import { requestFor, type PlayerAction } from '../lib/homeConsole';
+import { sendApiRequest, asJson } from '../lib/apiRequest';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
@@ -140,9 +141,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     try {
-      const { url, init, fallbackError } = requestFor(action);
-      const res = await fetch(url, init);
-      if (!res.ok) throw new Error(failureMessage(await res.json().catch(() => ({})), fallbackError));
+      await sendApiRequest(requestFor(action));
       await loadHome();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -726,12 +725,11 @@ export function ProfileForm(props: {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/players/me', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, gender, savedPositions: positions.join(', ') }),
+      await sendApiRequest({
+        url: '/api/players/me',
+        init: asJson({ fullName, gender, savedPositions: positions.join(', ') }, 'PUT'),
+        fallbackError: 'Could not save profile',
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Could not save profile');
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -829,12 +827,11 @@ export function SignupForm(props: {
         body.invitedByName = invitedByName;
         body.willingToShare = willingToShare;
       }
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      await sendApiRequest({
+        url: `/api/sessions/${encodeURIComponent(sessionId)}/signup`,
+        init: asJson(body),
+        fallbackError: 'Signup failed',
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Signup failed');
       onSignedUp();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

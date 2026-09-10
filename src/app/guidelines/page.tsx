@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { GAME_DAY_NOTES } from '../../lib/gameDayNotes';
 import { Card } from '../../components/Card';
 
 export const metadata: Metadata = {
@@ -103,12 +104,13 @@ export default function GuidelinesPage() {
         <li>They show up on the homepage once the organizer posts them</li>
         <li>Teams are balanced on positions first, then size, then the mix of players</li>
         <li>Two people sharing a spot are always on the same team</li>
-        <li>If someone cancels after teams go up, their team plays a person short</li>
-        <li>If you are down to 8 players, play without a rover</li>
-        <li>
-          The regular season rule about 3 girls on the field does not apply. Just make sure everyone gets equal
-          playing time
-        </li>
+        {/* The rest of this section is the same list shown under the posted
+            teams on game day. It was retyped here and had already drifted —
+            "after teams go up" against "after teams are posted" — so the two
+            answers to "what happens if someone cancels" no longer matched. */}
+        {GAME_DAY_NOTES.map((note) => (
+          <li key={note}>{note}</li>
+        ))}
       </Section>
 
       <Section title="Something not working?">

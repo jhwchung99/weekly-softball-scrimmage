@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPaired, spotKey, partnerOf, spotsFor, countSpots, spotSizeOf, alreadySharingReason } from '../pair';
+import { isPaired, spotKey, partnerOf, spotsFor, countSpots, alreadySharingReason } from '../pair';
 
 /**
  * The invariant in one sentence: a pair is one spot, and its rows move
@@ -112,23 +112,6 @@ describe('countSpots', () => {
 
   it('counts two separate pairs as two spots', () => {
     expect(countSpots([row('a', 'p1'), row('b', 'p1'), row('c', 'p2'), row('d', 'p2')])).toBe(2);
-  });
-});
-
-describe('spotSizeOf', () => {
-  it('is 1 for someone with a spot to themselves', () => {
-    const a = row('a');
-    expect(spotSizeOf(a, [a, row('b')])).toBe(1);
-  });
-
-  it('is 2 when a spot is shared, so its price halves', () => {
-    const a = row('a', 'p1');
-    expect(spotSizeOf(a, [a, row('b', 'p1')])).toBe(2);
-  });
-
-  it('is 1 when the partner is not among the rows given, so nobody is billed for a ghost', () => {
-    const a = row('a', 'p1');
-    expect(spotSizeOf(a, [a])).toBe(1);
   });
 });
 

@@ -224,8 +224,14 @@ export function buildTeams(players: Rosterable[], teamCount: number, restarts: n
   return best!.map((members, i) => ({ name: name(i), members, ...analyzeTeam(members) }));
 }
 
-/** "Short 1: no one can cover Catcher", or '' when the team can field nine. */
-export function teamNote(team: Team): string {
+/**
+ * "Short 1: no one can cover Catcher", or '' when the team can field nine.
+ *
+ * Takes only the two fields it reads, so the client's `TeamView` fits as
+ * readily as a generated `Team`. The team editor had its own byte-for-byte
+ * copy of this for want of that.
+ */
+export function teamNote(team: Pick<Team, 'deficiency' | 'missing'>): string {
   if (team.deficiency === 0) return '';
   return `Short ${team.deficiency}: no one can cover ${team.missing.join(', ')}`;
 }

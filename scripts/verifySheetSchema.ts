@@ -16,7 +16,7 @@
  *
  * See planner/2026-09-05-code-security-review.md, R1.
  */
-import { SPREADSHEET_ID, getValues } from '../src/sheets/client';
+import { SPREADSHEET_ID, getValues, columnLetter } from '../src/sheets/client';
 import { SESSION_HEADERS, SIGNUP_HEADERS, PLAYER_HEADERS, ADMIN_HEADERS, FEEDBACK_HEADERS } from '../src/sheets/schema';
 
 const TABS: { tab: string; headers: readonly string[] }[] = [
@@ -37,7 +37,9 @@ async function verifyTab(tab: string, headers: readonly string[]): Promise<strin
     // historically lagged behind schema additions. A *different* label is not:
     // that means the columns themselves have moved.
     if (found && found !== expected) {
-      problems.push(`  column ${String.fromCharCode(65 + i)}: expected "${expected}", sheet says "${found}"`);
+      // columnLetter, not fromCharCode: past the 26th column that produces
+      // '[', '\\', ']' instead of AA, AB, AC — and Signups is already 22 wide.
+      problems.push(`  column ${columnLetter(i + 1)}: expected "${expected}", sheet says "${found}"`);
     }
   });
 

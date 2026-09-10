@@ -8,9 +8,10 @@ import { POSITIONS } from '../../lib/positions';
 import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
 import { computePaymentSummary } from '../../lib/payments';
+import { sendApiRequest, asJson } from '../../lib/apiRequest';
+import type { AnnouncementResult } from '../../lib/adminConsole';
 import {
   adminRequestFor,
-  adminFailureMessage,
   type AdminAction,
   classifyLoadFailure,
   sessionIdAfterRevision,
@@ -136,10 +137,7 @@ export default function AdminPage() {
     setBusy(true);
     setError(null);
     try {
-      const { url, init, fallbackError } = adminRequestFor(action);
-      const res = await fetch(url, init);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(adminFailureMessage(data, fallbackError));
+      const data = await sendApiRequest(adminRequestFor(action));
       if (onDone) onDone(data);
       else await loadRoster(sessionId);
     } catch (err) {
@@ -168,7 +166,11 @@ export default function AdminPage() {
   function sendAnnouncement(path: string, confirmMessage: string, body: Record<string, unknown> = {}) {
     if (!window.confirm(confirmMessage)) return;
     setNotice(null);
-    return runAction({ kind: 'announce', sessionId, path, body }, (data) => setNotice(announcementNotice(data)));
+    // `data` is a parsed HTTP body, so it is typed as unknown fields; the
+    // notice builder takes the announcement shape as Partial for that reason.
+    return runAction({ kind: 'announce', sessionId, path, body }, (data) =>
+      setNotice(announcementNotice(data as Partial<AnnouncementResult>))
+    );
   }
 
   function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
@@ -776,10 +778,9 @@ export function CreateSessionForm(props: {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await sendApiRequest({
+        url: '/api/admin/sessions',
+        init: asJson({
           gameDate,
           gameTime,
           capacity: Number(capacity),
@@ -787,11 +788,10 @@ export function CreateSessionForm(props: {
           pricePerSpot: Number(pricePerSpot),
           locationArea: area,
         }),
+        fallbackError: 'Create failed',
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Create failed');
       setGameDate('');
-      onCreated(data.session.sessionId);
+      onCreated((data.session as { sessionId: string }).sessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -919,12 +919,11 @@ export function AddSignupForm(props: {
         body.invitedByName = invitedByName;
         body.willingToShare = willingToShare;
       }
-      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}/signups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      await sendApiRequest({
+        url: `/api/admin/sessions/${encodeURIComponent(sessionId)}/signups`,
+        init: asJson(body),
+        fallbackError: 'Add failed',
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Add failed');
       setEmail('');
       setFullName('');
       setInvitedByName('');

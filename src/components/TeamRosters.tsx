@@ -11,11 +11,13 @@ import type { TeamView } from '../lib/views';
  */
 export type { TeamView, TeamMember } from '../lib/views';
 
-/** "Short 1: no one can cover Catcher", or nothing when the team is fine. */
-export function teamNoteText(team: Pick<TeamView, 'deficiency' | 'missing'>): string {
-  if (team.deficiency === 0) return '';
-  return `Short ${team.deficiency}: no one can cover ${team.missing.join(', ')}`;
-}
+/** Re-exported so the editor beside this can keep importing it from here,
+ * rather than every caller learning where the lineup rules live. */
+import { teamNote } from '../lib/teams';
+
+/** Re-exported so the editor beside this keeps one import for the team view
+ * and the note that goes under it. */
+export { teamNote };
 
 /**
  * The posted teams, plus the notes that go with them.
@@ -44,7 +46,7 @@ export function TeamRosters({
 
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         {teams.map((team) => {
-          const note = teamNoteText(team);
+          const note = teamNote(team);
           const mine = highlightSignupId && team.members.some((m) => m.signupId === highlightSignupId);
           return (
             <div

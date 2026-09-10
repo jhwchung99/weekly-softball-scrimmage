@@ -74,12 +74,14 @@ describe('analyzeTeam: shared spots', () => {
 });
 
 describe('teamNote', () => {
+  // Narrowed to the two fields it reads so the client's TeamView fits too;
+  // the editor used to carry its own copy for want of that.
   it('says nothing when the team can field nine', () => {
-    expect(teamNote({ name: 'Team 1', members: [], deficiency: 0, missing: [] })).toBe('');
+    expect(teamNote({ deficiency: 0, missing: [] })).toBe('');
   });
 
   it('names what is short', () => {
-    expect(teamNote({ name: 'Team 1', members: [], deficiency: 2, missing: ['Catcher', 'SS'] })).toBe(
+    expect(teamNote({ deficiency: 2, missing: ['Catcher', 'SS'] })).toBe(
       'Short 2: no one can cover Catcher, SS'
     );
   });

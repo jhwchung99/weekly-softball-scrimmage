@@ -20,9 +20,6 @@ import { nextInLine, positionOf } from './waitlist';
 import { normalizeEmail } from './email';
 import { countConfirmedSpots, computeCostShare } from './payments';
 
-// Moved to lib/payments.ts so client components can share the implementation;
-// re-exported here because this has been their import site all along.
-export { countConfirmedSpots, computeCostShare, computePaymentSummary } from './payments';
 import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail, deliver } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
