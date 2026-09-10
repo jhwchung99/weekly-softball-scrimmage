@@ -6,6 +6,10 @@ import { Card } from './Card';
 import { Button } from './Button';
 import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
 import { teamNoteText, TeamView } from './TeamRosters';
+// The same coverage analysis the generator runs. Calling it rather than
+// approximating it is the point: the note under an edited team has to be true
+// while the organizer is still moving people, which is when a gap gets made.
+import { analyzeTeam } from '../lib/teams';
 
 interface TeamsResponse {
   teamsStatus: '' | 'draft' | 'posted';
@@ -116,7 +120,7 @@ export function TeamEditor({ sessionId, onChanged }: { sessionId: string; onChan
       {anyPlayers && (
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {names.map((name) => {
-            const note = teamNoteText(analyzeLocally(members[name], state.teams, name));
+            const note = teamNoteText(analyzeTeam(members[name]));
             return (
               <div key={name} className="rounded border border-slate-200 p-3">
                 <h3 className="text-sm font-medium text-slate-900">
@@ -189,22 +193,4 @@ export function TeamEditor({ sessionId, onChanged }: { sessionId: string; onChan
       </div>
     </Card>
   );
-}
-
-/**
- * The coverage note for a team as currently arranged on screen.
- *
- * Recomputing it properly needs the matching logic, which lives server-side
- * with the rest of the generator. Until the next load the server's numbers are
- * the ones shown, so an edited team keeps the note it was generated with and
- * Save refreshes it. That is deliberate: duplicating the matching algorithm in
- * the client is exactly how the two copies drift apart.
- */
-function analyzeLocally(current: Member[], generated: TeamView[], name: string) {
-  const original = generated.find((t) => t.name === name);
-  const unchanged =
-    original &&
-    original.members.length === current.length &&
-    original.members.every((m) => current.some((c) => c.signupId === m.signupId));
-  return unchanged ? original : { deficiency: 0, missing: [] };
 }
