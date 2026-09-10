@@ -238,8 +238,21 @@ export default function AdminPage() {
             />
           </div>
 
-          {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          {notice && <p className="mt-4 rounded bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}</p>}
+          {/* Announced: the console's actions mostly leave the page looking
+              the same, so this line is the only evidence one failed. */}
+          {error && (
+            <p role="alert" className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          {/* The announcement result — who was emailed. Sending is the one
+              action with no visible effect on the page, so this line is the
+              only evidence of it, seen or heard. */}
+          {notice && (
+            <p role="status" className="mt-4 rounded bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              {notice}
+            </p>
+          )}
 
           <CreateSessionForm busy={busy} setBusy={setBusy} setError={setError} onCreated={(id) => setSessionId(id)} />
 
