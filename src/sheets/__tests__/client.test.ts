@@ -140,13 +140,27 @@ describe('rate-limit retry', () => {
   const rows = [['2099-01-01']];
   const ok = { data: { values: rows } };
 
-  /** Runs the read past its backoff waits without spending them. */
+  /**
+   * Runs the read past its backoff waits without spending them.
+   *
+   * The settling is separated from the awaiting on purpose. Advancing the
+   * timers yields, so a read that rejects during it rejects while nothing is
+   * listening — Node reports that as an unhandled rejection even though the
+   * next line awaits it. Attaching the handler first makes the failure cases
+   * observable rather than merely awaited.
+   */
   async function read() {
     vi.useFakeTimers();
     try {
-      const started = getRowObjects('sheet', 'Sessions', ['sessionId'] as const);
+      const settled = getRowObjects('sheet', 'Sessions', ['sessionId'] as const).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error })
+      );
       await vi.runAllTimersAsync();
-      return await started;
+
+      const result = await settled;
+      if ('error' in result) throw result.error;
+      return result.value;
     } finally {
       vi.useRealTimers();
     }
