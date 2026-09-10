@@ -37,6 +37,10 @@ describe('paymentStateOf', () => {
 
 describe('paymentOpensAt', () => {
   it('is the moment the roster locks', () => {
+    // Restates the implementation, deliberately: it pins *which* milestone,
+    // and cannot fail on its own because both sides call the same helper. The
+    // UTC-literal test below is what actually checks the time. Neither is
+    // worth keeping without the other.
     const session = { gameDate: '2026-07-10', gameTime: '18:00' };
 
     expect(paymentOpensAt(session)).toEqual(getWeeklyMilestones('2026-07-10', '18:00').cutoffStart);
