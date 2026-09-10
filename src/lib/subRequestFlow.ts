@@ -3,6 +3,7 @@ import { getSession } from '../sheets/sessions';
 import { getSignup, getSignupWithSessionSignups, updateSignup, batchUpdateSignups } from '../sheets/signups';
 import { Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
+import { alreadySharingReason } from './pair';
 import { sendSubRequestEmail, sendSubRequestAcceptedEmail } from './notifications';
 import { normalizeEmail } from './email';
 import { withMutationLock } from './lock';
@@ -29,7 +30,8 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
       throw new ApiError(403, 'You can only request a sub for your own signup.');
     }
     if (signup.status !== 'waitlisted') throw new ApiError(409, 'Only a waitlisted signup can request to sub in.');
-    if (signup.pairId) throw new ApiError(409, "You're already sharing a slot with someone else.");
+    const selfSharing = alreadySharingReason(signup);
+    if (selfSharing) throw new ApiError(409, selfSharing);
     // Anti-spam: only one outstanding outgoing request at a time. A prior
     // request already sitting at 'declined' doesn't block a new one — only
     // 'pending' does. cancelSubRequest is the deliberate way out if the
@@ -45,7 +47,8 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
 
     const target = sessionSignups.find((s) => normalizeEmail(s.email) === normalizedTarget && s.status !== 'cancelled');
     if (!target) throw new ApiError(400, "That email isn't signed up for this session.");
-    if (target.pairId) throw new ApiError(400, 'That person is already sharing a slot with someone else.');
+    const targetSharing = alreadySharingReason(target, 'That person is');
+    if (targetSharing) throw new ApiError(400, targetSharing);
 
     const session = await getSession(signup.sessionId);
     if (!session) throw new ApiError(404, 'No such session.');
@@ -123,8 +126,13 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     if (requester.status !== 'waitlisted') {
       throw new ApiError(409, 'That person already has their own spot, so there is nothing to sub into.');
     }
-    if (target.pairId) throw new ApiError(409, "You're already sharing a slot with someone else.");
-    if (requester.pairId) throw new ApiError(409, 'That signup is already sharing a slot with someone else.');
+    // The responder is `target` and the asker is `requester`, so "you" is the
+    // target here — the reverse of requestSub, which is exactly the sort of
+    // thing four hand-written copies got to disagree about.
+    const responderSharing = alreadySharingReason(target);
+    if (responderSharing) throw new ApiError(409, responderSharing);
+    const askerSharing = alreadySharingReason(requester, 'That signup is');
+    if (askerSharing) throw new ApiError(409, askerSharing);
 
     const session = await getSession(requester.sessionId);
     if (!session) throw new ApiError(404, 'No such session.');

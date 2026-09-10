@@ -1,4 +1,5 @@
 import { Signup } from '../sheets/schema';
+import { slotsFor, countSlots, isPaired } from './pair';
 
 /**
  * What one team puts on the field. The counts matter: "can this team cover
@@ -81,14 +82,9 @@ function matchSlots(squad: Rosterable[]): (number | null)[] {
 
 /** Every combination of which half of each shared spot turns up. */
 function attendanceScenarios(members: Rosterable[]): Rosterable[][] {
-  const solo = members.filter((m) => !m.pairId);
-  const pairs = new Map<string, Rosterable[]>();
-  for (const m of members) {
-    if (!m.pairId) continue;
-    if (!pairs.has(m.pairId)) pairs.set(m.pairId, []);
-    pairs.get(m.pairId)!.push(m);
-  }
-  const groups = [...pairs.values()];
+  const slots = slotsFor(members);
+  const solo = slots.filter((s) => s.length === 1).map((s) => s[0]);
+  const groups = slots.filter((s) => s.length > 1);
   if (groups.length === 0) return [solo];
 
   const scenarios: Rosterable[][] = [];
@@ -134,13 +130,13 @@ function spread(values: number[]): number {
 /** A shared spot counts once for size, and half each way when its two
  * occupants differ in gender, so the metric stays smooth. */
 function femaleWeight(members: Rosterable[]): number {
-  return members.reduce((n, m) => n + (m.gender === 'Female' ? (m.pairId ? 0.5 : 1) : 0), 0);
+  return members.reduce((n, m) => n + (m.gender === 'Female' ? (isPaired(m) ? 0.5 : 1) : 0), 0);
 }
 
 function scoreTeams(teams: Rosterable[][]): number {
   let score = 0;
   for (const t of teams) score += W_DEFICIT * analyzeTeam(t).deficiency;
-  score += W_SIZE * spread(teams.map((t) => new Set(t.map((m) => m.pairId || m.signupId)).size));
+  score += W_SIZE * spread(teams.map((t) => countSlots(t)));
   score += W_GENDER * spread(teams.map(femaleWeight));
   return score;
 }
@@ -150,25 +146,6 @@ function scoreTeams(teams: Rosterable[][]): number {
 function seeded(seed: number): () => number {
   let s = seed >>> 0;
   return () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-}
-
-/** Solo players, plus each shared spot as one indivisible unit. */
-function toUnits(players: Rosterable[]): Rosterable[][] {
-  const units: Rosterable[][] = [];
-  const pairs = new Map<string, Rosterable[]>();
-  for (const p of players) {
-    if (!p.pairId) {
-      units.push([p]);
-      continue;
-    }
-    if (!pairs.has(p.pairId)) {
-      const group: Rosterable[] = [];
-      pairs.set(p.pairId, group);
-      units.push(group);
-    }
-    pairs.get(p.pairId)!.push(p);
-  }
-  return units;
 }
 
 // Two teams is easy enough that one pass finds the best split every time; four
@@ -192,7 +169,8 @@ const RESTARTS = 20;
  */
 export function buildTeams(players: Rosterable[], teamCount: number, restarts: number = RESTARTS): Team[] {
   const count = Math.max(1, Math.floor(teamCount));
-  const units = toUnits(players);
+  // Solo players, plus each shared spot as one indivisible unit.
+  const units = slotsFor(players);
   const name = (i: number) => `Team ${i + 1}`;
 
   if (units.length === 0) {

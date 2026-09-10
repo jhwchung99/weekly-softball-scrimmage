@@ -1,4 +1,5 @@
 import { Signup, Session } from '../sheets/schema';
+import { countSlots, slotsFor } from './pair';
 
 // Pure capacity and payment maths. Deliberately free of Sheets or other
 // server-only imports so client components — the admin dashboard's payment
@@ -22,17 +23,7 @@ type Payable = Slottable & Pick<Signup, 'paid' | 'amountPaid'>;
  * still counted, so the slot stays occupied.
  */
 export function countConfirmedSlots(signups: Slottable[]): number {
-  const confirmed = signups.filter((s) => s.status === 'confirmed');
-  const countedPairIds = new Set<string>();
-  let slots = 0;
-  for (const s of confirmed) {
-    if (s.pairId) {
-      if (countedPairIds.has(s.pairId)) continue;
-      countedPairIds.add(s.pairId);
-    }
-    slots += 1;
-  }
-  return slots;
+  return countSlots(signups.filter((s) => s.status === 'confirmed'));
 }
 
 /**
@@ -63,17 +54,13 @@ export function computeCostShare(session: SpotPriced, signups: Slottable[]): Rec
 
   const confirmed = signups.filter((s) => s.status === 'confirmed');
 
-  const pairSizes = new Map<string, number>();
-  for (const s of confirmed) {
-    if (s.pairId) pairSizes.set(s.pairId, (pairSizes.get(s.pairId) ?? 0) + 1);
-  }
-
   const perPerson: Record<string, number> = {};
-  for (const s of confirmed) {
-    // A shared spot costs one spot's price between its occupants, keeping the
-    // existing "sharing is cheaper" incentive.
-    const sharedBy = s.pairId ? pairSizes.get(s.pairId) ?? 1 : 1;
-    perPerson[s.signupId] = Math.round((session.pricePerSpot / sharedBy) * 100) / 100;
+  // A shared spot costs one spot's price between its occupants, keeping the
+  // existing "sharing is cheaper" incentive. Split across the rows actually
+  // confirmed, so a partner who cancelled doesn't leave the other paying half.
+  for (const slot of slotsFor(confirmed)) {
+    const each = Math.round((session.pricePerSpot / slot.length) * 100) / 100;
+    for (const s of slot) perPerson[s.signupId] = each;
   }
   return perPerson;
 }

@@ -1,6 +1,7 @@
 import { Users } from 'lucide-react';
 import { Card } from './Card';
 import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
+import { isPaired, SHARING_A_SPOT } from '../lib/pair';
 import type { TeamView } from '../lib/views';
 
 /**
@@ -58,7 +59,7 @@ export function TeamRosters({
                 {team.members.map((m) => (
                   <li key={m.signupId}>
                     {m.fullName}
-                    {m.pairId ? ' (sharing a spot)' : ''}
+                    {isPaired(m) ? ` (${SHARING_A_SPOT})` : ''}
                   </li>
                 ))}
                 {team.members.length === 0 && <li className="text-slate-400">No one yet.</li>}
