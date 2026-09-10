@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionEmail } from '../../../../../lib/auth';
+import { requireSignedIn } from '../../../../../lib/auth';
 import { signUpForSession, signUpAsGuestForSession, getMyStatusForSession } from '../../../../../lib/signupFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 import { validateInvitedByName } from '../../../../../lib/validation';
@@ -14,8 +14,7 @@ type Params = { params: Promise<{ sessionId: string }> };
  */
 export async function POST(request: Request, { params }: Params) {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     const { sessionId } = await params;
     const body = await request.json().catch(() => ({}));
@@ -46,8 +45,7 @@ export async function POST(request: Request, { params }: Params) {
  * homepage can render everything from one call. */
 export async function GET(request: Request, { params }: Params) {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     const { sessionId } = await params;
     // Forwarded whole rather than destructured field by field: this route

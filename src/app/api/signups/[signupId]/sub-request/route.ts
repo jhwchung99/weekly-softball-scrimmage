@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionEmail } from '../../../../../lib/auth';
+import { requireSignedIn } from '../../../../../lib/auth';
 import { requestSub, cancelSubRequest } from '../../../../../lib/subRequestFlow';
 import { validateEmail } from '../../../../../lib/validation';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
@@ -10,8 +10,7 @@ type Params = { params: Promise<{ signupId: string }> };
 /** A waitlisted player proposes to share targetEmail's spot. */
 export async function POST(request: Request, { params }: Params) {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     const { signupId } = await params;
     const body = await request.json().catch(() => ({}));
@@ -27,8 +26,7 @@ export async function POST(request: Request, { params }: Params) {
 /** The requester withdraws their own pending request. */
 export async function DELETE(request: Request, { params }: Params) {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     const { signupId } = await params;
     const signup = mySignupView(await cancelSubRequest(signupId, email));

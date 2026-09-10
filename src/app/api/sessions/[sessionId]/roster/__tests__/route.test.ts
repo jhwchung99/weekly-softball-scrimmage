@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ApiError } from '../../../../../../lib/apiErrors';
 
-const getSessionEmail = vi.fn();
-vi.mock('../../../../../../lib/auth', () => ({ getSessionEmail }));
+const requireSignedIn = vi.fn();
+vi.mock('../../../../../../lib/auth', () => ({ requireSignedIn }));
 
 const listSignupsForSession = vi.fn();
 vi.mock('../../../../../../sheets/signups', () => ({ listSignupsForSession }));
@@ -32,13 +33,13 @@ beforeEach(() => {
 
 describe('GET /api/sessions/[sessionId]/roster', () => {
   it('requires sign-in', async () => {
-    getSessionEmail.mockResolvedValue(null);
+    requireSignedIn.mockRejectedValue(new ApiError(401, 'Not signed in.'));
     const res = await GET(new Request('http://x'), makeParams('2099-01-01'));
     expect(res.status).toBe(401);
   });
 
   it('hides names but shows counts for a signed-in viewer with no signup', async () => {
-    getSessionEmail.mockResolvedValue('outsider@dummy.test');
+    requireSignedIn.mockResolvedValue('outsider@dummy.test');
     listSignupsForSession.mockResolvedValue([
       signup({ email: 'a@dummy.test', fullName: 'A', status: 'confirmed' }),
       signup({ email: 'b@dummy.test', fullName: 'B', status: 'confirmed' }),
@@ -56,7 +57,7 @@ describe('GET /api/sessions/[sessionId]/roster', () => {
   });
 
   it('shows names to a viewer who has an active signup', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     listSignupsForSession.mockResolvedValue([
       signup({ email: 'a@dummy.test', fullName: 'A', status: 'confirmed' }),
       signup({ email: 'c@dummy.test', fullName: 'C', status: 'waitlisted' }),
@@ -69,7 +70,7 @@ describe('GET /api/sessions/[sessionId]/roster', () => {
   });
 
   it('shows names to a waitlisted viewer too — they need it to pick a sub target', async () => {
-    getSessionEmail.mockResolvedValue('c@dummy.test');
+    requireSignedIn.mockResolvedValue('c@dummy.test');
     listSignupsForSession.mockResolvedValue([
       signup({ email: 'a@dummy.test', fullName: 'A', status: 'confirmed' }),
       signup({ email: 'c@dummy.test', fullName: 'C', status: 'waitlisted' }),
@@ -80,7 +81,7 @@ describe('GET /api/sessions/[sessionId]/roster', () => {
   });
 
   it('re-hides names once the viewer cancels', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     listSignupsForSession.mockResolvedValue([
       signup({ email: 'a@dummy.test', fullName: 'A', status: 'cancelled' }),
       signup({ email: 'b@dummy.test', fullName: 'B', status: 'confirmed' }),
@@ -93,7 +94,7 @@ describe('GET /api/sessions/[sessionId]/roster', () => {
   });
 
   it('matches the viewer case-insensitively', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     listSignupsForSession.mockResolvedValue([signup({ email: 'A@Dummy.Test', fullName: 'A', status: 'confirmed' })]);
 
     const body = await (await GET(new Request('http://x'), makeParams('2099-01-01'))).json();
@@ -101,7 +102,7 @@ describe('GET /api/sessions/[sessionId]/roster', () => {
   });
 
   it('never returns email addresses, even to a participant', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     listSignupsForSession.mockResolvedValue([signup({ email: 'a@dummy.test', fullName: 'A' })]);
 
     const body = await (await GET(new Request('http://x'), makeParams('2099-01-01'))).json();
@@ -109,7 +110,7 @@ describe('GET /api/sessions/[sessionId]/roster', () => {
   });
 
   it('orders the waitlist by signup time', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     listSignupsForSession.mockResolvedValue([
       signup({ email: 'a@dummy.test', fullName: 'A', status: 'confirmed' }),
       signup({ fullName: 'Later', status: 'waitlisted', timestamp: '2099-01-02T00:00:00.000Z' }),

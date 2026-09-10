@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ApiError } from '../../../../../../lib/apiErrors';
 
-const getSessionEmail = vi.fn();
-vi.mock('../../../../../../lib/auth', () => ({ getSessionEmail }));
+const requireSignedIn = vi.fn();
+vi.mock('../../../../../../lib/auth', () => ({ requireSignedIn }));
 
 const isAdminEmail = vi.fn();
 vi.mock('../../../../../../sheets/admins', () => ({ isAdminEmail }));
@@ -22,13 +23,13 @@ beforeEach(() => {
 
 describe('POST /api/signups/[signupId]/cancel', () => {
   it('returns 401 when not signed in', async () => {
-    getSessionEmail.mockResolvedValue(null);
+    requireSignedIn.mockRejectedValue(new ApiError(401, 'Not signed in.'));
     const res = await POST(new Request('http://x', { method: 'POST' }), makeParams('s1'));
     expect(res.status).toBe(401);
   });
 
   it('passes the caller\'s admin status through to cancelMySignup', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     isAdminEmail.mockResolvedValue(true);
     cancelMySignup.mockResolvedValue({ promoted: [] });
 
@@ -38,7 +39,7 @@ describe('POST /api/signups/[signupId]/cancel', () => {
   });
 
   it('returns the promoted list from the response', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     isAdminEmail.mockResolvedValue(false);
     cancelMySignup.mockResolvedValue({ promoted: [{ signupId: 's2' }] });
 

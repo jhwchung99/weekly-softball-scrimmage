@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  adminRequestFor,
+  adminFailureMessage,
+  type AdminAction,
   classifyLoadFailure,
   sessionIdAfterRevision,
   splitAcrossRoster,
@@ -187,5 +190,75 @@ describe('sessionInputsFor', () => {
 
   it('renders a zero as "0" rather than an empty box', () => {
     expect(sessionInputsFor({ ...session, cost: 0, pricePerSpot: 0 })).toMatchObject({ cost: '0', price: '0' });
+  });
+});
+
+/**
+ * The console's request policy. It was four near-identical handlers closed
+ * over React state — the same four the homepage had, left in place when those
+ * were collapsed.
+ */
+describe('adminRequestFor', () => {
+  const bodyOf = (action: AdminAction) => {
+    const { init } = adminRequestFor(action);
+    return init.body ? JSON.parse(String(init.body)) : null;
+  };
+
+  it('revises a session by PATCHing it', () => {
+    const action: AdminAction = { kind: 'reviseSession', sessionId: '2026-07-10', updates: { capacity: 20 } };
+
+    expect(adminRequestFor(action).url).toBe('/api/admin/sessions/2026-07-10');
+    expect(adminRequestFor(action).init.method).toBe('PATCH');
+    expect(bodyOf(action)).toEqual({ capacity: 20 });
+  });
+
+  it('sends an announcement to the named path under the session', () => {
+    const action: AdminAction = { kind: 'announce', sessionId: '2026-07-10', path: 'notify', body: { note: 'Moved' } };
+
+    expect(adminRequestFor(action).url).toBe('/api/admin/sessions/2026-07-10/notify');
+    expect(bodyOf(action)).toEqual({ note: 'Moved' });
+  });
+
+  it('sends an empty body for an announcement that carries no note', () => {
+    expect(bodyOf({ kind: 'announce', sessionId: '2026-07-10', path: 'payment-reminders' })).toEqual({});
+  });
+
+  it('overrides a signup by PATCHing the signup, not the session', () => {
+    const action: AdminAction = { kind: 'overrideSignup', signupId: 's1', updates: { paid: true } };
+
+    expect(adminRequestFor(action).url).toBe('/api/admin/signups/s1');
+    expect(bodyOf(action)).toEqual({ paid: true });
+  });
+
+  it('removes a signup by DELETE, not by an override', () => {
+    // A hard delete of the row, distinct from setting status to cancelled.
+    const { url, init } = adminRequestFor({ kind: 'removeSignup', signupId: 's1' });
+
+    expect(url).toBe('/api/admin/signups/s1');
+    expect(init.method).toBe('DELETE');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('encodes ids rather than pasting them into the path', () => {
+    expect(adminRequestFor({ kind: 'removeSignup', signupId: 'a/b?c' }).url).toBe('/api/admin/signups/a%2Fb%3Fc');
+  });
+
+  it('gives each action its own fallback, so a failure says which one failed', () => {
+    expect(adminRequestFor({ kind: 'removeSignup', signupId: 's1' }).fallbackError).toBe('Remove failed');
+    expect(adminRequestFor({ kind: 'announce', sessionId: 's', path: 'notify' }).fallbackError).toBe('Send failed');
+  });
+});
+
+describe('adminFailureMessage', () => {
+  it('prefers the server’s own words, which name the actual problem', () => {
+    expect(adminFailureMessage({ error: 'Kevin Kim already has an active signup' }, 'Update failed')).toMatch(
+      /Kevin Kim already has an active signup/
+    );
+  });
+
+  it('falls back when the response says nothing useful', () => {
+    expect(adminFailureMessage({}, 'Remove failed')).toBe('Remove failed');
+    expect(adminFailureMessage(null, 'Send failed')).toBe('Send failed');
+    expect(adminFailureMessage({ error: '' }, 'Update failed')).toBe('Update failed');
   });
 });

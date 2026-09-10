@@ -9,6 +9,9 @@ import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
 import { computePaymentSummary } from '../../lib/payments';
 import {
+  adminRequestFor,
+  adminFailureMessage,
+  type AdminAction,
   classifyLoadFailure,
   sessionIdAfterRevision,
   splitAcrossRoster,
@@ -120,27 +123,40 @@ export default function AdminPage() {
     }
   }, [authStatus, sessionId]);
 
-  async function updateSession(updates: Record<string, unknown>) {
+  /**
+   * Every organizer action, on one policy: mark busy, clear the last error,
+   * send the request, show the server's message if it refuses, reload, and
+   * stop being busy whatever happened.
+   *
+   * This was four near-identical handlers. The reload is the part worth
+   * keeping together — each of these changes the week, so the console
+   * re-reads rather than guessing at the new state.
+   */
+  async function runAction(action: AdminAction, onDone?: (data: Record<string, unknown>) => void) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+      const { url, init, fallbackError } = adminRequestFor(action);
+      const res = await fetch(url, init);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Update failed');
-      // A gameDate change rekeys the session (its id IS the date) — follow
-      // it to the new id rather than re-fetching the now-stale old one.
-      const newSessionId = sessionIdAfterRevision(sessionId, data?.session);
-      setSessionId(newSessionId);
-      await loadRoster(newSessionId);
+      if (!res.ok) throw new Error(adminFailureMessage(data, fallbackError));
+      if (onDone) onDone(data);
+      else await loadRoster(sessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateSession(updates: Record<string, unknown>) {
+    return runAction({ kind: 'reviseSession', sessionId, updates }, async (data) => {
+      // A gameDate change rekeys the session (its id IS the date) — follow it
+      // to the new id rather than re-fetching the now-stale old one.
+      const newSessionId = sessionIdAfterRevision(sessionId, data?.session as { sessionId?: string });
+      setSessionId(newSessionId);
+      await loadRoster(newSessionId);
+    });
   }
 
   /**
@@ -149,77 +165,28 @@ export default function AdminPage() {
    * either — an email is out of the building the moment it sends, and the
    * audience is everyone.
    */
-  async function sendAnnouncement(path: string, confirmMessage: string, body: Record<string, unknown> = {}) {
+  function sendAnnouncement(path: string, confirmMessage: string, body: Record<string, unknown> = {}) {
     if (!window.confirm(confirmMessage)) return;
-    setBusy(true);
-    setError(null);
     setNotice(null);
-    try {
-      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}/${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Send failed');
-
-      setNotice(announcementNotice(data));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+    return runAction({ kind: 'announce', sessionId, path, body }, (data) => setNotice(announcementNotice(data)));
   }
 
-  async function updateSignupStatus(signupId: string, status: SignupStatus) {
-    await updateSignupFields(signupId, { status });
+  function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
+    return runAction({ kind: 'overrideSignup', signupId, updates });
   }
 
-  async function updateSignupPaid(signupId: string, paid: boolean) {
-    // The server records the amount and timestamp; the checkbox stays a
-    // one-click action for the common case.
-    await updateSignupFields(signupId, { paid });
-  }
+  // The three roster checkboxes, each an override of one field.
+  const updateSignupStatus = (signupId: string, status: SignupStatus) => updateSignupFields(signupId, { status });
+  const updateSignupPaid = (signupId: string, paid: boolean) => updateSignupFields(signupId, { paid });
+  const updateSignupAttended = (signupId: string, attended: boolean) => updateSignupFields(signupId, { attended });
 
-  async function updateSignupAttended(signupId: string, attended: boolean) {
-    await updateSignupFields(signupId, { attended });
-  }
-
-  async function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/signups/${encodeURIComponent(signupId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Update failed');
-      await loadRoster(sessionId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Both destructive actions below confirm first. Removing a signup is a HARD
-  // delete of the row (not a status change), and cancelling the session
-  // affects everyone — neither should be one stray click away, especially
-  // since they sit right next to non-destructive Save buttons.
-  async function removeSignup(signupId: string, fullName: string) {
+  // Both destructive actions confirm first. Removing a signup is a HARD delete
+  // of the row (not a status change), and cancelling the session affects
+  // everyone — neither should be one stray click away, especially since they
+  // sit right next to non-destructive Save buttons.
+  function removeSignup(signupId: string, fullName: string) {
     if (!window.confirm(`Permanently remove ${fullName}'s signup? This deletes the row and can't be undone.`)) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/signups/${encodeURIComponent(signupId)}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Remove failed');
-      await loadRoster(sessionId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+    return runAction({ kind: 'removeSignup', signupId });
   }
 
   // Dividing the permit cost across the roster — a suggestion for the price
