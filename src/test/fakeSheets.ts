@@ -91,6 +91,11 @@ export function fakeSignupsModule(store: FakeStore) {
       const target = normalizeEmail(email);
       return listForSession(sessionId).find((s) => normalizeEmail(s.email) === target && s.status !== 'cancelled') ?? null;
     }),
+    // Waitlisted only, and not already waiting on an answer — both clauses
+    // matter and both were missing here. A guest with their own confirmed spot
+    // has nothing to gain from sharing, and folding them into someone else's
+    // slot drops the roster under capacity with no promotion to refill it. See
+    // the real implementation's comment, and signupsContract.test.ts.
     findPendingGuestInvite: vi.fn(async (sessionId: string, memberFullName: string) => {
       const candidates = listForSession(sessionId)
         .filter(
@@ -98,7 +103,8 @@ export function fakeSignupsModule(store: FakeStore) {
             s.memberStatus === 'guest' &&
             s.willingToShare &&
             !s.pairId &&
-            s.status !== 'cancelled' &&
+            s.status === 'waitlisted' &&
+            s.subRequestStatus !== 'pending' &&
             s.invitedByName.trim().toLowerCase() === memberFullName.trim().toLowerCase()
         )
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
