@@ -4,7 +4,11 @@ import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
 
 export interface TeamView {
   name: string;
-  members: { signupId: string; fullName: string; positions: string; pairId: string }[];
+  /** Exactly what the server projects onto the wire (`Rosterable`). `gender`
+   * earns its place by being what the shared analyzer needs: without it this
+   * type could not be passed to `analyzeTeam`, which is why the editor used to
+   * carry a local stand-in that reported every edited team as fully covered. */
+  members: { signupId: string; fullName: string; gender: string; positions: string; pairId: string }[];
   deficiency: number;
   missing: string[];
 }
