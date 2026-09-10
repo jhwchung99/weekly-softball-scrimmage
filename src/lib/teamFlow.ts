@@ -2,7 +2,7 @@ import { getSession, updateSession } from '../sheets/sessions';
 import { listSignupsForSession, batchUpdateSignups } from '../sheets/signups';
 import { Session, Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
-import { buildTeams, analyzeTeam, Team } from './teams';
+import { buildTeams, analyzeTeam, Team, Rosterable } from './teams';
 import { sendTeamsReadyAlert } from './notifications';
 import { getWeeklyMilestones } from './time';
 
@@ -93,6 +93,28 @@ export async function postTeams(sessionId: string): Promise<Session> {
 }
 
 /**
+ * The one thing a signup row contributes to a lineup: who they are and what
+ * they cover.
+ *
+ * Constructed field by field rather than spread, because this is the boundary
+ * where a player's row stops being an admin record and becomes something their
+ * teammates read. `Team.members` has always been declared as `Rosterable`, but
+ * a whole `Signup` satisfies that shape structurally, so forwarding rows
+ * type-checked while shipping email addresses, payments, attendance and waiver
+ * text to everyone on the field. The same boundary `roster.ts` draws with
+ * `toEntry` — see planner/2026-09-09-architecture-review.html, candidate 1.
+ */
+function toMember(s: Signup): Rosterable {
+  return {
+    signupId: s.signupId,
+    fullName: s.fullName,
+    gender: s.gender,
+    positions: s.positions,
+    pairId: s.pairId,
+  };
+}
+
+/**
  * Rebuilds the team view from stored `teamName` values, for display.
  *
  * Cancelled signups are filtered out, which is the whole implementation of
@@ -106,7 +128,7 @@ export function teamsFromSignups(signups: Signup[], teamCount: number): Team[] {
   for (const s of active) if (!names.includes(s.teamName)) names.push(s.teamName);
 
   return names.map((name) => {
-    const members = active.filter((s) => s.teamName === name);
+    const members = active.filter((s) => s.teamName === name).map(toMember);
     return { name, members, ...analyzeTeam(members) };
   });
 }
