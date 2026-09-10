@@ -11,7 +11,8 @@ vi.mock('../../lib/gmail', () => ({ sendEmail: vi.fn() }));
 vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
 const { normalizeEmail } = await import('../email');
-const { signUpForSession, cancelMySignup, getMyStatusForSession } = await import('../signupFlow');
+const { signUpForSession, cancelMySignup } = await import('../signupFlow');
+const { getMyStatusForSession } = await import('../myStatus');
 const { requestSub, cancelSubRequest } = await import('../subRequestFlow');
 
 beforeEach(() => {

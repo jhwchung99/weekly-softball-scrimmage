@@ -16,7 +16,7 @@ import { ApiError } from './apiErrors';
 import { getWeeklyMilestones } from './time';
 import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
 import { isPaired } from './pair';
-import { nextInLine, positionOf } from './waitlist';
+import { nextInLine } from './waitlist';
 import { normalizeEmail } from './email';
 import { countConfirmedSpots, computeCostShare } from './payments';
 
@@ -391,60 +391,4 @@ export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
     }
     return promoted;
   });
-}
-
-export interface MyStatus {
-  signup: Signup | null;
-  /** Other players' pending requests to share a spot with this caller.
-   * `fromGuestInvite` distinguishes a guest who named this caller as their
-   * inviter from a waitlisted player asking to sub in — accepting means the
-   * same thing mechanically, but the member is owed an accurate description
-   * of what they're agreeing to. */
-  incomingSubRequests: { fromSignupId: string; fromFullName: string; fromGuestInvite: boolean }[];
-  /** This caller's own share of session.cost, or null if not priced yet
-   * or the caller isn't confirmed. */
-  costOwed: number | null;
-  /** 1-based place in the waitlist queue, or null when not waitlisted.
-   * Computed server-side so it's still correct for a player who can't see the
-   * roster list itself (the roster hides names from non-participants). */
-  waitlistPosition: number | null;
-}
-
-/**
- * The computation behind getMyStatusForSession, with the fetching lifted out
- * so a caller that already holds the session and its signups — the
- * consolidated /api/home route — can reuse them instead of reading the same
- * two tabs again. Pure.
- */
-export function buildMyStatus(session: Session | null, allSignups: Signup[], email: string): MyStatus {
-  const normalized = normalizeEmail(email);
-
-  const signup = allSignups.find((s) => normalizeEmail(s.email) === normalized && s.status !== 'cancelled') ?? null;
-
-  const incomingSubRequests = allSignups
-    .filter((s) => s.subRequestStatus === 'pending' && normalizeEmail(s.subRequestTargetEmail) === normalized)
-    .map((s) => ({
-      fromSignupId: s.signupId,
-      fromFullName: s.fullName,
-      fromGuestInvite: s.memberStatus === 'guest' && s.willingToShare,
-    }));
-
-  let costOwed: number | null = null;
-  if (signup && signup.status === 'confirmed' && session) {
-    costOwed = computeCostShare(session, allSignups)[signup.signupId] ?? null;
-  }
-
-  const waitlistPosition =
-    signup && signup.status === 'waitlisted' ? positionOf(signup.signupId, allSignups) : null;
-
-  return { signup, incomingSubRequests, costOwed, waitlistPosition };
-}
-
-/**
- * Everything the player homepage needs about "me" for this session, fetching
- * the session and its signups once each.
- */
-export async function getMyStatusForSession(sessionId: string, email: string): Promise<MyStatus> {
-  const [allSignups, session] = await Promise.all([listSignupsForSession(sessionId), getSession(sessionId)]);
-  return buildMyStatus(session, allSignups, email);
 }
