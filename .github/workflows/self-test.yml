@@ -2,10 +2,15 @@ name: Self test
 
 # Manual only — no schedule. This is the "is production actually wired up?"
 # button: it proves APP_URL and CRON_SECRET reach the app, and that Sheets,
-# ntfy and Gmail all work with whatever env Vercel currently holds. The
-# endpoint writes nothing and mails only the organizer, so it is safe to run
-# at any hour, unlike the four real jobs (which are gated to a wall-clock
-# window, or email every confirmed player).
+# Redis, ntfy and Gmail all work with whatever env Vercel currently holds.
+#
+# Redis is the one you cannot learn any other way. The mutation lock and the
+# rate limiter both fail open when Upstash is unconfigured, so production runs
+# unlocked and says nothing about it — see docs/adr/0001 and lib/redis.
+#
+# The endpoint writes no Sheets row and mails only the organizer, so it is safe
+# to run at any hour, unlike the four real jobs (which are gated to a
+# wall-clock window, or email every confirmed player).
 on:
   workflow_dispatch: {}
 
