@@ -4,6 +4,7 @@ import { Signup, Session } from '../sheets/schema';
 import { Team, teamNote } from './teams';
 import { formatLocation } from './location';
 import { getWeeklyMilestones } from './time';
+import { phaseOf, isRosterLocked } from './sessionPhase';
 
 /**
  * The one email type Step 8 covers (Section 7): a promoted player is told
@@ -196,7 +197,7 @@ function paymentLines(session: Session, amountOwed: number, now: Date): string[]
 
   const lines = [
     '',
-    now < cutoffStart
+    !isRosterLocked(phaseOf(session, now))
       ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks. Send it any time between then and the game.`
       : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`,
   ];

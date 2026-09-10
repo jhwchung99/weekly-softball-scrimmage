@@ -13,7 +13,8 @@ import {
 import { getPlayer } from '../sheets/players';
 import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
-import { isWithinPromotionCutoff, getWeeklyMilestones } from './time';
+import { getWeeklyMilestones } from './time';
+import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
 import { normalizeEmail } from './email';
 import { countConfirmedSlots, computeCostShare } from './payments';
 
@@ -85,12 +86,16 @@ async function requireOpenSessionAndProfile(sessionId: string, email: string, op
   // "was registration open before Monday 9am" investigation.
   if (!options.bypassRegistrationWindow) {
     const now = options.now ?? new Date();
-    const { registrationOpensAt, registrationClosesAt } = getWeeklyMilestones(session.gameDate, session.gameTime);
-    if (now < registrationOpensAt) {
-      throw new ApiError(409, `Registration for this session opens ${formatEastern(registrationOpensAt)} ET.`);
-    }
-    if (now >= registrationClosesAt) {
-      throw new ApiError(409, `Registration for this session closed ${formatEastern(registrationClosesAt)} ET.`);
+    if (!isRegistrationOpen(phaseOf(session, now))) {
+      // The milestones are still read here, but only to say *when* — the
+      // decision itself is the phase module's.
+      const { registrationOpensAt, registrationClosesAt } = getWeeklyMilestones(session.gameDate, session.gameTime);
+      throw new ApiError(
+        409,
+        now < registrationOpensAt
+          ? `Registration for this session opens ${formatEastern(registrationOpensAt)} ET.`
+          : `Registration for this session closed ${formatEastern(registrationClosesAt)} ET.`
+      );
     }
   }
 
@@ -387,7 +392,7 @@ export async function cancelMySignup(
     await clearPendingRequestsTargeting(signup.email, afterSignups, signupId);
 
     if (after >= before) return { promoted: [] }; // no slot actually freed
-    if (isWithinPromotionCutoff(session.gameDate, session.gameTime)) {
+    if (isRosterLocked(phaseOf(session))) {
       // Section 6/7: no auto-promotion this close to game time, but the
       // organizer needs to know a slot just opened so they can personally
       // text someone. Same awaited-but-swallowed pattern as the promotion

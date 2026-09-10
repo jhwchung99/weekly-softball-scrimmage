@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   zonedTimeToUtc,
-  isWithinPromotionCutoff,
   currentWeekFridayEastern,
   currentWeekGameDayCandidates,
   isNearEasternTime,
@@ -19,27 +18,6 @@ describe('zonedTimeToUtc', () => {
     // 6:00 PM EST (UTC-5) on 2026-01-10 = 23:00 UTC.
     const result = zonedTimeToUtc('2026-01-10', '18:00');
     expect(result.toISOString()).toBe('2026-01-10T23:00:00.000Z');
-  });
-});
-
-describe('isWithinPromotionCutoff', () => {
-  const gameDate = '2026-07-10';
-  const gameTime = '18:00'; // 22:00 UTC; cutoff starts at 17:00 UTC (5h before)
-
-  it('is false comfortably before the cutoff', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T16:59:59.000Z'))).toBe(false);
-  });
-
-  it('is true exactly at the cutoff boundary', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T17:00:00.000Z'))).toBe(true);
-  });
-
-  it('is true just after the cutoff boundary', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T17:00:01.000Z'))).toBe(true);
-  });
-
-  it('is true well after game time too', () => {
-    expect(isWithinPromotionCutoff(gameDate, gameTime, new Date('2026-07-10T23:00:00.000Z'))).toBe(true);
   });
 });
 

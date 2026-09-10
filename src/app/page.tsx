@@ -15,6 +15,7 @@ import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
 import type { SessionStatus, SignupStatus, MemberStatus, Signup } from '../sheets/schema';
 import type { RosterEntry, RosterView } from '../lib/views';
+import { isRosterLocked, type SessionPhase } from '../lib/sessionPhase';
 
 export interface SessionInfo {
   sessionId: string;
@@ -80,6 +81,9 @@ export default function Home() {
   const [paymentInstructions, setPaymentInstructions] = useState('');
   const [roster, setRoster] = useState<Roster | null>(null);
   const [teams, setTeams] = useState<TeamView[] | null>(null);
+  /** Where the week stands, as the *server* sees it. Deriving this in the
+   * browser meant the answer depended on the viewer's own clock. */
+  const [phase, setPhase] = useState<SessionPhase | null>(null);
   const [playerDataLoaded, setPlayerDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -96,6 +100,7 @@ export default function Home() {
     try {
       const d = await fetchJson<{
         session: SessionInfo | null;
+        phase: SessionPhase | null;
         signedIn: boolean;
         player: PlayerInfo | null;
         signup: SignupInfo | null;
@@ -109,6 +114,7 @@ export default function Home() {
       }>('/api/home');
 
       setScrimmage(d.session);
+      setPhase(d.phase);
       setTeams(d.teams);
       setMySignup(d.signup);
       setIncomingSubRequests(d.incomingSubRequests);
@@ -296,11 +302,17 @@ export default function Home() {
             </p>
             {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s scrimmage has been cancelled.</p>}
             {scrimmage.status !== 'cancelled' && (
-              <WeeklyTimeline gameDate={scrimmage.gameDate} gameTime={scrimmage.gameTime} status={scrimmage.status} />
+              <WeeklyTimeline
+                gameDate={scrimmage.gameDate}
+                gameTime={scrimmage.gameTime}
+                status={scrimmage.status}
+                phase={phase}
+              />
             )}
             {scrimmage.status !== 'cancelled' && authStatus === 'authenticated' && (
               <PlayerArea
                 scrimmage={scrimmage}
+                phase={phase}
                 registrationClosed={scrimmage.status === 'closed'}
                 mySignup={mySignup}
                 myPlayer={myPlayer}
@@ -428,12 +440,15 @@ export default function Home() {
 function PaymentPrompt({
   amount,
   paid,
+  rosterLocked,
   gameDate,
   gameTime,
   instructions,
 }: {
   amount: number;
   paid: boolean;
+  /** Payment opens when the roster locks — decided by the server. */
+  rosterLocked: boolean;
   gameDate: string;
   gameTime: string;
   instructions: string;
@@ -454,7 +469,7 @@ function PaymentPrompt({
     minute: '2-digit',
   });
 
-  if (new Date() < cutoffStart) {
+  if (!rosterLocked) {
     return (
       <p className="mt-2 text-sm text-slate-500">
         Your spot costs <strong>${amount.toFixed(2)}</strong>. Nothing to pay yet. Payment opens {opensAt}, once the
@@ -500,6 +515,8 @@ function LockedCancelNotice({ amount }: { amount: number }) {
 
 export function PlayerArea(props: {
   scrimmage: SessionInfo;
+  /** From the server; null only before the first load resolves. */
+  phase: SessionPhase | null;
   registrationClosed: boolean;
   mySignup: SignupInfo | null;
   myPlayer: PlayerInfo | null;
@@ -518,6 +535,7 @@ export function PlayerArea(props: {
 }) {
   const {
     scrimmage,
+    phase,
     registrationClosed,
     mySignup,
     myPlayer,
@@ -543,7 +561,10 @@ export function PlayerArea(props: {
     );
   }
 
-  const rosterLocked = new Date() >= getWeeklyMilestones(scrimmage.gameDate, scrimmage.gameTime).cutoffStart;
+  // The server's answer, not this browser's. Absent only before the first
+  // load resolves, and "not locked" is the safe reading then: it shows the
+  // normal cancel affordance rather than telling someone their spot is stuck.
+  const rosterLocked = phase !== null && isRosterLocked(phase);
 
   if (mySignup) {
     return (
@@ -560,6 +581,7 @@ export function PlayerArea(props: {
           <PaymentPrompt
             amount={costOwed}
             paid={mySignup.paid}
+            rosterLocked={rosterLocked}
             gameDate={scrimmage.gameDate}
             gameTime={scrimmage.gameTime}
             instructions={paymentInstructions}

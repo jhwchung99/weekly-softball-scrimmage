@@ -18,6 +18,9 @@ const scrimmage = {
 
 const baseProps = {
   scrimmage,
+  // The server's answer now, so these tests state the phase outright instead
+  // of moving the system clock to trick a browser-side derivation.
+  phase: 'open' as const,
   registrationClosed: false,
   mySignup: null,
   myPlayer: null,
@@ -121,27 +124,21 @@ describe('PlayerArea payment timing', () => {
   };
 
   it('does not ask for payment while the lineup can still change', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T12:00:00.000Z')); // 6 hours before the lock
-    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+    render(<PlayerArea {...baseProps} phase="closed" mySignup={confirmed} costOwed={10} />);
 
     expect(screen.getByText(/nothing to pay yet/i)).toBeInTheDocument();
     expect(screen.queryByText(/you owe/i)).not.toBeInTheDocument();
   });
 
   it('asks for payment once the roster is locked', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // an hour after the lock
-    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+    render(<PlayerArea {...baseProps} phase="locked" mySignup={confirmed} costOwed={10} />);
 
     expect(screen.getByText(/please send it before the game starts/i)).toBeInTheDocument();
     expect(screen.queryByText(/nothing to pay yet/i)).not.toBeInTheDocument();
   });
 
   it('shows the payment instructions only once payment is open', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
-    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} paymentInstructions="e-Transfer to x@y.test" />);
+    render(<PlayerArea {...baseProps} phase="locked" mySignup={confirmed} costOwed={10} paymentInstructions="e-Transfer to x@y.test" />);
 
     expect(screen.getByText(/e-Transfer to x@y.test/)).toBeInTheDocument();
   });
@@ -166,9 +163,7 @@ describe('PlayerArea locked-cancellation notice', () => {
   };
 
   it('is not shown while cancelling is still free', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T12:00:00.000Z')); // before the lock
-    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+    render(<PlayerArea {...baseProps} phase="closed" mySignup={confirmed} costOwed={10} />);
 
     // "roster is locked" also appears in the pre-lock payment copy, so match
     // on wording unique to the notice.
@@ -176,9 +171,7 @@ describe('PlayerArea locked-cancellation notice', () => {
   });
 
   it('covers both the unpaid and already-paid cases, and who collects from a sub', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z')); // after the lock
-    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={10} />);
+    render(<PlayerArea {...baseProps} phase="locked" mySignup={confirmed} costOwed={10} />);
 
     expect(screen.getByText(/if you have not sent payment, please still send your \$10\.00/i)).toBeInTheDocument();
     expect(screen.getByText(/if you have sent the payment, please try and get someone to sub in/i)).toBeInTheDocument();
@@ -186,9 +179,7 @@ describe('PlayerArea locked-cancellation notice', () => {
   });
 
   it('reads the same whether or not the payment is already recorded', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
-    render(<PlayerArea {...baseProps} mySignup={{ ...confirmed, paid: true }} costOwed={10} />);
+    render(<PlayerArea {...baseProps} phase="locked" mySignup={{ ...confirmed, paid: true }} costOwed={10} />);
 
     // One block covering both cases, so there's only ever one message to keep
     // accurate rather than two that can drift apart.
@@ -197,9 +188,7 @@ describe('PlayerArea locked-cancellation notice', () => {
   });
 
   it('is omitted when the week has no price set — every sentence is about payment', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2099-01-01T19:00:00.000Z'));
-    render(<PlayerArea {...baseProps} mySignup={confirmed} costOwed={null} />);
+    render(<PlayerArea {...baseProps} phase="locked" mySignup={confirmed} costOwed={null} />);
 
     expect(screen.queryByText(/between the two of you/i)).not.toBeInTheDocument();
   });

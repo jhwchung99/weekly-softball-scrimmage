@@ -4,7 +4,7 @@ import { Session, Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { buildTeams, Team } from './teams';
 import { sendTeamsReadyAlert } from './notifications';
-import { getWeeklyMilestones } from './time';
+import { phaseOf, isRosterLocked } from './sessionPhase';
 import { withMutationLock } from './lock';
 
 /** Teams = one per half of each booked diamond. */
@@ -57,8 +57,7 @@ export async function generateTeamsIfDue(
     if (session.status === 'cancelled') return { generated: false, reason: 'Session is cancelled.' };
     if (session.teamsStatus !== '') return { generated: false, reason: `Teams already ${session.teamsStatus}.` };
 
-    const { cutoffStart } = getWeeklyMilestones(session.gameDate, session.gameTime);
-    if (now < cutoffStart) return { generated: false, reason: 'Roster has not locked yet.' };
+    if (!isRosterLocked(phaseOf(session, now))) return { generated: false, reason: 'Roster has not locked yet.' };
 
     const teams = await generateTeams(sessionId);
 

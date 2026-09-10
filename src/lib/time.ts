@@ -35,14 +35,11 @@ export function zonedTimeToUtc(dateStr: string, timeStr: string, timeZone: strin
   return new Date(anchor - offsetMs);
 }
 
+/** Section 6: no auto-promotion within 5 hours of game time. Consumed via
+ * `cutoffStart` below — asking whether a session is past it is
+ * `sessionPhase.isRosterLocked`, which is the only place that compares a
+ * milestone to the clock. */
 const PROMOTION_CUTOFF_HOURS = 5;
-
-/** Section 6: no auto-promotion within 5 hours of game time. */
-export function isWithinPromotionCutoff(gameDate: string, gameTime: string, now: Date = new Date()): boolean {
-  const gameStart = zonedTimeToUtc(gameDate, gameTime);
-  const cutoffStart = new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
-  return now >= cutoffStart;
-}
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
