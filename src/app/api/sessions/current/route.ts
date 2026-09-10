@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionByAnyId } from '../../../../sheets/sessions';
-import { currentWeekGameDayCandidates } from '../../../../lib/time';
+import { currentWeekSession } from '../../../../lib/currentWeek';
 import { sessionView } from '../../../../lib/views';
 
 /**
@@ -11,6 +10,8 @@ import { sessionView } from '../../../../lib/views';
  * or Sunday, so this checks all three rather than a single fixed id.
  */
 export async function GET() {
-  const session = await getSessionByAnyId(currentWeekGameDayCandidates());
+  // Cached: this route is unauthenticated and costs a Sheets read, and the
+  // app's whole quota is 60 reads a minute. See lib/currentWeek.
+  const session = await currentWeekSession();
   return NextResponse.json({ session: session ? sessionView(session) : null });
 }
