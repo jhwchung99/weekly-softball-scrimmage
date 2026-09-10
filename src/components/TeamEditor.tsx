@@ -118,7 +118,11 @@ export function TeamEditor({ sessionId, onChanged }: { sessionId: string; onChan
         {dirty ? ' Unsaved changes.' : null}
       </p>
 
-      {error && <p className="mt-2 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-2 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
 
       {anyPlayers && (
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
