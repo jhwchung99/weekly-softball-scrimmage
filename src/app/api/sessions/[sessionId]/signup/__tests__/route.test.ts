@@ -8,8 +8,6 @@ const signUpAsGuestForSession = vi.fn();
 const getMyStatusForSession = vi.fn();
 vi.mock('../../../../../../lib/signupFlow', () => ({ signUpForSession, signUpAsGuestForSession, getMyStatusForSession }));
 
-const withMutationLock = vi.fn((fn: () => unknown) => fn());
-vi.mock('../../../../../../lib/lock', () => ({ withMutationLock }));
 
 const { GET, POST } = await import('../route');
 
@@ -19,7 +17,6 @@ function makeParams(sessionId: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  withMutationLock.mockImplementation((fn: () => unknown) => fn());
 });
 
 describe('GET /api/sessions/[sessionId]/signup', () => {
@@ -48,7 +45,7 @@ describe('POST /api/sessions/[sessionId]/signup', () => {
     expect(res.status).toBe(401);
   });
 
-  it('routes to signUpForSession for a member signup and wraps it in the mutation lock', async () => {
+  it('routes to signUpForSession for a member signup', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
     signUpForSession.mockResolvedValue({ signupId: 's1', status: 'confirmed' });
 
@@ -57,7 +54,6 @@ describe('POST /api/sessions/[sessionId]/signup', () => {
       makeParams('2099-01-01')
     );
     expect(res.status).toBe(201);
-    expect(withMutationLock).toHaveBeenCalledTimes(1);
     expect(signUpForSession).toHaveBeenCalledWith('2099-01-01', 'a@dummy.test', true);
     expect(signUpAsGuestForSession).not.toHaveBeenCalled();
   });

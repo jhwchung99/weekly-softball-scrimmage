@@ -124,6 +124,90 @@ describe('withMutationLock', () => {
     setSpy.mockRestore();
   });
 
+  /**
+   * Reentrancy is what lets the acquisition live inside the flows rather than
+   * in every route handler. Flows call each other — the teams cron calls
+   * `generateTeamsIfDue`, which calls `generateTeams`; revising a session
+   * reschedules and then runs the promotion cascade — so once each of those
+   * takes the lock for itself, an outer hold will always contain an inner one.
+   *
+   * Without reentrancy that is not a race, it is a guaranteed deadlock: the
+   * inner acquire spins against a key its own caller is holding until the
+   * acquire timeout, then 503s. So this is the property that makes the whole
+   * arrangement possible, not a convenience.
+   */
+  it('runs nested work without trying to acquire a second time', async () => {
+    const { withMutationLock } = await import('../lock');
+
+    const result = await withMutationLock(async () => {
+      return withMutationLock(async () => 'inner ran');
+    });
+
+    expect(result).toBe('inner ran');
+  });
+
+  it('does not deadlock when a flow calls another flow that also takes the lock', async () => {
+    const { withMutationLock } = await import('../lock');
+
+    // Three deep, which is what a revise -> reschedule -> cascade chain looks
+    // like once every flow guards itself.
+    const order: string[] = [];
+    await withMutationLock(async () => {
+      order.push('outer');
+      await withMutationLock(async () => {
+        order.push('middle');
+        await withMutationLock(async () => {
+          order.push('inner');
+        });
+      });
+    });
+
+    expect(order).toEqual(['outer', 'middle', 'inner']);
+  });
+
+  it('holds the lock for the whole nested run, releasing once at the end', async () => {
+    const { withMutationLock } = await import('../lock');
+
+    let heldDuringInner = 0;
+    await withMutationLock(async () => {
+      await withMutationLock(async () => {
+        heldDuringInner = fake.store.size;
+      });
+      // The inner block finishing must not have released it.
+      expect(fake.store.size).toBe(1);
+    });
+
+    expect(heldDuringInner).toBe(1);
+    expect(fake.store.size).toBe(0);
+  });
+
+  it('still serializes two separate top-level operations', async () => {
+    const { withMutationLock } = await import('../lock');
+
+    // Reentrancy must not leak across independent operations: the second
+    // caller here is not nested inside the first, so it must wait.
+    await withMutationLock(async () => {
+      expect(fake.store.size).toBe(1);
+    });
+    expect(fake.store.size).toBe(0);
+
+    let acquiredAgain = false;
+    await withMutationLock(async () => {
+      acquiredAgain = fake.store.size === 1;
+    });
+    expect(acquiredAgain).toBe(true);
+  });
+
+  it('releases the outer hold when nested work throws', async () => {
+    const { withMutationLock } = await import('../lock');
+
+    await expect(
+      withMutationLock(async () => withMutationLock(async () => { throw new Error('inner boom'); }))
+    ).rejects.toThrow('inner boom');
+
+    expect(fake.store.size).toBe(0);
+  });
+
   it('fails open (runs unlocked) when Redis is not configured', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;

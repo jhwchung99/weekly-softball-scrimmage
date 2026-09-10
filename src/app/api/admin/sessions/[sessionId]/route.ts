@@ -57,6 +57,15 @@ export async function GET(request: Request, { params }: Params) {
  * run, and oversubscribe the week. One acquisition has no such window, and a
  * reschedule can no longer be observed half-applied either.
  *
+ *
+ * This is one of the last two handlers still acquiring the lock itself. Every
+ * other route now calls a flow that guards itself (see lock.ts). These two
+ * can't yet, because their orchestration lives here in the route rather than
+ * in a flow module — the acquisition follows the logic, so it moves when
+ * `reviseSession` and the signup override become flow functions. The lock is
+ * reentrant, so nothing breaks in the meantime: a route-level hold simply
+ * contains any flow that guards itself.
+ *
  * The cost is a longer critical section: worst case this is now a rekey
  * (~5 Sheets calls), the field write (1), and the cascade (3 + one per
  * promoted player) under one hold, where the longest single hold before was

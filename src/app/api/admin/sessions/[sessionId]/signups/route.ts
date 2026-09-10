@@ -3,7 +3,6 @@ import { requireAdmin } from '../../../../../../lib/auth';
 import { listSignupsForSession } from '../../../../../../sheets/signups';
 import { adminAddSignup } from '../../../../../../lib/adminFlow';
 import { ApiError, handleApiError } from '../../../../../../lib/apiErrors';
-import { withMutationLock } from '../../../../../../lib/lock';
 import { adminRosterView } from '../../../../../../lib/views';
 
 type Params = { params: Promise<{ sessionId: string }> };
@@ -55,9 +54,7 @@ export async function POST(request: Request, { params }: Params) {
     // Same lock as the player-facing signup route: this runs the identical
     // capacity accounting, so without it an admin add racing a player signup
     // can read "room available" twice and oversubscribe the roster.
-    const signup = await withMutationLock(() =>
-      adminAddSignup({ sessionId, email, profile, invitedByName, willingToShare, waiverAccepted })
-    );
+    const signup = await adminAddSignup({ sessionId, email, profile, invitedByName, willingToShare, waiverAccepted });
     return NextResponse.json({ signup }, { status: 201 });
   } catch (err) {
     return handleApiError(err);

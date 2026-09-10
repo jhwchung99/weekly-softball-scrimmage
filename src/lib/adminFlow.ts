@@ -14,6 +14,7 @@ import {
   validateCost,
   validateLocationArea,
 } from './validation';
+import { withMutationLock } from './lock';
 
 export interface AdminAddSignupInput {
   sessionId: string;
@@ -46,28 +47,30 @@ export interface AdminAddSignupInput {
  * it's a small change here — flagging rather than assuming either way.
  */
 export async function adminAddSignup(input: AdminAddSignupInput): Promise<Signup> {
-  if (input.profile) {
-    const profile = validatePlayerProfile(input.profile);
-    await upsertPlayer({ email: input.email, ...profile });
-  }
+  return withMutationLock(async () => {
+    if (input.profile) {
+      const profile = validatePlayerProfile(input.profile);
+      await upsertPlayer({ email: input.email, ...profile });
+    }
 
-  // Section 8 lets an admin add someone regardless of the schedule — most
-  // often *after* registration closes, which is exactly what the open-spots
-  // alert nudges them to do. So this path opts out of the window check that
-  // guards player-initiated signups; `status` still applies.
-  const options = { bypassRegistrationWindow: true };
+    // Section 8 lets an admin add someone regardless of the schedule — most
+    // often *after* registration closes, which is exactly what the open-spots
+    // alert nudges them to do. So this path opts out of the window check that
+    // guards player-initiated signups; `status` still applies.
+    const options = { bypassRegistrationWindow: true };
 
-  if (input.invitedByName) {
-    return signUpAsGuestForSession(
-      input.sessionId,
-      input.email,
-      validateInvitedByName(input.invitedByName),
-      Boolean(input.willingToShare),
-      input.waiverAccepted,
-      options
-    );
-  }
-  return signUpForSession(input.sessionId, input.email, input.waiverAccepted, options);
+    if (input.invitedByName) {
+      return signUpAsGuestForSession(
+        input.sessionId,
+        input.email,
+        validateInvitedByName(input.invitedByName),
+        Boolean(input.willingToShare),
+        input.waiverAccepted,
+        options
+      );
+    }
+    return signUpForSession(input.sessionId, input.email, input.waiverAccepted, options);
+  });
 }
 
 export interface AdminCreateSessionInput {
@@ -98,31 +101,33 @@ export interface AdminCreateSessionInput {
  * now). See planner/2026-09-05-location-payments-qol-plan.md, §1.
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
-  const gameDate = validateGameDate(input.gameDate);
-  const gameTime = input.gameTime !== undefined ? validateGameTime(input.gameTime) : DEFAULT_GAME_TIME;
-  const capacity = input.capacity !== undefined ? validateCapacity(input.capacity) : DEFAULT_CAPACITY;
-  const cost = input.cost !== undefined ? validateCost(input.cost) : 0;
-  const pricePerSpot = input.pricePerSpot !== undefined ? validateCost(input.pricePerSpot) : DEFAULT_PRICE_PER_SPOT;
-  const locationArea = input.locationArea !== undefined ? validateLocationArea(input.locationArea) : '';
+  return withMutationLock(async () => {
+    const gameDate = validateGameDate(input.gameDate);
+    const gameTime = input.gameTime !== undefined ? validateGameTime(input.gameTime) : DEFAULT_GAME_TIME;
+    const capacity = input.capacity !== undefined ? validateCapacity(input.capacity) : DEFAULT_CAPACITY;
+    const cost = input.cost !== undefined ? validateCost(input.cost) : 0;
+    const pricePerSpot = input.pricePerSpot !== undefined ? validateCost(input.pricePerSpot) : DEFAULT_PRICE_PER_SPOT;
+    const locationArea = input.locationArea !== undefined ? validateLocationArea(input.locationArea) : '';
 
-  const existing = await getSession(gameDate);
-  if (existing) throw new ApiError(409, `A session for ${gameDate} already exists.`);
+    const existing = await getSession(gameDate);
+    if (existing) throw new ApiError(409, `A session for ${gameDate} already exists.`);
 
-  return createSession({
-    sessionId: gameDate,
-    gameDate,
-    gameTime,
-    registrationOpensAt: '',
-    registrationClosesAt: '',
-    capacity,
-    cost,
-    pricePerSpot,
-    locationArea,
-    locationName: '',
-    locationUrl: '',
-    numFields: 1,
-    teamsStatus: '',
-    status: input.openImmediately ? 'open' : 'closed',
+    return createSession({
+      sessionId: gameDate,
+      gameDate,
+      gameTime,
+      registrationOpensAt: '',
+      registrationClosesAt: '',
+      capacity,
+      cost,
+      pricePerSpot,
+      locationArea,
+      locationName: '',
+      locationUrl: '',
+      numFields: 1,
+      teamsStatus: '',
+      status: input.openImmediately ? 'open' : 'closed',
+    });
   });
 }
 
@@ -138,26 +143,28 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
  * trade-off already accepted throughout this codebase.
  */
 export async function adminRescheduleSession(sessionId: string, newGameDate: unknown, newGameTime: unknown): Promise<Session> {
-  const gameDate = validateGameDate(newGameDate);
-  const gameTime = validateGameTime(newGameTime);
+  return withMutationLock(async () => {
+    const gameDate = validateGameDate(newGameDate);
+    const gameTime = validateGameTime(newGameTime);
 
-  const existing = await getSession(sessionId);
-  if (!existing) throw new ApiError(404, 'No such session.');
+    const existing = await getSession(sessionId);
+    if (!existing) throw new ApiError(404, 'No such session.');
 
-  if (gameDate === sessionId) {
-    // Same identity — a pure time change (or a no-op date), no rekey needed.
-    return updateSession(sessionId, { gameDate, gameTime });
-  }
+    if (gameDate === sessionId) {
+      // Same identity — a pure time change (or a no-op date), no rekey needed.
+      return updateSession(sessionId, { gameDate, gameTime });
+    }
 
-  const conflict = await getSession(gameDate);
-  if (conflict) throw new ApiError(409, `A session for ${gameDate} already exists.`);
+    const conflict = await getSession(gameDate);
+    if (conflict) throw new ApiError(409, `A session for ${gameDate} already exists.`);
 
-  const updated = await updateSession(sessionId, { sessionId: gameDate, gameDate, gameTime });
+    const updated = await updateSession(sessionId, { sessionId: gameDate, gameDate, gameTime });
 
-  const signups = await listSignupsForSession(sessionId);
-  if (signups.length > 0) {
-    await batchUpdateSignups(signups.map((s) => ({ signupId: s.signupId, updates: { sessionId: gameDate } })));
-  }
+    const signups = await listSignupsForSession(sessionId);
+    if (signups.length > 0) {
+      await batchUpdateSignups(signups.map((s) => ({ signupId: s.signupId, updates: { sessionId: gameDate } })));
+    }
 
-  return updated;
+    return updated;
+  });
 }

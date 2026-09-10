@@ -23,6 +23,7 @@ export { countConfirmedSlots, computeCostShare, computePaymentSummary } from './
 import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
+import { withMutationLock } from './lock';
 
 function requireWaiver(waiverAccepted: boolean) {
   if (!waiverAccepted) {
@@ -165,37 +166,39 @@ export async function signUpForSession(
   waiverAccepted: boolean,
   options: SignupOptions = {}
 ): Promise<Signup> {
-  requireWaiver(waiverAccepted);
-  const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
-  const status = await computeCapacityStatus(sessionId, session.capacity);
+  return withMutationLock(async () => {
+    requireWaiver(waiverAccepted);
+    const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
+    const status = await computeCapacityStatus(sessionId, session.capacity);
 
-  const created = await createSignup({
-    sessionId,
-    email,
-    fullName: player.fullName,
-    gender: player.gender,
-    memberStatus: 'member',
-    invitedByName: '',
-    willingToShare: false,
-    pairId: '',
-    status,
-    timestamp: new Date().toISOString(),
-    positions: player.savedPositions,
-    waiverAcceptedAt: new Date().toISOString(),
-    waiverText: WAIVER_TEXT,
-    ...NEW_SIGNUP_EXTRAS,
+    const created = await createSignup({
+      sessionId,
+      email,
+      fullName: player.fullName,
+      gender: player.gender,
+      memberStatus: 'member',
+      invitedByName: '',
+      willingToShare: false,
+      pairId: '',
+      status,
+      timestamp: new Date().toISOString(),
+      positions: player.savedPositions,
+      waiverAcceptedAt: new Date().toISOString(),
+      waiverText: WAIVER_TEXT,
+      ...NEW_SIGNUP_EXTRAS,
+    });
+
+    // Section 5: a guest may already have named this member as their inviter.
+    // That used to merge the two rows on the spot. It now only *offers* the
+    // pairing: the member is the one giving up sole use of their spot, and
+    // nobody asked them. See proposeGuestPair.
+    const pendingGuest = await findPendingGuestInvite(sessionId, player.fullName);
+    if (pendingGuest && canProposePair(pendingGuest, created)) {
+      await proposeGuestPair(pendingGuest, created, session);
+    }
+
+    return created;
   });
-
-  // Section 5: a guest may already have named this member as their inviter.
-  // That used to merge the two rows on the spot. It now only *offers* the
-  // pairing: the member is the one giving up sole use of their spot, and
-  // nobody asked them. See proposeGuestPair.
-  const pendingGuest = await findPendingGuestInvite(sessionId, player.fullName);
-  if (pendingGuest && canProposePair(pendingGuest, created)) {
-    await proposeGuestPair(pendingGuest, created, session);
-  }
-
-  return created;
 }
 
 /**
@@ -212,42 +215,44 @@ export async function signUpAsGuestForSession(
   waiverAccepted: boolean,
   options: SignupOptions = {}
 ): Promise<Signup> {
-  requireWaiver(waiverAccepted);
-  if (!invitedByName.trim()) {
-    throw new ApiError(400, 'invitedByName is required for a guest signup.');
-  }
-
-  const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
-  const waiverFields = { waiverAcceptedAt: new Date().toISOString(), waiverText: WAIVER_TEXT };
-
-  // Always their own slot, decided by capacity like anyone else's. Naming a
-  // member no longer short-circuits this into that member's slot.
-  const status = await computeCapacityStatus(sessionId, session.capacity);
-  const created = await createSignup({
-    sessionId,
-    email,
-    fullName: player.fullName,
-    gender: player.gender,
-    memberStatus: 'guest',
-    invitedByName,
-    willingToShare,
-    pairId: '',
-    status,
-    timestamp: new Date().toISOString(),
-    positions: player.savedPositions,
-    ...waiverFields,
-    ...NEW_SIGNUP_EXTRAS,
-  });
-
-  // Only worth offering when the guest didn't get in on their own.
-  if (willingToShare) {
-    const memberSignup = await findMemberSignupByName(sessionId, invitedByName);
-    if (canProposePair(created, memberSignup)) {
-      return proposeGuestPair(created, memberSignup, session);
+  return withMutationLock(async () => {
+    requireWaiver(waiverAccepted);
+    if (!invitedByName.trim()) {
+      throw new ApiError(400, 'invitedByName is required for a guest signup.');
     }
-  }
 
-  return created;
+    const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
+    const waiverFields = { waiverAcceptedAt: new Date().toISOString(), waiverText: WAIVER_TEXT };
+
+    // Always their own slot, decided by capacity like anyone else's. Naming a
+    // member no longer short-circuits this into that member's slot.
+    const status = await computeCapacityStatus(sessionId, session.capacity);
+    const created = await createSignup({
+      sessionId,
+      email,
+      fullName: player.fullName,
+      gender: player.gender,
+      memberStatus: 'guest',
+      invitedByName,
+      willingToShare,
+      pairId: '',
+      status,
+      timestamp: new Date().toISOString(),
+      positions: player.savedPositions,
+      ...waiverFields,
+      ...NEW_SIGNUP_EXTRAS,
+    });
+
+    // Only worth offering when the guest didn't get in on their own.
+    if (willingToShare) {
+      const memberSignup = await findMemberSignupByName(sessionId, invitedByName);
+      if (canProposePair(created, memberSignup)) {
+        return proposeGuestPair(created, memberSignup, session);
+      }
+    }
+
+    return created;
+  });
 }
 
 // Section 6 promotion order: 1) members, 2) sharing-willing guests, 3) other guests.
@@ -353,65 +358,67 @@ export async function cancelMySignup(
   requesterEmail: string,
   requesterIsAdmin: boolean
 ): Promise<CancelResult> {
-  // One read serves both "find this signup" and "current session
-  // headcount" — previously a separate getSignup then
-  // listSignupsForSession, each a full-tab read.
-  const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
-  if (!signup) throw new ApiError(404, 'No such signup.');
-  if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail) && !requesterIsAdmin) {
-    throw new ApiError(403, 'You can only cancel your own signup.');
-  }
-  if (signup.status === 'cancelled') return { promoted: [] }; // already cancelled, nothing to do
-
-  const session = await getSession(signup.sessionId);
-  if (!session) throw new ApiError(404, 'No such session.');
-
-  const before = countConfirmedSlots(sessionSignups);
-  // Captured before the status flips: computeCostShare only counts confirmed
-  // rows, so afterwards this person's share would read as 0.
-  const owedAtCancellation = computeCostShare(session, sessionSignups)[signupId] ?? 0;
-  await updateSignupStatus(signupId, 'cancelled');
-  const afterSignups = await listSignupsForSession(signup.sessionId);
-  const after = countConfirmedSlots(afterSignups);
-
-  // Sub-request cleanup: this signup's own outgoing request (if any) and
-  // anyone else's pending request that was targeting this now-cancelled
-  // signup's email both become moot.
-  await clearOwnPendingRequest(signup);
-  await clearPendingRequestsTargeting(signup.email, afterSignups, signupId);
-
-  if (after >= before) return { promoted: [] }; // no slot actually freed
-  if (isWithinPromotionCutoff(session.gameDate, session.gameTime)) {
-    // Section 6/7: no auto-promotion this close to game time, but the
-    // organizer needs to know a slot just opened so they can personally
-    // text someone. Same awaited-but-swallowed pattern as the promotion
-    // email below — a failed push shouldn't affect the cancellation.
-    try {
-      await sendLateCancellationAlert(signup, session, owedAtCancellation);
-    } catch (err) {
-      console.error(`Failed to send organizer alert for cancelled signup ${signup.signupId}:`, err);
+  return withMutationLock(async () => {
+    // One read serves both "find this signup" and "current session
+    // headcount" — previously a separate getSignup then
+    // listSignupsForSession, each a full-tab read.
+    const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
+    if (!signup) throw new ApiError(404, 'No such signup.');
+    if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail) && !requesterIsAdmin) {
+      throw new ApiError(403, 'You can only cancel your own signup.');
     }
-    return { promoted: [] };
-  }
+    if (signup.status === 'cancelled') return { promoted: [] }; // already cancelled, nothing to do
 
-  const promotedSignups = await promoteNextWaitlisted(afterSignups);
-  for (const promoted of promotedSignups) {
-    // A promoted signup's own outstanding outgoing sub request is moot —
-    // it just got its own slot.
-    await clearOwnPendingRequest(promoted);
-    // Awaited, not fire-and-forget: on Vercel's serverless runtime, an
-    // unawaited promise can get killed once the response is sent, so
-    // "don't block on this" has to mean "swallow the error," not "don't
-    // await it." Either way, the promotion itself already succeeded in
-    // the sheet — a failed email shouldn't undo that or surface as an
-    // error to whoever triggered the cancellation.
-    try {
-      await sendPromotionEmail(promoted, session);
-    } catch (err) {
-      console.error(`Failed to send promotion email to ${promoted.email}:`, err);
+    const session = await getSession(signup.sessionId);
+    if (!session) throw new ApiError(404, 'No such session.');
+
+    const before = countConfirmedSlots(sessionSignups);
+    // Captured before the status flips: computeCostShare only counts confirmed
+    // rows, so afterwards this person's share would read as 0.
+    const owedAtCancellation = computeCostShare(session, sessionSignups)[signupId] ?? 0;
+    await updateSignupStatus(signupId, 'cancelled');
+    const afterSignups = await listSignupsForSession(signup.sessionId);
+    const after = countConfirmedSlots(afterSignups);
+
+    // Sub-request cleanup: this signup's own outgoing request (if any) and
+    // anyone else's pending request that was targeting this now-cancelled
+    // signup's email both become moot.
+    await clearOwnPendingRequest(signup);
+    await clearPendingRequestsTargeting(signup.email, afterSignups, signupId);
+
+    if (after >= before) return { promoted: [] }; // no slot actually freed
+    if (isWithinPromotionCutoff(session.gameDate, session.gameTime)) {
+      // Section 6/7: no auto-promotion this close to game time, but the
+      // organizer needs to know a slot just opened so they can personally
+      // text someone. Same awaited-but-swallowed pattern as the promotion
+      // email below — a failed push shouldn't affect the cancellation.
+      try {
+        await sendLateCancellationAlert(signup, session, owedAtCancellation);
+      } catch (err) {
+        console.error(`Failed to send organizer alert for cancelled signup ${signup.signupId}:`, err);
+      }
+      return { promoted: [] };
     }
-  }
-  return { promoted: promotedSignups };
+
+    const promotedSignups = await promoteNextWaitlisted(afterSignups);
+    for (const promoted of promotedSignups) {
+      // A promoted signup's own outstanding outgoing sub request is moot —
+      // it just got its own slot.
+      await clearOwnPendingRequest(promoted);
+      // Awaited, not fire-and-forget: on Vercel's serverless runtime, an
+      // unawaited promise can get killed once the response is sent, so
+      // "don't block on this" has to mean "swallow the error," not "don't
+      // await it." Either way, the promotion itself already succeeded in
+      // the sheet — a failed email shouldn't undo that or surface as an
+      // error to whoever triggered the cancellation.
+      try {
+        await sendPromotionEmail(promoted, session);
+      } catch (err) {
+        console.error(`Failed to send promotion email to ${promoted.email}:`, err);
+      }
+    }
+    return { promoted: promotedSignups };
+  });
 }
 
 
@@ -431,36 +438,38 @@ export async function cancelMySignup(
  * write per person.
  */
 export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
-  const session = await getSession(sessionId);
-  if (!session) throw new ApiError(404, 'No such session.');
+  return withMutationLock(async () => {
+    const session = await getSession(sessionId);
+    if (!session) throw new ApiError(404, 'No such session.');
 
-  let signups = await listSignupsForSession(sessionId);
-  const toConfirm: string[] = [];
+    let signups = await listSignupsForSession(sessionId);
+    const toConfirm: string[] = [];
 
-  while (countConfirmedSlots(signups) < session.capacity) {
-    const winner = nextWaitlistUnit(signups);
-    if (!winner) break;
-    toConfirm.push(...winner.signupIds);
-    signups = signups.map((s) =>
-      winner.signupIds.includes(s.signupId) ? { ...s, status: 'confirmed' as const } : s
-    );
-  }
-
-  if (toConfirm.length === 0) return [];
-
-  const promoted = await batchUpdateSignups(
-    toConfirm.map((signupId) => ({ signupId, updates: { status: 'confirmed' as const } }))
-  );
-
-  for (const p of promoted) {
-    await clearOwnPendingRequest(p);
-    try {
-      await sendPromotionEmail(p, session);
-    } catch (err) {
-      console.error(`Failed to send promotion email to ${p.email}:`, err);
+    while (countConfirmedSlots(signups) < session.capacity) {
+      const winner = nextWaitlistUnit(signups);
+      if (!winner) break;
+      toConfirm.push(...winner.signupIds);
+      signups = signups.map((s) =>
+        winner.signupIds.includes(s.signupId) ? { ...s, status: 'confirmed' as const } : s
+      );
     }
-  }
-  return promoted;
+
+    if (toConfirm.length === 0) return [];
+
+    const promoted = await batchUpdateSignups(
+      toConfirm.map((signupId) => ({ signupId, updates: { status: 'confirmed' as const } }))
+    );
+
+    for (const p of promoted) {
+      await clearOwnPendingRequest(p);
+      try {
+        await sendPromotionEmail(p, session);
+      } catch (err) {
+        console.error(`Failed to send promotion email to ${p.email}:`, err);
+      }
+    }
+    return promoted;
+  });
 }
 
 export interface MyStatus {
