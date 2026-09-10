@@ -14,7 +14,8 @@
     "test:coverage": "vitest run --coverage",
     "setup:sheets": "tsx --env-file=.env.local scripts/createDataTabs.ts",
     "authorize-gmail-sender": "tsx --env-file=.env.local scripts/authorizeGmailSender.ts",
-    "verify:schema": "tsx --env-file=.env.local scripts/verifySheetSchema.ts"
+    "verify:schema": "tsx --env-file=.env.local scripts/verifySheetSchema.ts",
+    "seed:dummy": "tsx --env-file=.env.local scripts/seedDummyData.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.4",

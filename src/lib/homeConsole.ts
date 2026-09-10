@@ -1,3 +1,5 @@
+import { ApiRequest, asJson } from './apiRequest';
+
 /**
  * What the homepage does when a player presses something.
  *
@@ -21,19 +23,6 @@ export type PlayerAction =
   | { kind: 'cancelSubRequest'; signupId: string }
   | { kind: 'respondToSubRequest'; fromSignupId: string; accept: boolean };
 
-export interface ActionRequest {
-  url: string;
-  init: RequestInit;
-  /** Shown when the server fails without saying why. */
-  fallbackError: string;
-}
-
-const json = (body: unknown): RequestInit => ({
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
-});
-
 /**
  * The request one action makes.
  *
@@ -41,7 +30,7 @@ const json = (body: unknown): RequestInit => ({
  * today, so nothing needs escaping in practice — which is exactly why it would
  * go unnoticed if it stopped being done.
  */
-export function requestFor(action: PlayerAction): ActionRequest {
+export function requestFor(action: PlayerAction): ApiRequest {
   switch (action.kind) {
     case 'cancel':
       return {
@@ -52,7 +41,7 @@ export function requestFor(action: PlayerAction): ActionRequest {
     case 'requestSub':
       return {
         url: `/api/signups/${encodeURIComponent(action.signupId)}/sub-request`,
-        init: json({ targetEmail: action.targetEmail }),
+        init: asJson({ targetEmail: action.targetEmail }),
         fallbackError: 'Request failed',
       };
     case 'cancelSubRequest':
@@ -64,21 +53,9 @@ export function requestFor(action: PlayerAction): ActionRequest {
     case 'respondToSubRequest':
       return {
         url: `/api/signups/${encodeURIComponent(action.fromSignupId)}/sub-request/respond`,
-        init: json({ accept: action.accept }),
+        init: asJson({ accept: action.accept }),
         fallbackError: 'Response failed',
       };
   }
 }
 
-/**
- * What to tell the player when a request fails.
- *
- * The server's own message when it sent one — those are written for players
- * ("You're already signed up for this week") and are far better than anything
- * generic. The fallback is for a failure with no body at all, which is a
- * network or infrastructure problem rather than a refusal.
- */
-export function failureMessage(body: unknown, fallback: string): string {
-  const error = (body as { error?: unknown } | null)?.error;
-  return typeof error === 'string' && error ? error : fallback;
-}

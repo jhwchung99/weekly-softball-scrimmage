@@ -17,7 +17,8 @@ const sendPush = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 vi.mock('../../lib/ntfy', () => ({ sendPush }));
 
-const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSpots, computeCostShare, computePaymentSummary, fillOpenSpots } = await import('../signupFlow');
+const { signUpForSession, signUpAsGuestForSession, cancelMySignup, fillOpenSpots } = await import('../signupFlow');
+const { countConfirmedSpots, computeCostShare, computePaymentSummary } = await import('../payments');
 const { respondToSubRequest } = await import('../subRequestFlow');
 
 beforeEach(() => {

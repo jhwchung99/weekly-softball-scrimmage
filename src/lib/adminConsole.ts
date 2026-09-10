@@ -1,3 +1,4 @@
+import { ApiRequest, asJson } from './apiRequest';
 import { countConfirmedSpots } from './payments';
 import { AdminRosterEntry, AdminSessionView } from './views';
 
@@ -22,19 +23,6 @@ export type AdminAction =
   | { kind: 'overrideSignup'; signupId: string; updates: Record<string, unknown> }
   | { kind: 'removeSignup'; signupId: string };
 
-export interface AdminRequest {
-  url: string;
-  init: RequestInit;
-  /** Shown when the server fails without saying why. */
-  fallbackError: string;
-}
-
-const asJson = (body: unknown, method = 'POST'): RequestInit => ({
-  method,
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
-});
-
 /**
  * The request one organizer action makes.
  *
@@ -46,7 +34,7 @@ const asJson = (body: unknown, method = 'POST'): RequestInit => ({
  *
  * Ids are encoded, because a signup id ends up in the path.
  */
-export function adminRequestFor(action: AdminAction): AdminRequest {
+export function adminRequestFor(action: AdminAction): ApiRequest {
   switch (action.kind) {
     case 'reviseSession':
       return {
@@ -75,17 +63,6 @@ export function adminRequestFor(action: AdminAction): AdminRequest {
   }
 }
 
-/**
- * What to tell the organizer when a request fails.
- *
- * The server's own message when it sent one — those are written for a reader
- * ("Kevin Kim already has an active signup for this session") and are far
- * better than anything generic.
- */
-export function adminFailureMessage(body: unknown, fallback: string): string {
-  const error = (body as { error?: unknown } | null)?.error;
-  return typeof error === 'string' && error ? error : fallback;
-}
 
 /** A request that failed with a status the console treats specially. */
 export interface FailedRequest {
@@ -161,14 +138,24 @@ export function splitAcrossRoster(costInput: string, roster: AdminRosterEntry[] 
   return { spots, total, each: canSplit ? Math.round((total / spots) * 100) / 100 : 0, canSplit };
 }
 
-/** What the app reports back after sending an announcement. */
-export interface AnnouncementResult {
-  skipped?: boolean;
-  reason?: string;
-  sent?: number;
-  failed?: number;
-  recipients?: string[];
-}
+/**
+ * What the app reports back after sending an announcement.
+ *
+ * The type itself lives with the code that produces it. This file previously
+ * declared a second, all-optional copy — so the console was written against a
+ * shape where `sent` might be missing from a result that always has it, and
+ * the two could have drifted apart without anything noticing.
+ *
+ * `import type` erases at build time, so nothing from the server half of
+ * announcements.ts reaches the browser bundle.
+ *
+ * `announcementNotice` still takes it as `Partial`, because what it is handed
+ * is a parsed HTTP body rather than the object the server built. Deriving the
+ * optionality from the real type keeps the two in step; declaring a
+ * second all-optional interface did not.
+ */
+export type { AnnouncementResult } from './announcements';
+import type { AnnouncementResult } from './announcements';
 
 /**
  * What the organizer is told after pressing an email button.
@@ -181,7 +168,7 @@ export interface AnnouncementResult {
  * was on the list. A skipped send is not a failure — "everyone has already
  * paid" is a legitimate answer to the question the button asks.
  */
-export function announcementNotice(result: AnnouncementResult): string {
+export function announcementNotice(result: Partial<AnnouncementResult>): string {
   if (result.skipped) return `Nothing sent — ${result.reason}`;
 
   const who = (result.recipients ?? []).join(', ');

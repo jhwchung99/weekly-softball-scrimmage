@@ -98,15 +98,6 @@ export function countSpots(signups: Pairable[]): number {
 }
 
 /**
- * How many people are sharing this row's spot — 1 or 2.
- *
- * The divisor when a spot's price is split between its occupants.
- */
-export function spotSizeOf(signup: Pairable, among: Pairable[]): number {
-  return isPaired(signup) ? among.filter((s) => s.pairId === signup.pairId).length || 1 : 1;
-}
-
-/**
  * Why this row may not take on a shared spot, or null if it may.
  *
  * One wording, so the four guards in `subRequestFlow` stop giving three

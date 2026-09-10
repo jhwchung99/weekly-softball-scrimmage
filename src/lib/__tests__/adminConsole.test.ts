@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   adminRequestFor,
-  adminFailureMessage,
   type AdminAction,
   classifyLoadFailure,
   sessionIdAfterRevision,
@@ -249,16 +248,3 @@ describe('adminRequestFor', () => {
   });
 });
 
-describe('adminFailureMessage', () => {
-  it('prefers the server’s own words, which name the actual problem', () => {
-    expect(adminFailureMessage({ error: 'Kevin Kim already has an active signup' }, 'Update failed')).toMatch(
-      /Kevin Kim already has an active signup/
-    );
-  });
-
-  it('falls back when the response says nothing useful', () => {
-    expect(adminFailureMessage({}, 'Remove failed')).toBe('Remove failed');
-    expect(adminFailureMessage(null, 'Send failed')).toBe('Send failed');
-    expect(adminFailureMessage({ error: '' }, 'Update failed')).toBe('Update failed');
-  });
-});

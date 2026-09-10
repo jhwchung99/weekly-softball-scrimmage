@@ -25,7 +25,8 @@ vi.mock('../../sheets/players', () => fakePlayersModule(store));
 vi.mock('../../lib/gmail', () => ({ sendEmail: vi.fn() }));
 vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
-const { signUpForSession, signUpAsGuestForSession, countConfirmedSpots, getMyStatusForSession } = await import('../signupFlow');
+const { signUpForSession, signUpAsGuestForSession, getMyStatusForSession } = await import('../signupFlow');
+const { countConfirmedSpots } = await import('../payments');
 const { requestSub, respondToSubRequest } = await import('../subRequestFlow');
 const { updateSignup } = await import('../../sheets/signups');
 

@@ -5,7 +5,7 @@ import { Users, Loader2 } from 'lucide-react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
-import { teamNoteText, TeamView } from './TeamRosters';
+import { teamNote, TeamView } from './TeamRosters';
 import type { TeamsStatus } from '../sheets/schema';
 import { isPaired, spotKey, SHARING_A_SPOT } from '../lib/pair';
 // The same coverage analysis the generator runs. Calling it rather than
@@ -82,7 +82,6 @@ export function TeamEditor({ sessionId, onChanged }: { sessionId: string; onChan
     setMembers((prev) => {
       const next: Record<string, Member[]> = {};
       // A shared spot is one roster spot, so its two occupants move as one.
-      // A shared spot is one roster spot, so its occupants move as one.
       const moving = (m: Member) => spotKey(m) === spotKey(member);
       for (const [team, list] of Object.entries(prev)) next[team] = list.filter((m) => !moving(m));
       const taken = Object.values(prev).flat().filter(moving);
@@ -123,7 +122,7 @@ export function TeamEditor({ sessionId, onChanged }: { sessionId: string; onChan
       {anyPlayers && (
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {names.map((name) => {
-            const note = teamNoteText(analyzeTeam(members[name]));
+            const note = teamNote(analyzeTeam(members[name]));
             return (
               <div key={name} className="rounded border border-slate-200 p-3">
                 <h3 className="text-sm font-medium text-slate-900">
