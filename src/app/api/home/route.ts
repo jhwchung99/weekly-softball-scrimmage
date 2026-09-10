@@ -5,8 +5,8 @@ import { listSignupsForSession } from '../../../sheets/signups';
 import { getPlayer } from '../../../sheets/players';
 import { currentWeekGameDayCandidates } from '../../../lib/time';
 import { buildMyStatus } from '../../../lib/signupFlow';
-import { buildRosterView } from '../../../lib/roster';
-import { teamsFromSignups, teamCountFor } from '../../../lib/teamFlow';
+import { rosterView, teamView } from '../../../lib/views';
+import { teamCountFor } from '../../../lib/teamFlow';
 import { WAIVER_TEXT } from '../../../lib/waiver';
 import { handleApiError } from '../../../lib/apiErrors';
 
@@ -69,16 +69,16 @@ export async function GET() {
       incomingSubRequests,
       costOwed,
       waitlistPosition,
-      roster: buildRosterView(allSignups, email),
+      roster: rosterView(allSignups, email),
       /**
        * Only once the organizer posts them. A 'draft' is theirs to edit, so
        * players see nothing until they publish. Gated on being signed up for
-       * the week, the same boundary buildRosterView draws for names: someone
+       * the week, the same boundary rosterView draws for names: someone
        * who isn't playing has no business reading the lineup.
        */
       teams:
         session.teamsStatus === 'posted' && signup
-          ? teamsFromSignups(allSignups, teamCountFor(session))
+          ? teamView(allSignups, teamCountFor(session))
           : null,
       waiverText: WAIVER_TEXT,
       /**

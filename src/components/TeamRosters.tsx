@@ -1,17 +1,14 @@
 import { Users } from 'lucide-react';
 import { Card } from './Card';
 import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
+import type { TeamView } from '../lib/views';
 
-export interface TeamView {
-  name: string;
-  /** Exactly what the server projects onto the wire (`Rosterable`). `gender`
-   * earns its place by being what the shared analyzer needs: without it this
-   * type could not be passed to `analyzeTeam`, which is why the editor used to
-   * carry a local stand-in that reported every edited team as fully covered. */
-  members: { signupId: string; fullName: string; gender: string; positions: string; pairId: string }[];
-  deficiency: number;
-  missing: string[];
-}
+/**
+ * Re-exported so components can keep importing the team type from the
+ * component they render with, while the definition itself stays in the
+ * projection module that decides what crosses the wire.
+ */
+export type { TeamView, TeamMember } from '../lib/views';
 
 /** "Short 1: no one can cover Catcher", or nothing when the team is fine. */
 export function teamNoteText(team: Pick<TeamView, 'deficiency' | 'missing'>): string {

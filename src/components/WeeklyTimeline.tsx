@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { CalendarClock, CalendarX2, Flag } from 'lucide-react';
 import { getWeeklyMilestones } from '../lib/time';
 import { Card } from './Card';
+import type { SessionStatus } from '../sheets/schema';
 
 interface WeeklyTimelineProps {
   gameDate: string;
   gameTime: string;
-  status: 'open' | 'closed' | 'cancelled';
+  status: SessionStatus;
 }
 
 function formatDateTime(d: Date): string {

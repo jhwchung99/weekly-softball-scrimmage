@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../../lib/auth';
 import { getSession } from '../../../../../../sheets/sessions';
 import { listSignupsForSession } from '../../../../../../sheets/signups';
-import { generateTeams, saveTeams, postTeams, teamsFromSignups, teamCountFor } from '../../../../../../lib/teamFlow';
+import { generateTeams, saveTeams, postTeams, teamCountFor } from '../../../../../../lib/teamFlow';
+import { teamView } from '../../../../../../lib/views';
 import { withMutationLock } from '../../../../../../lib/lock';
 import { ApiError, handleApiError } from '../../../../../../lib/apiErrors';
 
@@ -20,7 +21,7 @@ export async function GET(request: Request, { params }: Params) {
     return NextResponse.json({
       teamsStatus: session.teamsStatus,
       numFields: session.numFields,
-      teams: teamsFromSignups(signups, teamCountFor(session)),
+      teams: teamView(signups, teamCountFor(session)),
     });
   } catch (err) {
     return handleApiError(err);

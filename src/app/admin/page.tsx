@@ -14,8 +14,11 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 
-type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
-type SessionStatus = 'open' | 'closed' | 'cancelled';
+import type { SignupStatus, SessionStatus } from '../../sheets/schema';
+import type { AdminRosterEntry } from '../../lib/views';
+
+/** The organizer's roster row, as the projection module defines it. */
+type AdminSignup = AdminRosterEntry;
 
 interface SessionInfo {
   sessionId: string;
@@ -29,20 +32,6 @@ interface SessionInfo {
   locationArea: string;
   locationName: string;
   locationUrl: string;
-}
-
-interface AdminSignup {
-  signupId: string;
-  email: string;
-  fullName: string;
-  memberStatus: 'member' | 'guest';
-  invitedByName: string;
-  pairId: string;
-  status: SignupStatus;
-  positions: string;
-  paid: boolean;
-  amountPaid: number;
-  attended: boolean;
 }
 
 class HttpError extends Error {

@@ -4,19 +4,26 @@ import { listSignupsForSession } from '../../../../../../sheets/signups';
 import { adminAddSignup } from '../../../../../../lib/adminFlow';
 import { ApiError, handleApiError } from '../../../../../../lib/apiErrors';
 import { withMutationLock } from '../../../../../../lib/lock';
+import { adminRosterView } from '../../../../../../lib/views';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
-/** Full roster + waitlist for a session, Section 8's "view the full roster
- * and waitlist" — unlike the player-facing status check, this returns
- * every signup regardless of status (including cancelled), since an
- * admin needs the complete picture. */
+/**
+ * Full roster + waitlist for a session, Section 8's "view the full roster and
+ * waitlist" — unlike the player-facing status check, this returns every signup
+ * regardless of status (including cancelled), since an admin needs the
+ * complete picture.
+ *
+ * Projected like every other payload. Being admin-only is why the extra fields
+ * would not be a disclosure; it is not a reason to send the console a waiver
+ * text and a set of sub-request internals it never reads.
+ */
 export async function GET(request: Request, { params }: Params) {
   try {
     await requireAdmin();
     const { sessionId } = await params;
     const signups = await listSignupsForSession(sessionId);
-    return NextResponse.json({ signups });
+    return NextResponse.json({ signups: adminRosterView(signups) });
   } catch (err) {
     return handleApiError(err);
   }
