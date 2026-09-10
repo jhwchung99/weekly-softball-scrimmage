@@ -41,8 +41,18 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
 
     if (body?.action === 'generate') {
-      const teams = await generateTeams(sessionId);
-      return NextResponse.json({ teams, teamsStatus: 'draft' });
+      // Deliberately does not return the generated teams. `generateTeams`
+      // hands back `Team[]` whose `members` are declared `Rosterable` — five
+      // fields — but are whole sheet rows at runtime, and a row structurally
+      // satisfies that type, so nothing flagged it. Returning them shipped
+      // every confirmed player's email, payment record and waiver text: the
+      // exact leak the projection boundary exists to prevent.
+      //
+      // Nothing needed them either — the editor reloads through GET after
+      // every action, and GET projects. So this answers like the `post` branch
+      // below, with what changed rather than with the roster.
+      await generateTeams(sessionId);
+      return NextResponse.json({ teamsStatus: 'draft' });
     }
 
     if (body?.action === 'post') {

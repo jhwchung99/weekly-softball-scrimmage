@@ -124,6 +124,27 @@ describe('positionOf', () => {
     expect(positionOf(third.signupId, roster)).toBe(3);
   });
 
+  it('counts a waiting pair as one place, not two', () => {
+    // A spot is what the queue is for. Counting rows told the third person
+    // they were third when only two spots were ahead of them.
+    const pairA = at('2099-01-01T00:00:00Z', { pairId: 'p1' });
+    const pairB = at('2099-01-01T00:00:01Z', { pairId: 'p1' });
+    const solo = at('2099-01-02T00:00:00Z');
+    const roster = [pairA, pairB, solo];
+
+    expect(positionOf(solo.signupId, roster)).toBe(2);
+  });
+
+  it('gives both halves of a pair the same place, since they hold one', () => {
+    const pairA = at('2099-01-02T00:00:00Z', { pairId: 'p1' });
+    const pairB = at('2099-01-02T00:00:01Z', { pairId: 'p1' });
+    const ahead = at('2099-01-01T00:00:00Z');
+    const roster = [ahead, pairA, pairB];
+
+    expect(positionOf(pairA.signupId, roster)).toBe(2);
+    expect(positionOf(pairB.signupId, roster)).toBe(2);
+  });
+
   it('answers "how many are ahead of me" rather than "who is promoted next"', () => {
     // Deliberate: a guest who signed up first is 1st in line by arrival, but a
     // member who came later is promoted before them. Position is a good-faith

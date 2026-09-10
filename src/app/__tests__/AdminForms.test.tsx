@@ -101,6 +101,34 @@ describe('AddSignupForm', () => {
     expect(lastBody().invitedByName).toBe('Kevin Kim');
   });
 
+  it('carries a guest willingness to share, which decides their place in the queue', async () => {
+    // `willingToShare` feeds waitlist.tierOf: a guest who will share is
+    // promoted ahead of one who will not. Dropping it here used to change
+    // nothing anywhere in the suite — the only assertion on the field was that
+    // the member path omits it, which passes just as well when no path sends
+    // it at all.
+    render(<AddSignupForm {...props()} />);
+
+    await userEvent.type(screen.getByLabelText('Email'), 'guest@dummy.test');
+    await userEvent.click(screen.getByLabelText(/guest/i));
+    await userEvent.type(screen.getByLabelText('Invited by (member name)'), 'Kevin Kim');
+    await userEvent.click(screen.getByLabelText(/willing to share/i));
+    await userEvent.click(screen.getByRole('button', { name: /add/i }));
+
+    expect(lastBody().willingToShare).toBe(true);
+  });
+
+  it('sends a guest who will not share as unwilling, not as absent', async () => {
+    render(<AddSignupForm {...props()} />);
+
+    await userEvent.type(screen.getByLabelText('Email'), 'guest@dummy.test');
+    await userEvent.click(screen.getByLabelText(/guest/i));
+    await userEvent.type(screen.getByLabelText('Invited by (member name)'), 'Kevin Kim');
+    await userEvent.click(screen.getByRole('button', { name: /add/i }));
+
+    expect(lastBody().willingToShare).toBe(false);
+  });
+
   it('tells the console to reload once the player is added', async () => {
     const p = props();
     render(<AddSignupForm {...p} />);
