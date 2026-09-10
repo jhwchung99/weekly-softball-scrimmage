@@ -4,8 +4,13 @@ const getSessionByAnyId = vi.fn();
 vi.mock('../../../../../sheets/sessions', () => ({ getSessionByAnyId }));
 
 const { GET } = await import('../route');
+// Imported after the mocks, not at the top: this module imports sheets/sessions,
+// and pulling it in early evaluates the mock factory before its vi.fn exists.
+const { forgetCurrentWeek } = await import('../../../../../lib/currentWeek');
 
 beforeEach(() => {
+  // This route reads the week through a cache; each case starts cold.
+  forgetCurrentWeek();
   vi.clearAllMocks();
 });
 

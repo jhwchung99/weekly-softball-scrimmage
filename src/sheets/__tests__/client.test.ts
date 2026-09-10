@@ -27,7 +27,7 @@ vi.mock('googleapis', () => ({
 }));
 vi.mock('google-auth-library', () => ({ GoogleAuth: class {} }));
 
-const { columnLetter, getRowObjects, updateRow, SPREADSHEET_ID } = await import('../client');
+const { columnLetter, getRowObjects, updateRow, SPREADSHEET_ID, RATE_LIMIT_RETRY_DELAYS_MS } = await import('../client');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -125,5 +125,87 @@ describe('updateRow', () => {
     await updateRow('sheet', 'Tab', 2, ['id', 'name'] as const, { id: '1' } as { id: string; name: string });
 
     expect(valuesUpdate).toHaveBeenCalledWith(expect.objectContaining({ requestBody: { values: [['1', '']] } }));
+  });
+});
+
+/**
+ * The retry that outlasts an exhausted quota.
+ *
+ * Its comment claimed to cover "429/rateLimitExceeded", but the code checked
+ * only the status. Sheets returns **403** with reason `rateLimitExceeded` for
+ * the per-user per-minute quota — the limit this app is most likely to hit,
+ * since one service account carries all its traffic — so those bypassed it.
+ */
+describe('rate-limit retry', () => {
+  const rows = [['2099-01-01']];
+  const ok = { data: { values: rows } };
+
+  /**
+   * Runs the read past its backoff waits without spending them.
+   *
+   * The settling is separated from the awaiting on purpose. Advancing the
+   * timers yields, so a read that rejects during it rejects while nothing is
+   * listening — Node reports that as an unhandled rejection even though the
+   * next line awaits it. Attaching the handler first makes the failure cases
+   * observable rather than merely awaited.
+   */
+  async function read() {
+    vi.useFakeTimers();
+    try {
+      const settled = getRowObjects('sheet', 'Sessions', ['sessionId'] as const).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error })
+      );
+      await vi.runAllTimersAsync();
+
+      const result = await settled;
+      if ('error' in result) throw result.error;
+      return result.value;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it('retries a 429 and returns the answer the second time', async () => {
+    valuesGet.mockRejectedValueOnce({ status: 429 }).mockResolvedValueOnce(ok);
+
+    expect(await read()).toHaveLength(1);
+    expect(valuesGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a 403 that names the per-minute quota', async () => {
+    valuesGet
+      .mockRejectedValueOnce({ status: 403, errors: [{ reason: 'rateLimitExceeded' }] })
+      .mockResolvedValueOnce(ok);
+
+    expect(await read()).toHaveLength(1);
+    expect(valuesGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the reason out of the nested response shape too', async () => {
+    valuesGet
+      .mockRejectedValueOnce({
+        code: 403,
+        response: { data: { error: { errors: [{ reason: 'userRateLimitExceeded' }] } } },
+      })
+      .mockResolvedValueOnce(ok);
+
+    expect(await read()).toHaveLength(1);
+  });
+
+  it('does not retry a 403 that means "no access to this spreadsheet"', async () => {
+    // A permission error will fail identically in seven seconds' time, so
+    // waiting only delays the message.
+    valuesGet.mockRejectedValue({ status: 403, errors: [{ reason: 'forbidden' }] });
+
+    await expect(read()).rejects.toMatchObject({ status: 403 });
+    expect(valuesGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after the delays are spent rather than retrying forever', async () => {
+    valuesGet.mockRejectedValue({ status: 429 });
+
+    await expect(read()).rejects.toMatchObject({ status: 429 });
+    expect(valuesGet).toHaveBeenCalledTimes(RATE_LIMIT_RETRY_DELAYS_MS.length + 1);
   });
 });

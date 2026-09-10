@@ -13,6 +13,9 @@ const getPlayer = vi.fn();
 vi.mock('../../../../sheets/players', () => ({ getPlayer }));
 
 const { GET } = await import('../route');
+// Imported after the mocks, not at the top: this module imports sheets/sessions,
+// and pulling it in early evaluates the mock factory before its vi.fn exists.
+const { forgetCurrentWeek } = await import('../../../../lib/currentWeek');
 
 const SESSION = { sessionId: '2099-01-01', gameDate: '2099-01-01', gameTime: '18:00', capacity: 10, status: 'open', cost: 0 };
 
@@ -33,6 +36,8 @@ function signup(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  // This route reads the week through a cache; each case starts cold.
+  forgetCurrentWeek();
   vi.clearAllMocks();
   getSessionByAnyId.mockResolvedValue(SESSION);
   listSignupsForSession.mockResolvedValue([]);

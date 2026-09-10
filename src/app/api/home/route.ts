@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../lib/auth';
-import { getSessionByAnyId } from '../../../sheets/sessions';
 import { listSignupsForSession } from '../../../sheets/signups';
 import { getPlayer } from '../../../sheets/players';
-import { currentWeekGameDayCandidates } from '../../../lib/time';
+import { currentWeekSession } from '../../../lib/currentWeek';
 import { buildMyStatus } from '../../../lib/signupFlow';
 import { rosterView, teamView, sessionView, mySignupView, playerView } from '../../../lib/views';
 import { teamCountFor } from '../../../lib/teamFlow';
@@ -36,8 +35,10 @@ export async function GET() {
   try {
     const email = await getSessionEmail();
 
-    // Read 1 — Sessions.
-    const session = await getSessionByAnyId(currentWeekGameDayCandidates());
+    // Read 1 — Sessions. Cached, and shared with /api/sessions/current: both
+    // are reachable without signing in, so between them they are the cheapest
+    // way to exhaust the app's 60-reads-a-minute quota. See lib/currentWeek.
+    const session = await currentWeekSession();
 
     if (!email || !session) {
       return NextResponse.json({

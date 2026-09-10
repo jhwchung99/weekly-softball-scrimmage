@@ -42,9 +42,17 @@ export interface AdminAddSignupInput {
  * it's a small change here — flagging rather than assuming either way.
  */
 export async function adminAddSignup(input: AdminAddSignupInput): Promise<Signup> {
+  // Validated before the lock is taken, not inside it. There is one write lock
+  // for the whole app: a request that is going to be rejected anyway should
+  // not queue behind every other write to find that out, wait up to
+  // ACQUIRE_TIMEOUT_MS, and come back 503 instead of saying what was wrong
+  // with it — nor hold the lock while it fails. The player-facing routes were
+  // moved out of the lock for this reason; these three were missed.
+  const profile = input.profile ? validatePlayerProfile(input.profile) : null;
+  const invitedByName = input.invitedByName ? validateInvitedByName(input.invitedByName) : '';
+
   return withMutationLock(async () => {
-    if (input.profile) {
-      const profile = validatePlayerProfile(input.profile);
+    if (profile) {
       await upsertPlayer({ email: input.email, ...profile });
     }
 
@@ -54,11 +62,11 @@ export async function adminAddSignup(input: AdminAddSignupInput): Promise<Signup
     // guards player-initiated signups; `status` still applies.
     const options = { bypassRegistrationWindow: true };
 
-    if (input.invitedByName) {
+    if (invitedByName) {
       return signUpAsGuestForSession(
         input.sessionId,
         input.email,
-        validateInvitedByName(input.invitedByName),
+        invitedByName,
         Boolean(input.willingToShare),
         input.waiverAccepted,
         options
@@ -96,13 +104,14 @@ export interface AdminCreateSessionInput {
  * now).
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
-  return withMutationLock(async () => {
-    const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea } = validateSessionCreate(input, {
-      gameTime: DEFAULT_GAME_TIME,
-      capacity: DEFAULT_CAPACITY,
-      pricePerSpot: DEFAULT_PRICE_PER_SPOT,
-    });
+  // Above the lock — see adminAddSignup for why.
+  const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea } = validateSessionCreate(input, {
+    gameTime: DEFAULT_GAME_TIME,
+    capacity: DEFAULT_CAPACITY,
+    pricePerSpot: DEFAULT_PRICE_PER_SPOT,
+  });
 
+  return withMutationLock(async () => {
     const existing = await getSession(gameDate);
     if (existing) throw new ApiError(409, `A session for ${gameDate} already exists.`);
 
@@ -336,9 +345,12 @@ export async function reviseSession(
 }
 
 export async function adminRescheduleSession(sessionId: string, newGameDate: unknown, newGameTime: unknown): Promise<Session> {
-  return withMutationLock(async () => {
-    const { gameDate, gameTime } = validateReschedule(newGameDate, newGameTime);
+  // Above the lock — see adminAddSignup. Safe under `reviseSession`, which
+  // calls this while already holding it: the lock is reentrant, so the
+  // validation simply happens a moment earlier inside that hold.
+  const { gameDate, gameTime } = validateReschedule(newGameDate, newGameTime);
 
+  return withMutationLock(async () => {
     const existing = await getSession(sessionId);
     if (!existing) throw new ApiError(404, 'No such session.');
 
