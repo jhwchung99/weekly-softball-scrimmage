@@ -28,13 +28,58 @@ describe('GET /api/sessions/[sessionId]/signup', () => {
 
   it('returns the caller\'s status when signed in', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getMyStatusForSession.mockResolvedValue({ signup: { signupId: 's1' }, incomingSubRequests: [], costOwed: null });
+    getMyStatusForSession.mockResolvedValue({
+      signup: { signupId: 's1' },
+      incomingSubRequests: [],
+      costOwed: null,
+      waitlistPosition: null,
+    });
 
     const res = await GET(new Request('http://x'), makeParams('2099-01-01'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.signup.signupId).toBe('s1');
     expect(getMyStatusForSession).toHaveBeenCalledWith('2099-01-01', 'a@dummy.test');
+  });
+
+  /**
+   * The status builder promises four fields and this route forwarded three,
+   * dropping the caller's place in the queue — so a waitlisted player asking
+   * this route was told nothing about where they stood, while the same player
+   * on the homepage was told exactly.
+   *
+   * The old test mocked a return value that omitted the field too, so it
+   * encoded the drift rather than catching it. That is why this asserts the
+   * whole payload rather than one key: a field the builder promises has to
+   * arrive, and picking them off individually is how one goes missing again.
+   */
+  it('tells a waitlisted caller their place in the queue', async () => {
+    getSessionEmail.mockResolvedValue('a@dummy.test');
+    getMyStatusForSession.mockResolvedValue({
+      signup: { signupId: 's1', status: 'waitlisted' },
+      incomingSubRequests: [],
+      costOwed: null,
+      waitlistPosition: 3,
+    });
+
+    const body = await (await GET(new Request('http://x'), makeParams('2099-01-01'))).json();
+
+    expect(body.waitlistPosition).toBe(3);
+  });
+
+  it('forwards every field the status builder promises, so none can be dropped again', async () => {
+    getSessionEmail.mockResolvedValue('a@dummy.test');
+    const status = {
+      signup: { signupId: 's1', status: 'waitlisted' },
+      incomingSubRequests: [{ fromSignupId: 's2', fromFullName: 'Asker', fromGuestInvite: false }],
+      costOwed: 10,
+      waitlistPosition: 2,
+    };
+    getMyStatusForSession.mockResolvedValue(status);
+
+    const body = await (await GET(new Request('http://x'), makeParams('2099-01-01'))).json();
+
+    expect(body).toEqual(status);
   });
 });
 
