@@ -220,7 +220,13 @@ export default function Home() {
         />
       )}
 
-      {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {/* role="alert" because the failure is the only thing that changes: the
+          button a player pressed looks the same afterwards either way. */}
+      {error && (
+        <p role="alert" className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
 
       <Card className="mt-6">
         {!scrimmageLoaded && (

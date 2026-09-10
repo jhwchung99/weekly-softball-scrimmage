@@ -1,11 +1,16 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState, useRef, useEffect, FormEvent } from 'react';
+import { useSession, signIn } from 'next-auth/react';
 import { Bug, CheckCircle2, Loader2, MessageSquare, Send } from 'lucide-react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { FEEDBACK_KINDS, FEEDBACK_KIND_LABELS, FeedbackKind, MAX_FEEDBACK_LENGTH } from '../lib/feedbackKinds';
+
+/** Ties the trigger's aria-controls to the panel it opens, and that panel to
+ * the heading naming it. */
+const PANEL_ID = 'feedback-panel';
+const HEADING_ID = 'feedback-heading';
 
 const KIND_ICONS: Record<FeedbackKind, typeof Bug> = {
   bug: Bug,
@@ -30,7 +35,26 @@ export function FeedbackButton() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
+  // Focus follows the disclosure both ways. Opening this *replaces* the
+  // trigger with a panel, so a keyboard or screen-reader user who is not moved
+  // into it lands wherever the browser decides — usually the top of the
+  // document, having apparently pressed a button that did nothing.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      panelRef.current?.focus();
+    } else if (returnFocus.current) {
+      // Only after an explicit close, never on first render.
+      triggerRef.current?.focus();
+      returnFocus.current = false;
+    }
+  }, [open]);
+
   function close() {
+    returnFocus.current = true;
     setOpen(false);
     setError('');
     setSent(false);
@@ -62,6 +86,10 @@ export function FeedbackButton() {
     return (
       <div className="mx-auto max-w-xl px-4 pb-10">
         <button
+          ref={triggerRef}
+          type="button"
+          aria-expanded={false}
+          aria-controls={PANEL_ID}
           onClick={() => setOpen(true)}
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 hover:underline"
         >
@@ -73,9 +101,17 @@ export function FeedbackButton() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-10">
+    // tabIndex -1 so focus can be moved here on open without the panel
+    // joining the tab order once it has been read.
+    <div
+      id={PANEL_ID}
+      ref={panelRef}
+      tabIndex={-1}
+      aria-labelledby={HEADING_ID}
+      className="mx-auto max-w-xl px-4 pb-10 outline-none"
+    >
       <Card>
-        <h2 className="flex items-center gap-1.5 font-semibold text-slate-900">
+        <h2 id={HEADING_ID} className="flex items-center gap-1.5 font-semibold text-slate-900">
           <Bug className="h-4 w-4" /> Report a bug or send feedback
         </h2>
 
@@ -84,13 +120,23 @@ export function FeedbackButton() {
             <p className="mt-2 text-sm text-slate-600">
               Please sign in first, so the organizer knows who to get back to.
             </p>
-            <Button variant="secondary" size="sm" className="mt-3" onClick={close}>
-              Close
-            </Button>
+            {/* The dead end this used to be: told to sign in, with nothing to
+                sign in with. The page's own sign-in button is elsewhere, and
+                on some pages there isn't one. */}
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" onClick={() => signIn('google')}>
+                Sign in with Google
+              </Button>
+              <Button variant="secondary" size="sm" onClick={close}>
+                Close
+              </Button>
+            </div>
           </>
         ) : sent ? (
           <>
-            <p className="mt-2 flex items-start gap-1.5 text-sm text-green-700">
+            {/* Announced when it appears: the form it replaces is gone, so
+                without this there is no signal that the send worked. */}
+            <p role="status" className="mt-2 flex items-start gap-1.5 text-sm text-green-700">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               Sent, thank you. The organizer has been notified.
             </p>
@@ -151,7 +197,13 @@ export function FeedbackButton() {
               </p>
             </div>
 
-            {error && <p className="text-sm text-red-700">{error}</p>}
+            {/* Likewise — the send button stays exactly as it was, so a reader
+                who cannot see this text has nothing telling them it failed. */}
+            {error && (
+              <p role="alert" className="text-sm text-red-700">
+                {error}
+              </p>
+            )}
 
             <div className="flex gap-2">
               <Button type="submit" size="sm" disabled={busy || !message.trim()}>
