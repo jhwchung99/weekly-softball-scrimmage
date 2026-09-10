@@ -7,7 +7,7 @@ import { Button } from './Button';
 import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
 import { teamNoteText, TeamView } from './TeamRosters';
 import type { TeamsStatus } from '../sheets/schema';
-import { isPaired, slotKey, SHARING_A_SPOT } from '../lib/pair';
+import { isPaired, spotKey, SHARING_A_SPOT } from '../lib/pair';
 // The same coverage analysis the generator runs. Calling it rather than
 // approximating it is the point: the note under an edited team has to be true
 // while the organizer is still moving people, which is when a gap gets made.
@@ -83,7 +83,7 @@ export function TeamEditor({ sessionId, onChanged }: { sessionId: string; onChan
       const next: Record<string, Member[]> = {};
       // A shared spot is one roster spot, so its two occupants move as one.
       // A shared spot is one roster spot, so its occupants move as one.
-      const moving = (m: Member) => slotKey(m) === slotKey(member);
+      const moving = (m: Member) => spotKey(m) === spotKey(member);
       for (const [team, list] of Object.entries(prev)) next[team] = list.filter((m) => !moving(m));
       const taken = Object.values(prev).flat().filter(moving);
       next[to] = [...(next[to] ?? []), ...taken];

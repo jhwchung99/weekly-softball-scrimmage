@@ -10,7 +10,7 @@ vi.mock('../../sheets/players', () => fakePlayersModule(store));
 vi.mock('../../lib/gmail', () => ({ sendEmail: vi.fn() }));
 vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
-const { signUpForSession, signUpAsGuestForSession, countConfirmedSlots, getMyStatusForSession } = await import('../signupFlow');
+const { signUpForSession, signUpAsGuestForSession, countConfirmedSpots, getMyStatusForSession } = await import('../signupFlow');
 const { requestSub, respondToSubRequest } = await import('../subRequestFlow');
 const { updateSignup } = await import('../../sheets/signups');
 
@@ -43,7 +43,7 @@ describe('pairing requires the member to accept', () => {
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
     store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member M' }));
 
-    await signUpForSession(SESSION, 'taken@dummy.test', true); // takes the only slot
+    await signUpForSession(SESSION, 'taken@dummy.test', true); // takes the only spot
     const g = await signUpAsGuestForSession(SESSION, 'guest@dummy.test', 'Member M', true, true);
     const m = await signUpForSession(SESSION, 'member@dummy.test', true);
 
@@ -70,7 +70,7 @@ describe('pairing requires the member to accept', () => {
     expect(guestRow.pairId).toBe(memberRow.pairId);
     expect(guestRow.status).toBe('confirmed');
     expect(memberRow.status).toBe('confirmed');
-    expect(countConfirmedSlots([...store.signups.values()])).toBe(1); // still one slot
+    expect(countConfirmedSpots([...store.signups.values()])).toBe(1); // still one spot
 
     // And both are billed for their half rather than either being skipped.
     const status = await getMyStatusForSession(SESSION, 'member@dummy.test');
@@ -93,8 +93,8 @@ describe('pairing requires the member to accept', () => {
     expect(guestRow.status).toBe('waitlisted');
   });
 
-  it('never offers a pairing to a guest who already has their own confirmed slot', async () => {
-    // Folding a confirmed guest into someone else's slot would drop the
+  it('never offers a pairing to a guest who already has their own confirmed spot', async () => {
+    // Folding a confirmed guest into someone else's spot would drop the
     // roster under capacity with nothing to refill it.
     store.sessions.set(SESSION, makeSession({ capacity: 5 }));
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest G' }));
@@ -112,7 +112,7 @@ describe('pairing requires the member to accept', () => {
 /**
  * Regression coverage for Bug 2. An admin status override used to leave a
  * pending sub request live; accepting it then folded an already-confirmed
- * player into someone else's slot, dropping the roster below capacity with no
+ * player into someone else's spot, dropping the roster below capacity with no
  * promotion cascade to refill it. Fixed on both sides — the admin route clears
  * the request, and respondToSubRequest re-checks the precondition.
  */
@@ -136,12 +136,12 @@ describe('a sub request cannot be accepted once the requester has their own spot
 
     // Simulate the admin PATCH route's direct status write.
     await updateSignup(c.signupId, { status: 'confirmed' });
-    expect(countConfirmedSlots([...store.signups.values()])).toBe(3);
+    expect(countConfirmedSpots([...store.signups.values()])).toBe(3);
 
     await expect(respondToSubRequest(c.signupId, 'a@dummy.test', true)).rejects.toThrow(/already has their own spot/);
 
     // Roster untouched, and D is still a normal waitlist candidate.
-    expect(countConfirmedSlots([...store.signups.values()])).toBe(3);
+    expect(countConfirmedSpots([...store.signups.values()])).toBe(3);
     expect(store.signups.get(d.signupId)?.status).toBe('waitlisted');
   });
 
@@ -151,7 +151,7 @@ describe('a sub request cannot be accepted once the requester has their own spot
     const updated = await respondToSubRequest(c.signupId, 'a@dummy.test', true);
 
     expect(updated.pairId).toBeTruthy();
-    expect(updated.status).toBe('confirmed'); // shares A's slot
-    expect(countConfirmedSlots([...store.signups.values()])).toBe(2); // capacity preserved
+    expect(updated.status).toBe('confirmed'); // shares A's spot
+    expect(countConfirmedSpots([...store.signups.values()])).toBe(2); // capacity preserved
   });
 });

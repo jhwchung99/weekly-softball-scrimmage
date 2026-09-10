@@ -110,7 +110,7 @@ describe.each(adapters)('Signups adapter contract — $name', ({ module, reset }
     });
 
     it('does not offer a guest who already has a confirmed spot', async () => {
-      // Folding them into someone else's slot would drop the roster under
+      // Folding them into someone else's spot would drop the roster under
       // capacity with no promotion to refill it.
       await seed(guest({ email: 'guest@dummy.test', status: 'confirmed' }));
 

@@ -17,7 +17,7 @@ const sendPush = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 vi.mock('../../lib/ntfy', () => ({ sendPush }));
 
-const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSlots, computeCostShare, computePaymentSummary, fillOpenSpots } = await import('../signupFlow');
+const { signUpForSession, signUpAsGuestForSession, cancelMySignup, countConfirmedSpots, computeCostShare, computePaymentSummary, fillOpenSpots } = await import('../signupFlow');
 const { respondToSubRequest } = await import('../subRequestFlow');
 
 beforeEach(() => {
@@ -34,21 +34,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('countConfirmedSlots', () => {
-  it('counts each solo confirmed signup as one slot', () => {
+describe('countConfirmedSpots', () => {
+  it('counts each solo confirmed signup as one spot', () => {
     const signups = [
       { ...makeSignup(), signupId: '1', status: 'confirmed' as const, pairId: '' },
       { ...makeSignup(), signupId: '2', status: 'confirmed' as const, pairId: '' },
     ];
-    expect(countConfirmedSlots(signups)).toBe(2);
+    expect(countConfirmedSpots(signups)).toBe(2);
   });
 
-  it('counts a confirmed pair as one slot regardless of row count', () => {
+  it('counts a confirmed pair as one spot regardless of row count', () => {
     const signups = [
       { ...makeSignup(), signupId: '1', status: 'confirmed' as const, pairId: 'pair-a' },
       { ...makeSignup(), signupId: '2', status: 'confirmed' as const, pairId: 'pair-a' },
     ];
-    expect(countConfirmedSlots(signups)).toBe(1);
+    expect(countConfirmedSpots(signups)).toBe(1);
   });
 
   it('ignores waitlisted and cancelled rows', () => {
@@ -56,7 +56,7 @@ describe('countConfirmedSlots', () => {
       { ...makeSignup(), signupId: '1', status: 'waitlisted' as const },
       { ...makeSignup(), signupId: '2', status: 'cancelled' as const },
     ];
-    expect(countConfirmedSlots(signups)).toBe(0);
+    expect(countConfirmedSpots(signups)).toBe(0);
   });
 });
 
@@ -185,7 +185,7 @@ describe('signUpForSession', () => {
     store.players.set('member@dummy.test', makePlayer({ email: 'member@dummy.test', fullName: 'Member One' }));
     store.players.set('guest@dummy.test', makePlayer({ email: 'guest@dummy.test', fullName: 'Guest One' }));
 
-    await signUpForSession('2099-01-01', 'taken@dummy.test', true); // fills the only slot
+    await signUpForSession('2099-01-01', 'taken@dummy.test', true); // fills the only spot
     const guest = await signUpAsGuestForSession('2099-01-01', 'guest@dummy.test', 'Member One', true, true);
     expect(guest.pairId).toBe(''); // member hasn't signed up yet
 
@@ -369,7 +369,7 @@ describe('cancelMySignup', () => {
     expect(sendPush).toHaveBeenCalledTimes(1);
   });
 
-  it('does not free the slot when only one partner of a confirmed pair cancels', async () => {
+  it('does not free the spot when only one partner of a confirmed pair cancels', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z'));
     store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00', capacity: 1 }));
@@ -379,12 +379,12 @@ describe('cancelMySignup', () => {
 
     const member = await signUpForSession('2026-07-10', 'member@dummy.test', true, DURING_REGISTRATION); // confirmed, fills capacity 1
     const guest = await signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', true, true, DURING_REGISTRATION); // waitlisted + request
-    await respondToSubRequest(guest.signupId, 'member@dummy.test', true); // member accepts: now sharing one slot
+    await respondToSubRequest(guest.signupId, 'member@dummy.test', true); // member accepts: now sharing one spot
     expect(store.signups.get(guest.signupId)?.status).toBe('confirmed');
     const c = await signUpForSession('2026-07-10', 'c@dummy.test', true, DURING_REGISTRATION); // waitlisted
     expect(c.status).toBe('waitlisted');
 
-    // Member cancels, but guest is still confirmed sharing the same pairId — slot stays occupied.
+    // Member cancels, but guest is still confirmed sharing the same pairId — spot stays occupied.
     const result = await cancelMySignup(member.signupId, 'member@dummy.test', false);
     expect(result.promoted).toEqual([]);
     expect(store.signups.get(c.signupId)?.status).toBe('waitlisted');
