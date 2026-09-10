@@ -9,6 +9,7 @@ import { rosterView, teamView } from '../../../lib/views';
 import { teamCountFor } from '../../../lib/teamFlow';
 import { WAIVER_TEXT } from '../../../lib/waiver';
 import { handleApiError } from '../../../lib/apiErrors';
+import { phaseOf } from '../../../lib/sessionPhase';
 
 /**
  * Everything the homepage renders, in one request.
@@ -42,6 +43,7 @@ export async function GET() {
     if (!email || !session) {
       return NextResponse.json({
         session,
+        phase: session ? phaseOf(session) : null,
         signedIn: Boolean(email),
         player: null,
         signup: null,
@@ -63,6 +65,16 @@ export async function GET() {
 
     return NextResponse.json({
       session,
+      /**
+       * Where the week stands, decided by the server's clock.
+       *
+       * The homepage used to work this out itself, comparing the milestones to
+       * `new Date()` in the browser — so whether the roster was locked, and
+       * whether payment had opened, depended on the viewer's own device being
+       * right. Two people looking at the same session could be told different
+       * things. See lib/sessionPhase.ts.
+       */
+      phase: phaseOf(session),
       signedIn: true,
       player,
       signup,

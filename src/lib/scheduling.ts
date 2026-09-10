@@ -1,6 +1,7 @@
 import { getSessionByAnyId, createSession, updateSession } from '../sheets/sessions';
 import { listSignupsForSession } from '../sheets/signups';
 import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, todayEastern } from './time';
+import { phaseOf, hasRegistrationClosed } from './sessionPhase';
 import { countConfirmedSlots, computeCostShare } from './payments';
 import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert } from './notifications';
 
@@ -118,7 +119,7 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
   // rejected on the schedule it was meant to keep, not on how close it
   // happens to be to midnight.
   const { registrationClosesAt } = getWeeklyMilestones(existing.gameDate, existing.gameTime);
-  if (now < registrationClosesAt) {
+  if (!hasRegistrationClosed(phaseOf(existing, now))) {
     return {
       sessionId: existing.sessionId,
       skipped: true,
