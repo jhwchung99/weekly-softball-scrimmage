@@ -1,9 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SIGNUP_HEADERS } from '../schema';
 
 // client.ts reads SPREADSHEET_ID at module scope, so it has to be set before
 // the import below — this also documents that the module no longer falls back
 // to a hardcoded production id (see the review, S3).
 process.env.SPREADSHEET_ID = 'test-spreadsheet-id';
+
+// So does the service-account key, via loadKey() on the first client call.
+// `googleapis` and `google-auth-library` are mocked below, but `node:fs` is
+// not, so without this loadKey() reads credentials/service-account.json off
+// the real disk — and these tests passed only on a machine that happened to
+// have a production key sitting there. CI, with no such file, failed seven of
+// them. Setting the inline key exercises the branch production actually uses
+// and keeps the suite hermetic.
+process.env.GOOGLE_SERVICE_ACCOUNT_KEY = JSON.stringify({
+  client_email: 'test@dummy.test.iam.gserviceaccount.com',
+  private_key: 'not-a-key',
+});
 
 const valuesGet = vi.fn();
 const valuesUpdate = vi.fn(async () => ({}));
@@ -33,8 +46,8 @@ describe('columnLetter', () => {
     expect(columnLetter(53)).toBe('BA');
   });
 
-  it('covers the current widest tab (Signups, 18 columns)', () => {
-    expect(columnLetter(18)).toBe('R');
+  it('covers the current widest tab (Signups, 22 columns)', () => {
+    expect(columnLetter(SIGNUP_HEADERS.length)).toBe('V');
   });
 });
 
