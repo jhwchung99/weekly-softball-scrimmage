@@ -2,21 +2,11 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/auth';
 import { getSession } from '../../../../../sheets/sessions';
 import { reviseSession } from '../../../../../lib/adminFlow';
-import { Session, SessionStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
-import {
-  validateCost,
-  validateCapacity,
-  validateNumFields,
-  validateLocationArea,
-  validateLocationName,
-  validateLocationUrl,
-} from '../../../../../lib/validation';
+import { validateSessionEdit } from '../../../../../lib/validation';
 import { adminSessionView } from '../../../../../lib/views';
 
 type Params = { params: Promise<{ sessionId: string }> };
-
-const VALID_STATUSES: SessionStatus[] = ['open', 'closed', 'cancelled'];
 
 /** Session details for any sessionId, not just the current week's — the
  * admin dashboard's "am I admin" check doubles up on this call too. */
@@ -70,70 +60,9 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!existing) throw new ApiError(404, 'No such session.');
 
     const body = await request.json().catch(() => ({}));
-    const fieldsProvided =
-      body?.gameDate !== undefined ||
-      body?.gameTime !== undefined ||
-      body?.capacity !== undefined ||
-      body?.numFields !== undefined ||
-      body?.status !== undefined ||
-      body?.cost !== undefined ||
-      body?.pricePerSpot !== undefined ||
-      body?.locationArea !== undefined ||
-      body?.locationName !== undefined ||
-      body?.locationUrl !== undefined;
-    if (!fieldsProvided) {
-      throw new ApiError(
-        400,
-        'Provide at least one of: gameDate, gameTime, capacity, numFields, status, cost, pricePerSpot, locationArea, locationName, locationUrl.'
-      );
-    }
+    const revision = validateSessionEdit(body);
 
-    // Validation first, and outside the lock: it needs nothing from the sheet,
-    // and a request that is going to 400 should not queue behind other
-    // mutations — or time out waiting for a lock it never needed and come back
-    // as a 503 instead of the validation error the caller earned.
-    const updates: Partial<Session> = {};
-
-    if (body.capacity !== undefined) {
-      updates.capacity = validateCapacity(body.capacity);
-    }
-
-    if (body.numFields !== undefined) {
-      updates.numFields = validateNumFields(body.numFields);
-    }
-
-    if (body.pricePerSpot !== undefined) {
-      updates.pricePerSpot = validateCost(body.pricePerSpot);
-    }
-
-    // Location arrives in two stages: the general area up front, the specific
-    // field once the permit is actually booked (see the plan doc, section 2).
-    if (body.locationArea !== undefined) {
-      updates.locationArea = validateLocationArea(body.locationArea);
-    }
-    if (body.locationName !== undefined) {
-      updates.locationName = validateLocationName(body.locationName);
-    }
-    if (body.locationUrl !== undefined) {
-      updates.locationUrl = validateLocationUrl(body.locationUrl);
-    }
-
-    if (body.status !== undefined) {
-      if (!VALID_STATUSES.includes(body.status)) {
-        throw new ApiError(400, `status must be one of: ${VALID_STATUSES.join(', ')}.`);
-      }
-      updates.status = body.status;
-    }
-
-    if (body.cost !== undefined) {
-      updates.cost = validateCost(body.cost);
-    }
-
-    const { session, promoted } = await reviseSession(sessionId, existing, {
-      updates,
-      gameDate: body.gameDate,
-      gameTime: body.gameTime,
-    });
+    const { session, promoted } = await reviseSession(sessionId, existing, revision);
 
     return NextResponse.json({ session: adminSessionView(session), promoted: promoted.length });
   } catch (err) {
