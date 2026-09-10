@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { groupRosterByPerson, countRoster, activeRowsForEmail, isActiveSignup } from '../adminRoster';
+import type { SignupStatus } from '../../sheets/schema';
 
-const row = (email: string, status: 'confirmed' | 'waitlisted' | 'cancelled', tag = '') => ({
+const row = (email: string, status: SignupStatus, tag = '') => ({
   email,
   status,
   tag: tag || `${email}:${status}`,

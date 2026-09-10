@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionEmail } from '../../../../../lib/auth';
 import { listSignupsForSession } from '../../../../../sheets/signups';
-import { buildRosterView } from '../../../../../lib/roster';
+import { rosterView } from '../../../../../lib/views';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ sessionId: string }> };
@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: Params) {
     const { sessionId } = await params;
     const signups = await listSignupsForSession(sessionId);
 
-    return NextResponse.json(buildRosterView(signups, email));
+    return NextResponse.json(rosterView(signups, email));
   } catch (err) {
     return handleApiError(err);
   }

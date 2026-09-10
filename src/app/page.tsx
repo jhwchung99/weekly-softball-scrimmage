@@ -13,6 +13,8 @@ import { getWeeklyMilestones } from '../lib/time';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
+import type { SessionStatus, SignupStatus, MemberStatus, Signup } from '../sheets/schema';
+import type { RosterEntry, RosterView } from '../lib/views';
 
 export interface SessionInfo {
   sessionId: string;
@@ -20,7 +22,7 @@ export interface SessionInfo {
   gameTime: string;
   capacity: number;
   numFields: number;
-  status: 'open' | 'closed' | 'cancelled';
+  status: SessionStatus;
   pricePerSpot: number;
   locationArea: string;
   locationName: string;
@@ -29,12 +31,12 @@ export interface SessionInfo {
 
 export interface SignupInfo {
   signupId: string;
-  status: 'confirmed' | 'waitlisted' | 'cancelled';
-  memberStatus: 'member' | 'guest';
+  status: SignupStatus;
+  memberStatus: MemberStatus;
   /** Whether the organizer has recorded this person's payment. */
   paid: boolean;
   subRequestTargetEmail: string;
-  subRequestStatus: '' | 'pending' | 'declined';
+  subRequestStatus: Signup['subRequestStatus'];
 }
 
 export interface IncomingSubRequest {
@@ -51,20 +53,10 @@ export interface PlayerInfo {
   savedPositions: string;
 }
 
-export interface RosterEntry {
-  fullName: string;
-  positions: string;
-  pairedWith: string | null;
-}
-
-export interface Roster {
-  confirmedCount: number;
-  waitlistedCount: number;
-  /** Null when the viewer hasn't signed up for this session — counts are
-   * still shown, names are not. See the roster route for why. */
-  confirmed: RosterEntry[] | null;
-  waitlisted: RosterEntry[] | null;
-}
+/** The roster as the projection module defines it — the same declaration the
+ * server builds against, rather than a copy that can drift from it. */
+export type { RosterEntry };
+export type Roster = RosterView;
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -637,7 +629,7 @@ export function PlayerArea(props: {
 
 export function SubRequestPanel(props: {
   subRequestTargetEmail: string;
-  subRequestStatus: '' | 'pending' | 'declined';
+  subRequestStatus: Signup['subRequestStatus'];
   busy: boolean;
   setBusy: (b: boolean) => void;
   setError: (e: string | null) => void;

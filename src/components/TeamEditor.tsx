@@ -6,13 +6,14 @@ import { Card } from './Card';
 import { Button } from './Button';
 import { GAME_DAY_NOTES } from '../lib/gameDayNotes';
 import { teamNoteText, TeamView } from './TeamRosters';
+import type { TeamsStatus } from '../sheets/schema';
 // The same coverage analysis the generator runs. Calling it rather than
 // approximating it is the point: the note under an edited team has to be true
 // while the organizer is still moving people, which is when a gap gets made.
 import { analyzeTeam } from '../lib/teams';
 
 interface TeamsResponse {
-  teamsStatus: '' | 'draft' | 'posted';
+  teamsStatus: TeamsStatus;
   numFields: number;
   teams: TeamView[];
 }
