@@ -3,7 +3,7 @@ import { listSignupsForSession } from '../sheets/signups';
 import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, todayEastern } from './time';
 import { phaseOf, hasRegistrationClosed } from './sessionPhase';
 import { countConfirmedSlots, computeCostShare } from './payments';
-import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert } from './notifications';
+import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert, deliver } from './notifications';
 
 export const DEFAULT_GAME_TIME = process.env.SESSION_DEFAULT_GAME_TIME || '18:00';
 export const DEFAULT_CAPACITY = Number(process.env.SESSION_DEFAULT_CAPACITY) || 20;
@@ -136,18 +136,10 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
   // Always sent, unlike the open-spots alert below: the headcount is what the
   // organizer needs to decide whether to raise capacity and book a second
   // field, and that decision matters most precisely when the session filled.
-  try {
-    await sendHeadcountAlert(existing, confirmed, signups.filter((s) => s.status === 'waitlisted').length);
-  } catch (err) {
-    console.error(`Failed to send headcount alert for session ${existing.sessionId}:`, err);
-  }
+  await deliver(`headcount alert for session ${existing.sessionId}`, () => sendHeadcountAlert(existing, confirmed, signups.filter((s) => s.status === 'waitlisted').length));
 
   if (openSpots > 0) {
-    try {
-      await sendOpenSpotsAlert(existing, openSpots);
-    } catch (err) {
-      console.error(`Failed to send open-spots alert for session ${existing.sessionId}:`, err);
-    }
+    await deliver(`open-spots alert for session ${existing.sessionId}`, () => sendOpenSpotsAlert(existing, openSpots));
   }
 
   return { sessionId: existing.sessionId, skipped: false };
@@ -225,14 +217,16 @@ export async function sendGameDayReminders(now: Date = new Date()): Promise<Remi
   let sent = 0;
   let failed = 0;
   for (const signup of confirmed) {
-    try {
-      // `now` is threaded through so the email's "payment opens at …" wording is
-      // decided by the same clock the job is running against, not wall time.
-      await sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now);
+    // `now` is threaded through so the email's "payment opens at …" wording is
+    // decided by the same clock the job is running against, not wall time.
+    if (
+      await deliver(`game-day reminder to ${signup.email}`, () =>
+        sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now)
+      )
+    ) {
       sent += 1;
-    } catch (err) {
+    } else {
       failed += 1;
-      console.error(`Failed to send game-day reminder to ${signup.email}:`, err);
     }
     await new Promise((resolve) => setTimeout(resolve, SEND_GAP_MS));
   }

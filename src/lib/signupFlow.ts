@@ -22,7 +22,7 @@ import { countConfirmedSlots, computeCostShare } from './payments';
 // Moved to lib/payments.ts so client components can share the implementation;
 // re-exported here because this has been their import site all along.
 export { countConfirmedSlots, computeCostShare, computePaymentSummary } from './payments';
-import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail } from './notifications';
+import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail, deliver } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
 import { withMutationLock } from './lock';
@@ -137,11 +137,9 @@ async function proposeGuestPair(guest: Signup, member: Signup, session: Session)
 
   // Same awaited-but-swallowed pattern as the promotion mail: the request
   // itself already succeeded, and a mail failure shouldn't undo it.
-  try {
-    await sendGuestPairRequestEmail(member, updated, session);
-  } catch (err) {
-    console.error(`Failed to send guest pair request email for signup ${guest.signupId}:`, err);
-  }
+  await deliver(`guest pair request email for signup ${guest.signupId}`, () =>
+    sendGuestPairRequestEmail(member, updated, session)
+  );
   return updated;
 }
 
@@ -394,11 +392,7 @@ export async function cancelMySignup(
       // organizer needs to know a slot just opened so they can personally
       // text someone. Same awaited-but-swallowed pattern as the promotion
       // email below — a failed push shouldn't affect the cancellation.
-      try {
-        await sendLateCancellationAlert(signup, session, owedAtCancellation);
-      } catch (err) {
-        console.error(`Failed to send organizer alert for cancelled signup ${signup.signupId}:`, err);
-      }
+      await deliver(`organizer alert for cancelled signup ${signup.signupId}`, () => sendLateCancellationAlert(signup, session, owedAtCancellation));
       return { promoted: [] };
     }
 
@@ -413,11 +407,7 @@ export async function cancelMySignup(
       // await it." Either way, the promotion itself already succeeded in
       // the sheet — a failed email shouldn't undo that or surface as an
       // error to whoever triggered the cancellation.
-      try {
-        await sendPromotionEmail(promoted, session);
-      } catch (err) {
-        console.error(`Failed to send promotion email to ${promoted.email}:`, err);
-      }
+      await deliver(`promotion email to ${promoted.email}`, () => sendPromotionEmail(promoted, session));
     }
     return { promoted: promotedSignups };
   });
@@ -464,11 +454,7 @@ export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
 
     for (const p of promoted) {
       await clearOwnPendingRequest(p);
-      try {
-        await sendPromotionEmail(p, session);
-      } catch (err) {
-        console.error(`Failed to send promotion email to ${p.email}:`, err);
-      }
+      await deliver(`promotion email to ${p.email}`, () => sendPromotionEmail(p, session));
     }
     return promoted;
   });

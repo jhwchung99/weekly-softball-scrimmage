@@ -4,7 +4,7 @@ import { getSignup, getSignupWithSessionSignups, updateSignup, batchUpdateSignup
 import { Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { alreadySharingReason } from './pair';
-import { sendSubRequestEmail, sendSubRequestAcceptedEmail } from './notifications';
+import { sendSubRequestEmail, sendSubRequestAcceptedEmail, deliver } from './notifications';
 import { normalizeEmail } from './email';
 import { withMutationLock } from './lock';
 
@@ -63,11 +63,7 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     // shouldn't undo it or surface as an error to the requester (same
     // awaited-but-swallowed pattern used for promotion/alert emails in
     // signupFlow.ts).
-    try {
-      await sendSubRequestEmail(target, updated, session);
-    } catch (err) {
-      console.error(`Failed to send sub-request email for signup ${signupId}:`, err);
-    }
+    await deliver(`sub-request email for signup ${signupId}`, () => sendSubRequestEmail(target, updated, session));
 
     return updated;
   });
@@ -160,11 +156,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     ]);
     const updatedRequester = results.find((r) => r.signupId === signupId)!;
 
-    try {
-      await sendSubRequestAcceptedEmail(updatedRequester, target, session);
-    } catch (err) {
-      console.error(`Failed to send sub-request acceptance email for signup ${signupId}:`, err);
-    }
+    await deliver(`sub-request acceptance email for signup ${signupId}`, () => sendSubRequestAcceptedEmail(updatedRequester, target, session));
 
     return updatedRequester;
   });

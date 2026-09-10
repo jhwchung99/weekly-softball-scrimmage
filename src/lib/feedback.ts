@@ -3,6 +3,7 @@ import { sendPush } from './ntfy';
 import { appendFeedback } from '../sheets/feedback';
 import { SPREADSHEET_ID } from '../sheets/client';
 import { FeedbackKind } from './feedbackKinds';
+import { deliver } from './notifications';
 
 /** How each kind announces itself on the organizer's lock screen. */
 const KIND_PUSH: Record<FeedbackKind, { title: string; noun: string; tag: string }> = {
@@ -56,14 +57,10 @@ export async function recordFeedback(report: FeedbackReport, now: Date = new Dat
     pageUrl: report.pageUrl,
   });
 
-  try {
-    await sendPush(title, `${who} just submitted ${noun}. Open the Feedback tab to read it.`, {
+  await deliver('the feedback push alert', () => sendPush(title, `${who} just submitted ${noun}. Open the Feedback tab to read it.`, {
       priority: 3,
       tags: [tag],
       // Tapping the alert goes straight to the sheet holding the message.
       click: SPREADSHEET_ID ? `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit` : undefined,
-    });
-  } catch (err) {
-    console.error('Failed to send the feedback push alert:', err);
-  }
+    }));
 }
