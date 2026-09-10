@@ -147,3 +147,136 @@ describe('GET /api/home', () => {
     ]);
   });
 });
+
+/**
+ * The teams payload is the second place roster data leaves the server, and it
+ * has to honour the same promise the roster payload does: a lineup, and
+ * nothing about anyone's identity, money or history. Read this alongside the
+ * standalone roster route's "never returns email addresses" test — they are
+ * the same assertion applied to the two payloads that carry other people.
+ */
+describe('GET /api/home — the teams payload', () => {
+  const POSTED = { ...SESSION, numFields: 1, teamsStatus: 'posted' };
+
+  /** A teammate with every private field filled in, so a leak has something
+   * recognisable to leak. */
+  function teammate(over: Record<string, unknown> = {}) {
+    return signup({
+      signupId: 'mate-1',
+      email: 'mate@dummy.test',
+      fullName: 'Mate',
+      gender: 'Female',
+      positions: 'Catcher, SS',
+      memberStatus: 'guest',
+      invitedByName: 'Inviter Ivy',
+      willingToShare: true,
+      waiverAcceptedAt: '2099-01-01T00:00:00.000Z',
+      waiverText: 'I accept all risks of playing softball.',
+      paid: true,
+      amountPaid: 17,
+      paidAt: '2099-01-02T00:00:00.000Z',
+      attended: true,
+      subRequestTargetEmail: 'target@dummy.test',
+      subRequestStatus: 'pending',
+      subRequestedAt: '2099-01-03T00:00:00.000Z',
+      teamName: 'Team 1',
+      ...over,
+    });
+  }
+
+  it('sends a teammate only their name, gender, positions and shared-spot id', async () => {
+    getSessionEmail.mockResolvedValue('a@dummy.test');
+    getSessionByAnyId.mockResolvedValue(POSTED);
+    listSignupsForSession.mockResolvedValue([
+      signup({ email: 'a@dummy.test', fullName: 'A', teamName: 'Team 1' }),
+      teammate(),
+    ]);
+
+    const body = await (await GET()).json();
+
+    const mate = body.teams.flatMap((t: { members: unknown[] }) => t.members).find((m: { fullName: string }) => m.fullName === 'Mate');
+    expect(mate).toEqual({
+      signupId: 'mate-1',
+      fullName: 'Mate',
+      gender: 'Female',
+      positions: 'Catcher, SS',
+      pairId: '',
+    });
+  });
+
+  it('keeps every private field off the wire, so the leak cannot come back one key at a time', async () => {
+    getSessionEmail.mockResolvedValue('a@dummy.test');
+    getSessionByAnyId.mockResolvedValue(POSTED);
+    listSignupsForSession.mockResolvedValue([
+      signup({ email: 'a@dummy.test', fullName: 'A', teamName: 'Team 1' }),
+      teammate(),
+    ]);
+
+    const body = await (await GET()).json();
+
+    const serialized = JSON.stringify(body.teams);
+    for (const key of [
+      'email',
+      'paid',
+      'amountPaid',
+      'paidAt',
+      'attended',
+      'waiverText',
+      'waiverAcceptedAt',
+      'subRequestTargetEmail',
+      'subRequestStatus',
+      'subRequestedAt',
+      'memberStatus',
+      'invitedByName',
+      'willingToShare',
+      'status',
+      'timestamp',
+      'sessionId',
+      'teamName',
+    ]) {
+      expect(serialized).not.toMatch(new RegExp(`"${key}"`));
+    }
+    // And the values themselves, in case a key is ever renamed on the way out.
+    expect(serialized).not.toMatch(/dummy\.test/);
+    expect(serialized).not.toMatch(/I accept all risks/);
+    expect(serialized).not.toMatch(/Inviter Ivy/);
+  });
+
+  it('still tells a player who they are playing with and what they cover', async () => {
+    getSessionEmail.mockResolvedValue('a@dummy.test');
+    getSessionByAnyId.mockResolvedValue(POSTED);
+    listSignupsForSession.mockResolvedValue([
+      signup({ signupId: 'me-1', email: 'a@dummy.test', fullName: 'A', positions: 'Rover', teamName: 'Team 1' }),
+      teammate({ pairId: 'pair-9' }),
+      teammate({ signupId: 'mate-2', email: 'mate2@dummy.test', fullName: 'Mate Two', pairId: 'pair-9' }),
+    ]);
+
+    const body = await (await GET()).json();
+
+    const teamOne = body.teams.find((t: { name: string }) => t.name === 'Team 1');
+    expect(teamOne.members.map((m: { fullName: string }) => m.fullName)).toEqual(['A', 'Mate', 'Mate Two']);
+    expect(teamOne.members.map((m: { positions: string }) => m.positions)).toEqual(['Rover', 'Catcher, SS', 'Catcher, SS']);
+    // Sharing a spot still reads correctly on the lineup.
+    expect(teamOne.members.filter((m: { pairId: string }) => m.pairId === 'pair-9')).toHaveLength(2);
+  });
+
+  it('sends no teams to a signed-in caller who has no signup for the week', async () => {
+    getSessionEmail.mockResolvedValue('outsider@dummy.test');
+    getSessionByAnyId.mockResolvedValue(POSTED);
+    listSignupsForSession.mockResolvedValue([teammate()]);
+
+    const body = await (await GET()).json();
+
+    expect(body.teams).toBeNull();
+    expect(JSON.stringify(body)).not.toMatch(/Mate/);
+  });
+
+  it('sends no teams to a signed-out visitor', async () => {
+    getSessionEmail.mockResolvedValue(null);
+    getSessionByAnyId.mockResolvedValue(POSTED);
+
+    const body = await (await GET()).json();
+
+    expect(body.teams).toBeNull();
+  });
+});

@@ -138,4 +138,66 @@ describe('teamsFromSignups', () => {
     expect(after.reduce((n, t) => n + t.members.length, 0)).toBe(9);
     expect(after.flatMap((t) => t.members).some((m) => m.signupId === 's0')).toBe(false);
   });
+
+  it('projects each member down to the rosterable fields, keeping the rest of the row out of the view', () => {
+    // Everything private on one row, so a forwarded row is unmistakable.
+    store.signups.set(
+      'p1',
+      makeSignup({
+        signupId: 'p1',
+        sessionId: SESSION,
+        email: 'private@dummy.test',
+        fullName: 'Private Pat',
+        gender: 'Female',
+        positions: 'Catcher, SS',
+        pairId: 'pair-1',
+        status: 'confirmed',
+        teamName: 'Team 1',
+        memberStatus: 'guest',
+        invitedByName: 'Inviter Ivy',
+        willingToShare: true,
+        waiverText: 'I accept all risks.',
+        paid: true,
+        amountPaid: 17,
+        paidAt: '2026-07-01T00:00:00.000Z',
+        attended: true,
+        subRequestTargetEmail: 'target@dummy.test',
+        subRequestStatus: 'pending',
+      })
+    );
+
+    const [teamOne] = teamsFromSignups([...store.signups.values()], 2);
+
+    expect(teamOne.members).toEqual([
+      { signupId: 'p1', fullName: 'Private Pat', gender: 'Female', positions: 'Catcher, SS', pairId: 'pair-1' },
+    ]);
+  });
+
+  it('keeps the gender the balancer needs, so the view and the generator describe the same player', () => {
+    store.signups.set(
+      'p1',
+      makeSignup({ signupId: 'p1', sessionId: SESSION, fullName: 'F', gender: 'Female', status: 'confirmed', teamName: 'Team 1' })
+    );
+
+    const [teamOne] = teamsFromSignups([...store.signups.values()], 2);
+    expect(teamOne.members[0].gender).toBe('Female');
+  });
+
+  it('still reports what a team cannot cover, since the projection carries positions', () => {
+    for (const [id, positions] of [['p1', 'Catcher'], ['p2', 'Anything']] as const) {
+      store.signups.set(
+        id,
+        makeSignup({ signupId: id, sessionId: SESSION, fullName: id, positions, status: 'confirmed', teamName: 'Team 1' })
+      );
+    }
+
+    const [teamOne] = teamsFromSignups([...store.signups.values()], 2);
+
+    // Two players against a nine-slot lineup: short seven. Which slot the
+    // wildcard takes is the matcher's business; what matters here is that the
+    // projection kept enough for it to answer at all.
+    expect(teamOne.deficiency).toBe(7);
+    expect(teamOne.missing).not.toContain('Catcher');
+    expect(teamOne.missing).toContain('Rover');
+  });
 });

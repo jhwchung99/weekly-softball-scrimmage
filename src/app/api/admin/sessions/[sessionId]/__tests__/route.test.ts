@@ -13,7 +13,16 @@ vi.mock('../../../../../../lib/adminFlow', () => ({ adminRescheduleSession }));
 const withMutationLock = vi.fn((fn: () => unknown) => fn());
 vi.mock('../../../../../../lib/lock', () => ({ withMutationLock }));
 
+const fillOpenSpots = vi.fn();
+vi.mock('../../../../../../lib/signupFlow', () => ({ fillOpenSpots }));
+
 const { GET, PATCH } = await import('../route');
+
+/** A lock that refuses to run its callback, so anything the handler still
+ * manages to write is a write that was never inside the lock. */
+function lockNeverRuns() {
+  withMutationLock.mockImplementation(() => Promise.resolve(undefined));
+}
 
 function makeParams(sessionId: string) {
   return { params: Promise.resolve({ sessionId }) };
@@ -22,6 +31,7 @@ function makeParams(sessionId: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   withMutationLock.mockImplementation((fn: () => unknown) => fn());
+  fillOpenSpots.mockResolvedValue([]);
 });
 
 describe('GET /api/admin/sessions/[sessionId]', () => {
@@ -141,5 +151,117 @@ describe('PATCH /api/admin/sessions/[sessionId]', () => {
       makeParams('2026-07-10')
     );
     expect(res.status).toBe(409);
+  });
+});
+
+/**
+ * Every write this route makes changes who holds a spot for the week, so every
+ * one of them has to be inside the mutation lock — a capacity that lands
+ * outside it can be read as "there is room" by a signup arriving before the
+ * promotion cascade runs.
+ *
+ * These assert what reaches the repository rather than how the lock is called,
+ * so they keep working when the acquisition eventually moves down into the
+ * flow modules.
+ */
+describe('PATCH /api/admin/sessions/[sessionId] — serialization', () => {
+  beforeEach(() => {
+    requireAdmin.mockResolvedValue('admin@dummy.test');
+    getSession.mockResolvedValue({ sessionId: '2099-01-01', gameDate: '2099-01-01', gameTime: '18:00', capacity: 10 });
+    updateSession.mockResolvedValue({ sessionId: '2099-01-01', capacity: 20 });
+    adminRescheduleSession.mockResolvedValue({ sessionId: '2099-01-02', gameDate: '2099-01-02', gameTime: '18:00' });
+  });
+
+  it('writes no capacity change when the lock does not run its callback', async () => {
+    lockNeverRuns();
+
+    await PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 20 }) }),
+      makeParams('2099-01-01')
+    );
+
+    expect(updateSession).not.toHaveBeenCalled();
+  });
+
+  it('runs no part of a reschedule-plus-capacity revision outside the lock', async () => {
+    lockNeverRuns();
+
+    await PATCH(
+      new Request('http://x', {
+        method: 'PATCH',
+        body: JSON.stringify({ gameDate: '2099-01-02', capacity: 20, status: 'closed', cost: 40 }),
+      }),
+      makeParams('2099-01-01')
+    );
+
+    expect(adminRescheduleSession).not.toHaveBeenCalled();
+    expect(updateSession).not.toHaveBeenCalled();
+    expect(fillOpenSpots).not.toHaveBeenCalled();
+  });
+
+  it('runs no promotion cascade when the lock does not run its callback', async () => {
+    lockNeverRuns();
+
+    await PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 30 }) }),
+      makeParams('2099-01-01')
+    );
+
+    expect(fillOpenSpots).not.toHaveBeenCalled();
+  });
+
+  it('still raises capacity and promotes from the waitlist when the lock runs normally', async () => {
+    fillOpenSpots.mockResolvedValue([{ signupId: 'a' }, { signupId: 'b' }]);
+
+    const res = await PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 20 }) }),
+      makeParams('2099-01-01')
+    );
+
+    expect(res.status).toBe(200);
+    expect(updateSession).toHaveBeenCalledWith('2099-01-01', { capacity: 20 });
+    expect(fillOpenSpots).toHaveBeenCalledWith('2099-01-01');
+    expect((await res.json()).promoted).toBe(2);
+  });
+
+  it('leaves the waitlist alone when capacity is only lowered', async () => {
+    updateSession.mockResolvedValue({ sessionId: '2099-01-01', capacity: 5 });
+
+    await PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 5 }) }),
+      makeParams('2099-01-01')
+    );
+
+    expect(fillOpenSpots).not.toHaveBeenCalled();
+  });
+
+  it('returns the same busy error as every other locked route', async () => {
+    const { ApiError } = await import('../../../../../../lib/apiErrors');
+    withMutationLock.mockRejectedValue(
+      new ApiError(503, 'The server is busy processing other requests. Please try again in a moment.')
+    );
+
+    const res = await PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 20 }) }),
+      makeParams('2099-01-01')
+    );
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toMatch(/busy processing other requests/);
+  });
+
+  it('still rejects an invalid field with a 400, rather than making it queue for a lock it never needed', async () => {
+    const { ApiError } = await import('../../../../../../lib/apiErrors');
+    // A lock nobody can take. Validation happens before it, so this is still a 400.
+    withMutationLock.mockRejectedValue(
+      new ApiError(503, 'The server is busy processing other requests. Please try again in a moment.')
+    );
+
+    const res = await PATCH(
+      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: -1 }) }),
+      makeParams('2099-01-01')
+    );
+
+    expect(res.status).toBe(400);
   });
 });
