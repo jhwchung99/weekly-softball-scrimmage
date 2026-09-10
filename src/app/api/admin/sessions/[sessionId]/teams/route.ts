@@ -4,7 +4,6 @@ import { getSession } from '../../../../../../sheets/sessions';
 import { listSignupsForSession } from '../../../../../../sheets/signups';
 import { generateTeams, saveTeams, postTeams, teamCountFor } from '../../../../../../lib/teamFlow';
 import { teamView } from '../../../../../../lib/views';
-import { withMutationLock } from '../../../../../../lib/lock';
 import { ApiError, handleApiError } from '../../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ sessionId: string }> };
@@ -42,7 +41,7 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
 
     if (body?.action === 'generate') {
-      const teams = await withMutationLock(() => generateTeams(sessionId));
+      const teams = await generateTeams(sessionId);
       return NextResponse.json({ teams, teamsStatus: 'draft' });
     }
 
@@ -62,7 +61,7 @@ export async function POST(request: Request, { params }: Params) {
       return { signupId: row.signupId, teamName: row.teamName };
     });
 
-    await withMutationLock(() => saveTeams(sessionId, cleaned));
+    await saveTeams(sessionId, cleaned);
     return NextResponse.json({ ok: true, teamsStatus: 'draft' });
   } catch (err) {
     return handleApiError(err);

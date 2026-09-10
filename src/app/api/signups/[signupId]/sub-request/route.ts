@@ -3,7 +3,6 @@ import { getSessionEmail } from '../../../../../lib/auth';
 import { requestSub, cancelSubRequest } from '../../../../../lib/subRequestFlow';
 import { validateEmail } from '../../../../../lib/validation';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
-import { withMutationLock } from '../../../../../lib/lock';
 
 type Params = { params: Promise<{ signupId: string }> };
 
@@ -17,7 +16,7 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
     const targetEmail = validateEmail(body?.targetEmail);
 
-    const signup = await withMutationLock(() => requestSub(signupId, email, targetEmail));
+    const signup = await requestSub(signupId, email, targetEmail);
     return NextResponse.json({ signup }, { status: 201 });
   } catch (err) {
     return handleApiError(err);
@@ -31,7 +30,7 @@ export async function DELETE(request: Request, { params }: Params) {
     if (!email) throw new ApiError(401, 'Not signed in.');
 
     const { signupId } = await params;
-    const signup = await withMutationLock(() => cancelSubRequest(signupId, email));
+    const signup = await cancelSubRequest(signupId, email);
     return NextResponse.json({ signup });
   } catch (err) {
     return handleApiError(err);

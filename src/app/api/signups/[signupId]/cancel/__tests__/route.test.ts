@@ -9,8 +9,6 @@ vi.mock('../../../../../../sheets/admins', () => ({ isAdminEmail }));
 const cancelMySignup = vi.fn();
 vi.mock('../../../../../../lib/signupFlow', () => ({ cancelMySignup }));
 
-const withMutationLock = vi.fn((fn: () => unknown) => fn());
-vi.mock('../../../../../../lib/lock', () => ({ withMutationLock }));
 
 const { POST } = await import('../route');
 
@@ -20,7 +18,6 @@ function makeParams(signupId: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  withMutationLock.mockImplementation((fn: () => unknown) => fn());
 });
 
 describe('POST /api/signups/[signupId]/cancel', () => {
@@ -38,7 +35,6 @@ describe('POST /api/signups/[signupId]/cancel', () => {
     const res = await POST(new Request('http://x', { method: 'POST' }), makeParams('s1'));
     expect(res.status).toBe(200);
     expect(cancelMySignup).toHaveBeenCalledWith('s1', 'a@dummy.test', true);
-    expect(withMutationLock).toHaveBeenCalledTimes(1);
   });
 
   it('returns the promoted list from the response', async () => {

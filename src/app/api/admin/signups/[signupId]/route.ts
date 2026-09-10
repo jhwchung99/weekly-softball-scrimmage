@@ -28,6 +28,10 @@ const VALID_STATUSES: SignupStatus[] = ['confirmed', 'waitlisted', 'cancelled'];
  * week, or read a roster that a concurrent signup invalidates before the
  * write lands. The body is parsed outside the lock so no one waits on the
  * request stream while holding it.
+ *
+ * One of the last two handlers still acquiring the lock itself, for the same
+ * reason as the admin session revision: the orchestration is here rather than
+ * in a flow module, and the acquisition moves when it does.
  */
 export async function PATCH(request: Request, { params }: Params) {
   try {

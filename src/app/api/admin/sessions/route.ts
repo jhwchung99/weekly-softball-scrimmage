@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../lib/auth';
 import { adminCreateSession } from '../../../../lib/adminFlow';
-import { withMutationLock } from '../../../../lib/lock';
 import { handleApiError } from '../../../../lib/apiErrors';
 
 /** Create a new session (Section 8) — mainly for scheduling a
@@ -11,8 +10,7 @@ export async function POST(request: Request) {
   try {
     await requireAdmin();
     const body = await request.json().catch(() => ({}));
-    const session = await withMutationLock(() =>
-      adminCreateSession({
+    const session = await adminCreateSession({
         gameDate: body?.gameDate,
         gameTime: body?.gameTime,
         capacity: body?.capacity,
@@ -20,8 +18,7 @@ export async function POST(request: Request) {
         pricePerSpot: body?.pricePerSpot,
         locationArea: body?.locationArea,
         openImmediately: Boolean(body?.openImmediately),
-      })
-    );
+      });
     return NextResponse.json({ session }, { status: 201 });
   } catch (err) {
     return handleApiError(err);

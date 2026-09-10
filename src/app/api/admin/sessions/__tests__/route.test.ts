@@ -6,14 +6,11 @@ vi.mock('../../../../../lib/auth', () => ({ requireAdmin }));
 const adminCreateSession = vi.fn();
 vi.mock('../../../../../lib/adminFlow', () => ({ adminCreateSession }));
 
-const withMutationLock = vi.fn((fn: () => unknown) => fn());
-vi.mock('../../../../../lib/lock', () => ({ withMutationLock }));
 
 const { POST } = await import('../route');
 
 beforeEach(() => {
   vi.clearAllMocks();
-  withMutationLock.mockImplementation((fn: () => unknown) => fn());
 });
 
 describe('POST /api/admin/sessions', () => {
@@ -25,7 +22,7 @@ describe('POST /api/admin/sessions', () => {
     expect(res.status).toBe(403);
   });
 
-  it('creates a session under the mutation lock and returns it', async () => {
+  it('creates a session and returns it', async () => {
     requireAdmin.mockResolvedValue('admin@dummy.test');
     adminCreateSession.mockResolvedValue({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00' });
 
@@ -36,7 +33,6 @@ describe('POST /api/admin/sessions', () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.session.sessionId).toBe('2026-07-10');
-    expect(withMutationLock).toHaveBeenCalledTimes(1);
     expect(adminCreateSession).toHaveBeenCalledWith({
       gameDate: '2026-07-10',
       gameTime: '18:00',
