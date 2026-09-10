@@ -88,8 +88,10 @@ export async function saveTeams(sessionId: string, assignments: { signupId: stri
 
 /** Makes the saved rosters visible to players. Touches no signup row. */
 export async function postTeams(sessionId: string): Promise<Session> {
-  const session = await getSession(sessionId);
-  if (!session) throw new ApiError(404, 'No such session.');
-  if (session.teamsStatus === '') throw new ApiError(409, 'There are no teams to post yet.');
-  return updateSession(sessionId, { teamsStatus: 'posted' });
+  return withMutationLock(async () => {
+    const session = await getSession(sessionId);
+    if (!session) throw new ApiError(404, 'No such session.');
+    if (session.teamsStatus === '') throw new ApiError(409, 'There are no teams to post yet.');
+    return updateSession(sessionId, { teamsStatus: 'posted' });
+  });
 }

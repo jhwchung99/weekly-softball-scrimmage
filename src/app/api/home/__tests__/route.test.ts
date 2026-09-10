@@ -109,7 +109,10 @@ describe('GET /api/home', () => {
 
     expect(body.signedIn).toBe(true);
     expect(body.player.fullName).toBe('A');
-    expect(body.signup.email).toBe('a@dummy.test');
+    // Not `email`: the caller's own signup is projected too, and the browser
+    // already knows who it is signed in as.
+    expect(body.signup.signupId).toBeTruthy();
+    expect(body.signup).not.toHaveProperty('email');
     expect(body.costOwed).toBe(10); // the fixed price for one spot
     expect(body.roster.confirmedCount).toBe(2);
     expect(body.roster.confirmed.map((e: { fullName: string }) => e.fullName)).toEqual(['A', 'B']);

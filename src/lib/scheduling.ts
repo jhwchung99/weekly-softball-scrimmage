@@ -4,6 +4,7 @@ import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, t
 import { phaseOf, hasRegistrationClosed } from './sessionPhase';
 import { countConfirmedSpots, computeCostShare } from './payments';
 import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert, deliver } from './notifications';
+import { withMutationLock } from './lock';
 
 export const DEFAULT_GAME_TIME = process.env.SESSION_DEFAULT_GAME_TIME || '18:00';
 export const DEFAULT_CAPACITY = Number(process.env.SESSION_DEFAULT_CAPACITY) || 20;
@@ -36,36 +37,38 @@ export interface ScheduleResult {
  * they didn't get to it.
  */
 export async function openRegistrationForUpcomingSession(now: Date = new Date()): Promise<ScheduleResult> {
-  const candidates = currentWeekGameDayCandidates(now);
-  const defaultSessionId = candidates[0]; // Friday
+  return withMutationLock(async () => {
+    const candidates = currentWeekGameDayCandidates(now);
+    const defaultSessionId = candidates[0]; // Friday
 
-  if (!isNearEasternTime(9, 0, CRON_TOLERANCE_MINUTES, now)) {
-    return { sessionId: defaultSessionId, skipped: true, reason: 'Not currently ~9am ET — likely the DST-offset duplicate cron firing.' };
-  }
+    if (!isNearEasternTime(9, 0, CRON_TOLERANCE_MINUTES, now)) {
+      return { sessionId: defaultSessionId, skipped: true, reason: 'Not currently ~9am ET — likely the DST-offset duplicate cron firing.' };
+    }
 
-  const existing = await getSessionByAnyId(candidates);
-  if (!existing) {
-    await createSession({
-      sessionId: defaultSessionId,
-      gameDate: defaultSessionId,
-      gameTime: DEFAULT_GAME_TIME,
-      registrationOpensAt: now.toISOString(),
-      registrationClosesAt: '',
-      capacity: DEFAULT_CAPACITY,
-      cost: 0,
-      pricePerSpot: DEFAULT_PRICE_PER_SPOT,
-      locationArea: '',
-      locationName: '',
-      locationUrl: '',
-      numFields: 1,
-      teamsStatus: '',
-      status: 'open',
-    });
-    return { sessionId: defaultSessionId, skipped: false };
-  }
+    const existing = await getSessionByAnyId(candidates);
+    if (!existing) {
+      await createSession({
+        sessionId: defaultSessionId,
+        gameDate: defaultSessionId,
+        gameTime: DEFAULT_GAME_TIME,
+        registrationOpensAt: now.toISOString(),
+        registrationClosesAt: '',
+        capacity: DEFAULT_CAPACITY,
+        cost: 0,
+        pricePerSpot: DEFAULT_PRICE_PER_SPOT,
+        locationArea: '',
+        locationName: '',
+        locationUrl: '',
+        numFields: 1,
+        teamsStatus: '',
+        status: 'open',
+      });
+      return { sessionId: defaultSessionId, skipped: false };
+    }
 
-  await updateSession(existing.sessionId, { status: 'open', registrationOpensAt: now.toISOString() });
-  return { sessionId: existing.sessionId, skipped: false };
+    await updateSession(existing.sessionId, { status: 'open', registrationOpensAt: now.toISOString() });
+    return { sessionId: existing.sessionId, skipped: false };
+  });
 }
 
 /**
@@ -96,52 +99,54 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
  * which has already succeeded by that point.
  */
 export async function closeRegistrationForCurrentSession(now: Date = new Date()): Promise<ScheduleResult> {
-  const candidates = currentWeekGameDayCandidates(now);
+  return withMutationLock(async () => {
+    const candidates = currentWeekGameDayCandidates(now);
 
-  const existing = await getSessionByAnyId(candidates);
-  if (!existing) {
-    return { sessionId: candidates[0], skipped: true, reason: 'No session exists for this week — nothing to close.' };
-  }
+    const existing = await getSessionByAnyId(candidates);
+    if (!existing) {
+      return { sessionId: candidates[0], skipped: true, reason: 'No session exists for this week — nothing to close.' };
+    }
 
-  // The idempotency guard, and so the thing that discards the DST duplicate:
-  // only an open session is closeable. Also covers an admin having closed or
-  // cancelled it by hand, which should likewise not re-fire the alerts.
-  if (existing.status !== 'open') {
-    return {
-      sessionId: existing.sessionId,
-      skipped: true,
-      reason: `Registration is already ${existing.status} — nothing to close.`,
-    };
-  }
+    // The idempotency guard, and so the thing that discards the DST duplicate:
+    // only an open session is closeable. Also covers an admin having closed or
+    // cancelled it by hand, which should likewise not re-fire the alerts.
+    if (existing.status !== 'open') {
+      return {
+        sessionId: existing.sessionId,
+        skipped: true,
+        reason: `Registration is already ${existing.status} — nothing to close.`,
+      };
+    }
 
-  // Derived from the game date rather than the clock, so an early firing is
-  // rejected on the schedule it was meant to keep, not on how close it
-  // happens to be to midnight.
-  const { registrationClosesAt } = getWeeklyMilestones(existing.gameDate, existing.gameTime);
-  if (!hasRegistrationClosed(phaseOf(existing, now))) {
-    return {
-      sessionId: existing.sessionId,
-      skipped: true,
-      reason: `Registration does not close until ${registrationClosesAt.toISOString()}.`,
-    };
-  }
+    // Derived from the game date rather than the clock, so an early firing is
+    // rejected on the schedule it was meant to keep, not on how close it
+    // happens to be to midnight.
+    const { registrationClosesAt } = getWeeklyMilestones(existing.gameDate, existing.gameTime);
+    if (!hasRegistrationClosed(phaseOf(existing, now))) {
+      return {
+        sessionId: existing.sessionId,
+        skipped: true,
+        reason: `Registration does not close until ${registrationClosesAt.toISOString()}.`,
+      };
+    }
 
-  await updateSession(existing.sessionId, { status: 'closed', registrationClosesAt: now.toISOString() });
+    await updateSession(existing.sessionId, { status: 'closed', registrationClosesAt: now.toISOString() });
 
-  const signups = await listSignupsForSession(existing.sessionId);
-  const confirmed = countConfirmedSpots(signups);
-  const openSpots = existing.capacity - confirmed;
+    const signups = await listSignupsForSession(existing.sessionId);
+    const confirmed = countConfirmedSpots(signups);
+    const openSpots = existing.capacity - confirmed;
 
-  // Always sent, unlike the open-spots alert below: the headcount is what the
-  // organizer needs to decide whether to raise capacity and book a second
-  // field, and that decision matters most precisely when the session filled.
-  await deliver(`headcount alert for session ${existing.sessionId}`, () => sendHeadcountAlert(existing, confirmed, signups.filter((s) => s.status === 'waitlisted').length));
+    // Always sent, unlike the open-spots alert below: the headcount is what the
+    // organizer needs to decide whether to raise capacity and book a second
+    // field, and that decision matters most precisely when the session filled.
+    await deliver(`headcount alert for session ${existing.sessionId}`, () => sendHeadcountAlert(existing, confirmed, signups.filter((s) => s.status === 'waitlisted').length));
 
-  if (openSpots > 0) {
-    await deliver(`open-spots alert for session ${existing.sessionId}`, () => sendOpenSpotsAlert(existing, openSpots));
-  }
+    if (openSpots > 0) {
+      await deliver(`open-spots alert for session ${existing.sessionId}`, () => sendOpenSpotsAlert(existing, openSpots));
+    }
 
-  return { sessionId: existing.sessionId, skipped: false };
+    return { sessionId: existing.sessionId, skipped: false };
+  });
 }
 
 /**

@@ -3,6 +3,7 @@ import { getSessionEmail } from '../../../../../lib/auth';
 import { signUpForSession, signUpAsGuestForSession, getMyStatusForSession } from '../../../../../lib/signupFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 import { validateInvitedByName } from '../../../../../lib/validation';
+import { mySignupView } from '../../../../../lib/views';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
@@ -23,7 +24,7 @@ export async function POST(request: Request, { params }: Params) {
     const rawInvitedByName = typeof body?.invitedByName === 'string' ? body.invitedByName : '';
     const waiverAccepted = Boolean(body?.waiverAccepted);
 
-    const signup = rawInvitedByName
+    const created = rawInvitedByName
       ? await signUpAsGuestForSession(
           sessionId,
           email,
@@ -32,6 +33,7 @@ export async function POST(request: Request, { params }: Params) {
           waiverAccepted
         )
       : await signUpForSession(sessionId, email, waiverAccepted);
+    const signup = mySignupView(created);
 
     return NextResponse.json({ signup }, { status: 201 });
   } catch (err) {
@@ -54,7 +56,8 @@ export async function GET(request: Request, { params }: Params) {
     // about where they stood while the homepage told them exactly. `MyStatus`
     // is already the shape this endpoint returns, so naming the fields again
     // only creates somewhere for them to go missing.
-    return NextResponse.json(await getMyStatusForSession(sessionId, email));
+    const status = await getMyStatusForSession(sessionId, email);
+    return NextResponse.json({ ...status, signup: status.signup ? mySignupView(status.signup) : null });
   } catch (err) {
     return handleApiError(err);
   }

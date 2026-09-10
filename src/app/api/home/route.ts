@@ -5,7 +5,7 @@ import { listSignupsForSession } from '../../../sheets/signups';
 import { getPlayer } from '../../../sheets/players';
 import { currentWeekGameDayCandidates } from '../../../lib/time';
 import { buildMyStatus } from '../../../lib/signupFlow';
-import { rosterView, teamView, sessionView } from '../../../lib/views';
+import { rosterView, teamView, sessionView, mySignupView, playerView } from '../../../lib/views';
 import { teamCountFor } from '../../../lib/teamFlow';
 import { WAIVER_TEXT } from '../../../lib/waiver';
 import { handleApiError } from '../../../lib/apiErrors';
@@ -75,8 +75,8 @@ export async function GET() {
        */
       phase: phaseOf(session),
       signedIn: true,
-      player,
-      signup,
+      player: player ? playerView(player) : null,
+      signup: signup ? mySignupView(signup) : null,
       incomingSubRequests,
       costOwed,
       waitlistPosition,

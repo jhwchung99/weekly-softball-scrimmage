@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeSignup } from '../../test/fakeSheets';
-import { rosterView, teamView, adminRosterView, sessionView, adminSessionView } from '../views';
+import { rosterView, teamView, adminRosterView, sessionView, adminSessionView, mySignupView, playerView } from '../views';
 import { SIGNUP_HEADERS, SESSION_HEADERS } from '../../sheets/schema';
 import { makeSession } from '../../test/fakeSheets';
 
@@ -254,5 +254,45 @@ describe('sessionView', () => {
 
     expect(admin.cost).toBe(240);
     expect(admin).toMatchObject(sessionView(loadedSession()));
+  });
+});
+
+describe('mySignupView', () => {
+  it('carries what a player reads about their own signup, and no more', () => {
+    // Their own record, so nothing here is a disclosure. It is closed for the
+    // same reason every other view is: a narrow declared type over a wide
+    // payload is exactly how the teams leak worked.
+    allowsExactly(mySignupView(loaded()) as unknown as Record<string, unknown>, [
+      'signupId',
+      'status',
+      'memberStatus',
+      'paid',
+      'subRequestTargetEmail',
+      'subRequestStatus',
+    ]);
+  });
+
+  it('leaves the waiver, the payment record and the timestamps out', () => {
+    const serialized = JSON.stringify(mySignupView(loaded()));
+
+    expect(serialized).not.toMatch(/I accept all risks/);
+    expect(serialized).not.toMatch(/17/); // amountPaid
+    expect(serialized).not.toMatch(/2099-01-02/); // paidAt
+  });
+
+  it('still tells a player whether they are confirmed and whether they have paid', () => {
+    expect(mySignupView(loaded({ status: 'waitlisted', paid: true }))).toMatchObject({
+      status: 'waitlisted',
+      paid: true,
+    });
+  });
+});
+
+describe('playerView', () => {
+  it('carries the profile a player edits, without echoing their email back', () => {
+    const view = playerView({ email: 'a@dummy.test', fullName: 'A', gender: 'Female', savedPositions: 'Catcher' });
+
+    expect(view).toEqual({ fullName: 'A', gender: 'Female', savedPositions: 'Catcher' });
+    expect(JSON.stringify(view)).not.toMatch(/dummy\.test/);
   });
 });
