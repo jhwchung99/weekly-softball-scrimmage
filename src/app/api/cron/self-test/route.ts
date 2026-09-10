@@ -4,6 +4,7 @@ import { getSessionByAnyId } from '../../../../sheets/sessions';
 import { listSignupsForSession } from '../../../../sheets/signups';
 import { currentWeekGameDayCandidates } from '../../../../lib/time';
 import { countConfirmedSpots } from '../../../../lib/payments';
+import { getRedis } from '../../../../lib/redis';
 import { sendPush } from '../../../../lib/ntfy';
 import { sendEmail } from '../../../../lib/gmail';
 import { handleApiError } from '../../../../lib/apiErrors';
@@ -17,11 +18,13 @@ import { handleApiError } from '../../../../lib/apiErrors';
  * errors so a failed send can't roll back the work that triggered it.
  *
  * Exercises exactly what the real jobs exercise — cron auth, Sheets reads,
- * ntfy, Gmail — and reports each independently, so a failure names the layer
- * rather than just going quiet.
+ * Redis, ntfy, Gmail — and reports each independently, so a failure names the
+ * layer rather than just going quiet.
  *
  * SAFETY, because this runs against production data:
- *   - Nothing is written. No session, signup, or player row is touched.
+ *   - No Sheets row is written. No session, signup, or player row is touched.
+ *     The Redis check writes one throwaway key of its own, on a name no other
+ *     code uses and with a few seconds' expiry; it never touches the lock key.
  *   - The email goes to GMAIL_SENDER_EMAIL and nowhere else. A registrant
  *     address is never read, let alone sent to — `to` is not a parameter and
  *     cannot be influenced by the caller.
@@ -54,6 +57,42 @@ export async function POST(request: Request) {
       const signups = await listSignupsForSession(session.sessionId);
       const confirmed = countConfirmedSpots(signups);
       return `session ${session.sessionId} (${session.status}), ${confirmed}/${session.capacity} confirmed, ${signups.length} signup rows`;
+    });
+
+    /**
+     * Whether the mutation lock is actually running.
+     *
+     * `getRedis` returns null when Upstash is unconfigured, and the lock and
+     * the rate limiter then both **fail open** — deliberately, so a missing
+     * optional dependency cannot take the app down. The cost is that the one
+     * signal is a `console.warn` in a serverless log nobody reads, and the
+     * symptom is two simultaneous signups both reading "there is room" and
+     * both being confirmed. That is a week oversubscribed by one, months
+     * after the variable went missing.
+     *
+     * So it round-trips a key rather than checking the variables are present:
+     * a URL and a token that are set but wrong fail in exactly the same
+     * invisible way as ones that are absent.
+     */
+    await run('redis', async () => {
+      const redis = getRedis();
+      if (!redis) {
+        throw new Error(
+          'UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set. The mutation lock is running ' +
+            'unlocked and the feedback rate limiter is inactive — see ADR-0001.'
+        );
+      }
+
+      const key = 'weekly-softball-scrimmage:self-test';
+      const token = String(startedAt.getTime());
+      await redis.set(key, token, { ex: 30 });
+      const readBack = await redis.get<string>(key);
+      await redis.del(key);
+
+      if (readBack !== token) {
+        throw new Error(`wrote ${token} to ${key} but read back ${String(readBack)}`);
+      }
+      return 'lock store reachable, round-tripped a key';
     });
 
     await run('ntfy', async () => {
