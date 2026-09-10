@@ -7,7 +7,9 @@ vi.mock('../../../../../../lib/auth', () => ({ requireSignedIn }));
 const signUpForSession = vi.fn();
 const signUpAsGuestForSession = vi.fn();
 const getMyStatusForSession = vi.fn();
-vi.mock('../../../../../../lib/signupFlow', () => ({ signUpForSession, signUpAsGuestForSession, getMyStatusForSession }));
+vi.mock('../../../../../../lib/signupFlow', () => ({ signUpForSession, signUpAsGuestForSession }));
+// Read-only, and now its own module — see lib/myStatus.
+vi.mock('../../../../../../lib/myStatus', () => ({ getMyStatusForSession }));
 
 
 const { GET, POST } = await import('../route');

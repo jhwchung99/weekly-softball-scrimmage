@@ -3,7 +3,7 @@ import { getSessionEmail } from '../../../lib/auth';
 import { listSignupsForSession } from '../../../sheets/signups';
 import { getPlayer } from '../../../sheets/players';
 import { currentWeekSession } from '../../../lib/currentWeek';
-import { buildMyStatus } from '../../../lib/signupFlow';
+import { buildMyStatus } from '../../../lib/myStatus';
 import { rosterView, teamView, sessionView, mySignupView, playerView } from '../../../lib/views';
 import { teamCountFor } from '../../../lib/teamFlow';
 import { WAIVER_TEXT } from '../../../lib/waiver';

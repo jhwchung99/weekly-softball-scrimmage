@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireSignedIn } from '../../../../../lib/auth';
-import { signUpForSession, signUpAsGuestForSession, getMyStatusForSession } from '../../../../../lib/signupFlow';
+import { signUpForSession, signUpAsGuestForSession } from '../../../../../lib/signupFlow';
+import { getMyStatusForSession } from '../../../../../lib/myStatus';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 import { validateInvitedByName } from '../../../../../lib/validation';
 import { mySignupView } from '../../../../../lib/views';
