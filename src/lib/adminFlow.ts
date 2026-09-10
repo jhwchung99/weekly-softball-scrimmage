@@ -8,15 +8,7 @@ import { Session, Signup, SignupStatus } from '../sheets/schema';
 import { signUpForSession, signUpAsGuestForSession, fillOpenSpots } from './signupFlow';
 import { DEFAULT_GAME_TIME, DEFAULT_CAPACITY, DEFAULT_PRICE_PER_SPOT } from './scheduling';
 import { ApiError } from './apiErrors';
-import {
-  validatePlayerProfile,
-  validateInvitedByName,
-  validateGameDate,
-  validateGameTime,
-  validateCapacity,
-  validateCost,
-  validateLocationArea,
-} from './validation';
+import { validatePlayerProfile, validateInvitedByName, validateSessionCreate, validateReschedule } from './validation';
 import { withMutationLock } from './lock';
 
 export interface AdminAddSignupInput {
@@ -105,12 +97,11 @@ export interface AdminCreateSessionInput {
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
   return withMutationLock(async () => {
-    const gameDate = validateGameDate(input.gameDate);
-    const gameTime = input.gameTime !== undefined ? validateGameTime(input.gameTime) : DEFAULT_GAME_TIME;
-    const capacity = input.capacity !== undefined ? validateCapacity(input.capacity) : DEFAULT_CAPACITY;
-    const cost = input.cost !== undefined ? validateCost(input.cost) : 0;
-    const pricePerSpot = input.pricePerSpot !== undefined ? validateCost(input.pricePerSpot) : DEFAULT_PRICE_PER_SPOT;
-    const locationArea = input.locationArea !== undefined ? validateLocationArea(input.locationArea) : '';
+    const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea } = validateSessionCreate(input, {
+      gameTime: DEFAULT_GAME_TIME,
+      capacity: DEFAULT_CAPACITY,
+      pricePerSpot: DEFAULT_PRICE_PER_SPOT,
+    });
 
     const existing = await getSession(gameDate);
     if (existing) throw new ApiError(409, `A session for ${gameDate} already exists.`);
@@ -347,8 +338,7 @@ export async function reviseSession(
 
 export async function adminRescheduleSession(sessionId: string, newGameDate: unknown, newGameTime: unknown): Promise<Session> {
   return withMutationLock(async () => {
-    const gameDate = validateGameDate(newGameDate);
-    const gameTime = validateGameTime(newGameTime);
+    const { gameDate, gameTime } = validateReschedule(newGameDate, newGameTime);
 
     const existing = await getSession(sessionId);
     if (!existing) throw new ApiError(404, 'No such session.');

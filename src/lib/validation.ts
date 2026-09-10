@@ -17,13 +17,13 @@ function requireTrimmedString(value: unknown, fieldName: string, maxLength: numb
   return trimmed;
 }
 
-export function validateFullName(value: unknown): string {
+function validateFullName(value: unknown): string {
   return requireTrimmedString(value, 'fullName', MAX_NAME_LENGTH);
 }
 
 /** One of GENDERS, normalized to its canonical casing. Checked against the
  * same list the form's radio buttons are built from, like positions. */
-export function validateGender(value: unknown): string {
+function validateGender(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!trimmed) throw new ApiError(400, 'gender is required.');
   const match = normalizeGender(trimmed);
@@ -37,7 +37,7 @@ export function validateGender(value: unknown): string {
  * are themselves sourced from. Empty input is allowed — declaring
  * positions isn't required.
  */
-export function validateSavedPositions(value: unknown): string {
+function validateSavedPositions(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) return '';
   const entries = value
     .split(',')
@@ -72,7 +72,7 @@ export function validateEmail(value: unknown): string {
   return normalizeEmail(trimmed);
 }
 
-export function validateCost(value: unknown): number {
+function validateCost(value: unknown): number {
   const cost = Number(value);
   if (!Number.isFinite(cost) || cost < 0) {
     throw new ApiError(400, 'cost must be a non-negative number.');
@@ -80,7 +80,7 @@ export function validateCost(value: unknown): number {
   return cost;
 }
 
-export function validateCapacity(value: unknown): number {
+function validateCapacity(value: unknown): number {
   const capacity = Number(value);
   if (!Number.isFinite(capacity) || capacity < 0) {
     throw new ApiError(400, 'capacity must be a non-negative number.');
@@ -93,7 +93,7 @@ const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /** Also doubles as a session's id (see sheets/sessions.ts), so this checks
  * the date is real, not just shaped like one — "2026-02-30" round-trips
  * to a different date through the JS Date constructor otherwise. */
-export function validateGameDate(value: unknown): string {
+function validateGameDate(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!ISO_DATE_PATTERN.test(trimmed)) {
     throw new ApiError(400, 'gameDate must be an ISO date (YYYY-MM-DD).');
@@ -115,7 +115,7 @@ const MAX_LOCATION_LENGTH = 120;
 
 /** The general area, known at session creation — e.g. "Mississauga". Optional:
  * an empty value just means no area has been decided yet. */
-export function validateLocationArea(value: unknown): string {
+function validateLocationArea(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (trimmed.length > MAX_LOCATION_LENGTH) {
     throw new ApiError(400, `locationArea must be ${MAX_LOCATION_LENGTH} characters or fewer.`);
@@ -124,7 +124,7 @@ export function validateLocationArea(value: unknown): string {
 }
 
 /** The specific field, filled in once the permit is booked. Optional. */
-export function validateLocationName(value: unknown): string {
+function validateLocationName(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (trimmed.length > MAX_LOCATION_LENGTH) {
     throw new ApiError(400, `locationName must be ${MAX_LOCATION_LENGTH} characters or fewer.`);
@@ -137,7 +137,7 @@ export function validateLocationName(value: unknown): string {
  * an anchor href — without the check, a `javascript:` URL saved by an admin
  * would execute for every player viewing the page.
  */
-export function validateLocationUrl(value: unknown): string {
+function validateLocationUrl(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!trimmed) return '';
   let parsed: URL;
@@ -154,7 +154,7 @@ export function validateLocationUrl(value: unknown): string {
 
 const GAME_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export function validateGameTime(value: unknown): string {
+function validateGameTime(value: unknown): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!GAME_TIME_PATTERN.test(trimmed)) {
     throw new ApiError(400, 'gameTime must be in 24-hour HH:MM format.');
@@ -166,7 +166,7 @@ export function validateGameTime(value: unknown): string {
  * How many diamonds are booked. Two is the practical ceiling for a pickup
  * game, and it is what decides whether the generator makes two teams or four.
  */
-export function validateNumFields(value: unknown): number {
+function validateNumFields(value: unknown): number {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1 || n > 2) {
     throw new ApiError(400, 'numFields must be 1 or 2.');
@@ -249,4 +249,168 @@ export function validateAnnouncementNote(value: unknown): string {
     throw new ApiError(400, `note must be ${MAX_ANNOUNCEMENT_NOTE_LENGTH} characters or fewer.`);
   }
   return trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// Composers
+//
+// What a route accepts, described once, instead of assembled field by field at
+// the call site.
+//
+// The leaf checks above stay exactly as they are — `validateGameDate` folds
+// three rules that four callers depend on, and `validateLocationUrl` carries a
+// `javascript:`-URL defence — but they are private now. What was exported was
+// as wide as the implementation: nineteen functions, thirteen of them
+// single-field checks that were individually well tested. The part that
+// actually decided what a request did — which fields were supplied, which get
+// validated, which get written — was hand-assembled per route and tested
+// nowhere.
+// ---------------------------------------------------------------------------
+
+/** A session's editable fields, as the organizer may change them. */
+export interface ValidatedSessionEdit {
+  /** Only the fields actually supplied. A field absent from the request is
+   * absent here, so a partial update can never write one that was not sent. */
+  updates: {
+    capacity?: number;
+    numFields?: number;
+    pricePerSpot?: number;
+    locationArea?: string;
+    locationName?: string;
+    locationUrl?: string;
+    status?: 'open' | 'closed' | 'cancelled';
+    cost?: number;
+  };
+  /** Present only when the organizer is moving the game. */
+  gameDate?: string;
+  gameTime?: string;
+}
+
+const SESSION_STATUSES = ['open', 'closed', 'cancelled'] as const;
+
+const EDITABLE_FIELDS = [
+  'gameDate',
+  'gameTime',
+  'capacity',
+  'numFields',
+  'status',
+  'cost',
+  'pricePerSpot',
+  'locationArea',
+  'locationName',
+  'locationUrl',
+] as const;
+
+/**
+ * One organizer edit to a session.
+ *
+ * Rejects a request that names none of the editable fields, so "provide at
+ * least one of" is decided here rather than inferred from whether the assembled
+ * object happened to come out empty — which is the same answer by accident, and
+ * stops being so the moment a field is added that does not write an update.
+ */
+export function validateSessionEdit(body: unknown): ValidatedSessionEdit {
+  const input = (body ?? {}) as Record<string, unknown>;
+
+  if (!EDITABLE_FIELDS.some((field) => input[field] !== undefined)) {
+    throw new ApiError(400, `Provide at least one of: ${EDITABLE_FIELDS.join(', ')}.`);
+  }
+
+  const updates: ValidatedSessionEdit['updates'] = {};
+
+  if (input.capacity !== undefined) updates.capacity = validateCapacity(input.capacity);
+  if (input.numFields !== undefined) updates.numFields = validateNumFields(input.numFields);
+  if (input.pricePerSpot !== undefined) updates.pricePerSpot = validateCost(input.pricePerSpot);
+  // Location arrives in two stages: the general area up front, the specific
+  // field once the permit is actually booked.
+  if (input.locationArea !== undefined) updates.locationArea = validateLocationArea(input.locationArea);
+  if (input.locationName !== undefined) updates.locationName = validateLocationName(input.locationName);
+  if (input.locationUrl !== undefined) updates.locationUrl = validateLocationUrl(input.locationUrl);
+  if (input.cost !== undefined) updates.cost = validateCost(input.cost);
+
+  if (input.status !== undefined) {
+    const status = SESSION_STATUSES.find((s) => s === input.status);
+    if (!status) throw new ApiError(400, `status must be one of: ${SESSION_STATUSES.join(', ')}.`);
+    updates.status = status;
+  }
+
+  return {
+    updates,
+    gameDate: input.gameDate !== undefined ? validateGameDate(input.gameDate) : undefined,
+    gameTime: input.gameTime !== undefined ? validateGameTime(input.gameTime) : undefined,
+  };
+}
+
+export interface ValidatedSessionCreate {
+  gameDate: string;
+  gameTime: string;
+  capacity: number;
+  cost: number;
+  pricePerSpot: number;
+  locationArea: string;
+}
+
+/**
+ * A new session. Unlike an edit, every field ends up with a value: the
+ * organizer supplies a date and the rest fall back to the league's defaults,
+ * which the caller passes in so the schedule's constants stay in one place.
+ */
+export function validateSessionCreate(
+  input: { gameDate?: unknown; gameTime?: unknown; capacity?: unknown; cost?: unknown; pricePerSpot?: unknown; locationArea?: unknown },
+  defaults: { gameTime: string; capacity: number; pricePerSpot: number }
+): ValidatedSessionCreate {
+  return {
+    gameDate: validateGameDate(input.gameDate),
+    gameTime: input.gameTime !== undefined ? validateGameTime(input.gameTime) : defaults.gameTime,
+    capacity: input.capacity !== undefined ? validateCapacity(input.capacity) : defaults.capacity,
+    cost: input.cost !== undefined ? validateCost(input.cost) : 0,
+    pricePerSpot: input.pricePerSpot !== undefined ? validateCost(input.pricePerSpot) : defaults.pricePerSpot,
+    locationArea: input.locationArea !== undefined ? validateLocationArea(input.locationArea) : '',
+  };
+}
+
+/** Moving a game to a new date and time. Both are required — a reschedule that
+ * changes only one still passes the other through unchanged, so the caller has
+ * already filled in whichever half was not supplied. */
+export function validateReschedule(gameDate: unknown, gameTime: unknown): { gameDate: string; gameTime: string } {
+  return { gameDate: validateGameDate(gameDate), gameTime: validateGameTime(gameTime) };
+}
+
+export interface ValidatedSignupOverride {
+  status?: 'confirmed' | 'waitlisted' | 'cancelled';
+  paid?: boolean;
+  amountPaid?: number;
+  attended?: boolean;
+}
+
+const SIGNUP_STATUSES = ['confirmed', 'waitlisted', 'cancelled'] as const;
+const OVERRIDABLE_FIELDS = ['status', 'paid', 'amountPaid', 'attended'] as const;
+
+/**
+ * One organizer override of a signup row.
+ *
+ * `paid` and `attended` are coerced rather than checked, because a checkbox
+ * that arrives as anything truthy means the same thing — but they are only
+ * *present* when the request named them, which is what keeps an override of
+ * one field from silently rewriting another.
+ */
+export function validateSignupOverride(body: unknown): ValidatedSignupOverride {
+  const input = (body ?? {}) as Record<string, unknown>;
+
+  if (!OVERRIDABLE_FIELDS.some((field) => input[field] !== undefined)) {
+    throw new ApiError(400, `Provide at least one of: ${OVERRIDABLE_FIELDS.join(', ')}.`);
+  }
+
+  const override: ValidatedSignupOverride = {};
+
+  if (input.status !== undefined) {
+    const status = SIGNUP_STATUSES.find((s) => s === input.status);
+    if (!status) throw new ApiError(400, `status must be one of: ${SIGNUP_STATUSES.join(', ')}.`);
+    override.status = status;
+  }
+  if (input.paid !== undefined) override.paid = Boolean(input.paid);
+  if (input.amountPaid !== undefined) override.amountPaid = validateCost(input.amountPaid);
+  if (input.attended !== undefined) override.attended = Boolean(input.attended);
+
+  return override;
 }
