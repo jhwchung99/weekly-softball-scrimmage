@@ -15,7 +15,8 @@ import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { getWeeklyMilestones } from './time';
 import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
-import { isPaired, spotsFor, spotKey } from './pair';
+import { isPaired } from './pair';
+import { nextInLine, positionOf } from './waitlist';
 import { normalizeEmail } from './email';
 import { countConfirmedSpots, computeCostShare } from './payments';
 
@@ -259,72 +260,8 @@ export async function signUpAsGuestForSession(
   });
 }
 
-// Section 6 promotion order: 1) members, 2) sharing-willing guests, 3) other guests.
-function tierOf(s: Signup): number {
-  if (s.memberStatus === 'member') return 0;
-  return s.willingToShare ? 1 : 2;
-}
-
-interface WaitlistUnit {
-  signupIds: string[];
-  tier: number;
-  timestamp: string; // earliest of the group, for FIFO
-}
-
-/**
- * Waitlisted rows to consider for promotion, grouped so a waitlisted pair
- * is promoted together (both flip to 'confirmed' as one unit, since they
- * share one spot) rather than as two independent candidates.
- *
- * Judgment call: a pairId with ANY row already 'confirmed' is excluded
- * entirely — that pair already has its spot via the other partner, so the
- * waitlisted row is just along for the ride, not actually waiting for
- * anything. Section 5/6 don't address a pair split across statuses
- * directly (possible when a guest and member signed up independently
- * before merging), so this is the interpretation taken.
- */
-function groupWaitlistUnits(allSignupsForSession: Signup[]): WaitlistUnit[] {
-  const waitlisted = allSignupsForSession.filter((s) => s.status === 'waitlisted');
-  // Spots already held by a confirmed row. Only shared spots can appear here,
-  // since an unpaired row's key is its own — so a solo waitlister can never
-  // match one.
-  const confirmedSharedSpots = new Set(
-    allSignupsForSession.filter((s) => s.status === 'confirmed' && isPaired(s)).map(spotKey)
-  );
-
-  return spotsFor(waitlisted)
-    // A pair with a row already confirmed has its spot via the other partner,
-    // so the waitlisted row is along for the ride rather than waiting.
-    .filter((spot) => !confirmedSharedSpots.has(spotKey(spot[0])))
-    .map((spot) => {
-      // A spot goes as one: the best tier and the earliest timestamp among its
-      // rows, so sharing never costs the pair its place in the queue.
-      const memberRow = spot.find((s) => s.memberStatus === 'member');
-      return {
-        signupIds: spot.map((s) => s.signupId),
-        tier: memberRow ? 0 : Math.min(...spot.map(tierOf)),
-        timestamp: spot.reduce((min, s) => (s.timestamp < min ? s.timestamp : min), spot[0].timestamp),
-      };
-    });
-}
-
-/**
- * Promotes the single highest-priority waitlisted unit to 'confirmed', if
- * any, and returns every signup in that unit — a promoted pair is 1-2
- * rows, and every one of them needs to actually get the "you're in"
- * email, not just the first (a real gap found while building sub
- * requests: this used to return only winner.signupIds[0], so the second
- * member of any promoted pair never got notified).
- */
-function nextWaitlistUnit(allSignupsForSession: Signup[]): WaitlistUnit | null {
-  const units = groupWaitlistUnits(allSignupsForSession);
-  if (units.length === 0) return null;
-  units.sort((a, b) => a.tier - b.tier || a.timestamp.localeCompare(b.timestamp));
-  return units[0];
-}
-
 async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Signup[]> {
-  const winner = nextWaitlistUnit(allSignupsForSession);
+  const winner = nextInLine(allSignupsForSession);
   if (!winner) return [];
   // One batched call both confirms every row in the winning unit and
   // returns the updated rows — previously a loop of individual writes
@@ -438,7 +375,7 @@ export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
     const toConfirm: string[] = [];
 
     while (countConfirmedSpots(signups) < session.capacity) {
-      const winner = nextWaitlistUnit(signups);
+      const winner = nextInLine(signups);
       if (!winner) break;
       toConfirm.push(...winner.signupIds);
       signups = signups.map((s) =>
@@ -501,19 +438,8 @@ export function buildMyStatus(session: Session | null, allSignups: Signup[], ema
     costOwed = computeCostShare(session, allSignups)[signup.signupId] ?? null;
   }
 
-  // Position among waitlisted rows in signup order. Counts rows rather than
-  // promotion units, so it answers "how many people are ahead of me" — the
-  // question a player is actually asking. Promotion order additionally
-  // considers member/guest tiering (see groupWaitlistUnits), so this is a
-  // good-faith indicator rather than a promise about who moves up next.
-  let waitlistPosition: number | null = null;
-  if (signup && signup.status === 'waitlisted') {
-    const queue = allSignups
-      .filter((s) => s.status === 'waitlisted')
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    const index = queue.findIndex((s) => s.signupId === signup.signupId);
-    waitlistPosition = index >= 0 ? index + 1 : null;
-  }
+  const waitlistPosition =
+    signup && signup.status === 'waitlisted' ? positionOf(signup.signupId, allSignups) : null;
 
   return { signup, incomingSubRequests, costOwed, waitlistPosition };
 }

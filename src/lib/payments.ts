@@ -1,4 +1,5 @@
 import { Signup, Session } from '../sheets/schema';
+import { getWeeklyMilestones } from './time';
 import { countSpots, spotsFor } from './pair';
 
 // Pure capacity and payment maths. Deliberately free of Sheets or other
@@ -94,4 +95,43 @@ export function computePaymentSummary(session: Costed, signups: Payable[]): Paym
     surplus: Math.round((collected - session.cost) * 100) / 100,
     unpaidCount,
   };
+}
+
+// ---------------------------------------------------------------------------
+// When payment is due
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a player stands on paying for their spot.
+ *
+ * - `nothing-owed`: the week is free, or they hold no confirmed spot.
+ * - `settled`: the organizer has recorded their payment.
+ * - `not-yet-open`: they owe, but the roster can still change, so the amount
+ *   could still move. Nothing to do yet.
+ * - `due`: the roster has locked and the figure is final.
+ */
+export type PaymentState = 'nothing-owed' | 'settled' | 'not-yet-open' | 'due';
+
+/**
+ * Payment opens when the roster locks, and not before.
+ *
+ * The reason is the figure rather than the money: until the lock, a
+ * cancellation can still change who is on the roster, and asking someone to
+ * pay a number that might move is how you end up refunding. Once the lineup is
+ * fixed, so is what they owe.
+ *
+ * This rule was written out twice — once in the payment prompt on the homepage
+ * and once in the reminder email — each deriving it from the milestones and
+ * each branching on the lock for itself. The wording of the two legitimately
+ * differs; the decision behind them does not.
+ */
+export function paymentStateOf(input: { amountOwed: number; paid: boolean; rosterLocked: boolean }): PaymentState {
+  if (input.amountOwed <= 0) return 'nothing-owed';
+  if (input.paid) return 'settled';
+  return input.rosterLocked ? 'due' : 'not-yet-open';
+}
+
+/** The moment payment opens: when the roster locks. */
+export function paymentOpensAt(session: Pick<Session, 'gameDate' | 'gameTime'>): Date {
+  return getWeeklyMilestones(session.gameDate, session.gameTime).cutoffStart;
 }
