@@ -26,9 +26,17 @@ edited team as fully covered.
 
 ## Consequences
 
-Adding a column to the Signups tab fails the projection tests rather than
-quietly joining a payload: each view's test asserts that every field is either
-named as allowed or absent. Someone has to decide who may see it.
+Adding a column to the Signups tab cannot quietly join a payload, because
+every projection constructs its result field by field: a function that lists
+what it wants cannot return something it did not list, whatever shape arrives.
+
+The mechanism this section first named — "adding a column fails the projection
+tests" — was checked and is not true. Adding one fails nothing in `views.test.ts`;
+what fails is `tsc`, because the fixtures stop satisfying `Signup`. The
+guarantee is real and the enforcement is real, but it is the compiler and the
+constructor, not the projection tests. Recorded rather than quietly corrected,
+because a safety net you believe in and do not have is worse than one you know
+you lack.
 
 Admin payloads are projected too. Being admin-only is why the extra fields
 would not be a disclosure; it is not a reason to send a console a waiver text

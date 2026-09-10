@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSignedIn } from '../../../../lib/auth';
 import { getPlayer, upsertPlayer } from '../../../../sheets/players';
-import { ApiError, handleApiError } from '../../../../lib/apiErrors';
+import { handleApiError } from '../../../../lib/apiErrors';
 import { validatePlayerProfile } from '../../../../lib/validation';
 import { playerView } from '../../../../lib/views';
 

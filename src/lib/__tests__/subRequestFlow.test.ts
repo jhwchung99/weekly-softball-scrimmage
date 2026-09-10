@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe('requestSub', () => {
   it('sets a pending request and emails the target', async () => {
-    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
     const updated = await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
 
     expect(updated.subRequestStatus).toBe('pending');
@@ -58,7 +58,7 @@ describe('requestSub', () => {
   });
 
   it('rejects a request from a confirmed (non-waitlisted) signup', async () => {
-    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
+    const { confirmed } = await setUpConfirmedAndWaitlisted();
     await expect(requestSub(confirmed.signupId, 'confirmed@dummy.test', 'waitlisted@dummy.test')).rejects.toThrow(/waitlisted/);
   });
 
@@ -73,7 +73,7 @@ describe('requestSub', () => {
   });
 
   it('anti-spam: rejects a second request while one is already pending', async () => {
-    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
     store.players.set('other@dummy.test', makePlayer({ email: 'other@dummy.test' }));
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
 
@@ -115,7 +115,7 @@ describe('cancelSubRequest', () => {
   });
 
   it('lets a resolved (declined) request be replaced by a new one', async () => {
-    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
     await respondToSubRequest(waitlisted.signupId, 'confirmed@dummy.test', false); // decline
 
@@ -157,7 +157,7 @@ describe('respondToSubRequest', () => {
   });
 
   it('accepting one request auto-declines every other pending request to the same target', async () => {
-    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
     store.players.set('other@dummy.test', makePlayer({ email: 'other@dummy.test' }));
     const other = await signUpForSession(SESSION_ID, 'other@dummy.test', true); // waitlisted
 
@@ -194,7 +194,7 @@ describe('cleanup hooks', () => {
   });
 
   it('clearPendingRequestsTargeting clears every request aimed at a given email, excluding one signup', async () => {
-    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
     store.players.set('other@dummy.test', makePlayer({ email: 'other@dummy.test' }));
     const other = await signUpForSession(SESSION_ID, 'other@dummy.test', true);
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');

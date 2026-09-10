@@ -15,7 +15,7 @@ import { sendApiRequest, asJson } from '../lib/apiRequest';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
-import type { SignupStatus, MemberStatus, Signup } from '../sheets/schema';
+import type { Signup } from '../sheets/schema';
 import type { RosterEntry, RosterView, SessionView, MySignupView, PlayerView } from '../lib/views';
 import { isRosterLocked, type SessionPhase } from '../lib/sessionPhase';
 

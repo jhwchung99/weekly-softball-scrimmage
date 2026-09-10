@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireSignedIn } from '../../../../../../lib/auth';
 import { respondToSubRequest } from '../../../../../../lib/subRequestFlow';
-import { ApiError, handleApiError } from '../../../../../../lib/apiErrors';
+import { handleApiError } from '../../../../../../lib/apiErrors';
 import { mySignupView } from '../../../../../../lib/views';
 
 type Params = { params: Promise<{ signupId: string }> };

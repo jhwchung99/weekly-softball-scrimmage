@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/auth';
 import { validateSignupOverride } from '../../../../../lib/validation';
 import { overrideSignup, removeSignup } from '../../../../../lib/adminFlow';
-import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { handleApiError } from '../../../../../lib/apiErrors';
 import { adminRosterView } from '../../../../../lib/views';
 
 type Params = { params: Promise<{ signupId: string }> };

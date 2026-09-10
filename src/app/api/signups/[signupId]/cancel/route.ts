@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSignedIn } from '../../../../../lib/auth';
 import { isAdminEmail } from '../../../../../sheets/admins';
 import { cancelMySignup } from '../../../../../lib/signupFlow';
-import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ signupId: string }> };
 
