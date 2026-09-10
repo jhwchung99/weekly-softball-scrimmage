@@ -7,7 +7,14 @@ import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
 import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
-import { computePaymentSummary, countConfirmedSpots } from '../../lib/payments';
+import { computePaymentSummary } from '../../lib/payments';
+import {
+  classifyLoadFailure,
+  sessionIdAfterRevision,
+  splitAcrossRoster,
+  announcementNotice,
+  sessionInputsFor,
+} from '../../lib/adminConsole';
 import { sessionChangeAudience, unpaidAudience } from '../../lib/audiences';
 import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/adminRoster';
 import { Card } from '../../components/Card';
@@ -79,23 +86,23 @@ export default function AdminPage() {
         fetchJson<{ signups: AdminSignup[] }>(`/api/admin/sessions/${encodeURIComponent(id)}/signups`),
       ]);
       setScrimmage(sessionRes.session);
-      setCapacityInput(String(sessionRes.session.capacity));
-      setCostInput(String(sessionRes.session.cost));
-      setGameDateInput(sessionRes.session.gameDate);
-      setGameTimeInput(sessionRes.session.gameTime);
-      setPriceInput(String(sessionRes.session.pricePerSpot));
-      setAreaInput(sessionRes.session.locationArea);
-      setFieldNameInput(sessionRes.session.locationName);
-      setFieldUrlInput(sessionRes.session.locationUrl);
+      const inputs = sessionInputsFor(sessionRes.session);
+      setCapacityInput(inputs.capacity);
+      setCostInput(inputs.cost);
+      setGameDateInput(inputs.gameDate);
+      setGameTimeInput(inputs.gameTime);
+      setPriceInput(inputs.price);
+      setAreaInput(inputs.area);
+      setFieldNameInput(inputs.fieldName);
+      setFieldUrlInput(inputs.fieldUrl);
       setRoster(rosterRes.signups);
     } catch (err) {
-      if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
-        setForbidden(true);
-      } else if (err instanceof HttpError && err.status === 404) {
-        setError(`No session "${id}" exists yet.`);
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      const failure = classifyLoadFailure(
+        { status: err instanceof HttpError ? err.status : undefined, message: err instanceof Error ? err.message : String(err) },
+        id
+      );
+      setForbidden(failure.forbidden);
+      setError(failure.error);
     }
   }
 
@@ -126,7 +133,7 @@ export default function AdminPage() {
       if (!res.ok) throw new Error(data?.error || 'Update failed');
       // A gameDate change rekeys the session (its id IS the date) — follow
       // it to the new id rather than re-fetching the now-stale old one.
-      const newSessionId: string = data?.session?.sessionId || sessionId;
+      const newSessionId = sessionIdAfterRevision(sessionId, data?.session);
       setSessionId(newSessionId);
       await loadRoster(newSessionId);
     } catch (err) {
@@ -156,22 +163,7 @@ export default function AdminPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Send failed');
 
-      // An empty audience isn't an error — "everyone has already paid" is the
-      // answer to the question the button asks.
-      if (data.skipped) {
-        setNotice(`Nothing sent — ${data.reason}`);
-        return;
-      }
-
-      // Names, not just a count. "Emailed 12 players" is impossible to check,
-      // and the thing an organizer wants to know afterwards is whether one
-      // particular person was on the list.
-      const who = ((data.recipients as string[]) ?? []).join(', ');
-      setNotice(
-        data.failed > 0
-          ? `Emailed ${data.sent}: ${who}. ${data.failed} failed to send — check the logs.`
-          : `Emailed ${data.sent}: ${who}.`
-      );
+      setNotice(announcementNotice(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -229,6 +221,10 @@ export default function AdminPage() {
       setBusy(false);
     }
   }
+
+  // Dividing the permit cost across the roster — a suggestion for the price
+  // box, worked out here rather than inside the markup.
+  const split = splitAcrossRoster(costInput, roster);
 
   if (authStatus === 'loading') return <main className="mx-auto max-w-3xl px-4 py-10 text-slate-500">Loading...</main>;
   if (authStatus === 'unauthenticated') {
@@ -378,37 +374,19 @@ export default function AdminPage() {
                 >
                   {busy ? 'Processing...' : 'Save'}
                 </Button>
-                {(() => {
-                  // Fills the price box rather than saving it: the division is a
-                  // suggestion, not a rule. Once saved, pricePerSpot stays a fixed
-                  // stored number — a later cancellation must not silently re-price
-                  // people who have already paid (see computeCostShare).
-                  //
-                  // Divides by confirmed *spots*, not people, because a pair pays
-                  // one spot's price between them — dividing by heads would
-                  // under-collect by exactly the number of shared spots.
-                  const spots = countConfirmedSpots(roster ?? []);
-                  const total = Number(costInput);
-                  const canSplit = total > 0 && spots > 0;
-                  const each = canSplit ? Math.round((total / spots) * 100) / 100 : 0;
-                  return (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={busy || !canSplit}
-                        onClick={() => setPriceInput(String(each))}
-                      >
-                        Split across roster
-                      </Button>
-                      {canSplit && (
-                        <span className="ml-2 text-xs text-slate-500">
-                          ${total.toFixed(2)} / {spots} confirmed = ${each.toFixed(2)} each
-                        </span>
-                      )}
-                    </>
-                  );
-                })()}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy || !split.canSplit}
+                  onClick={() => setPriceInput(String(split.each))}
+                >
+                  Split across roster
+                </Button>
+                {split.canSplit && (
+                  <span className="ml-2 text-xs text-slate-500">
+                    ${split.total.toFixed(2)} / {split.spots} confirmed = ${split.each.toFixed(2)} each
+                  </span>
+                )}
                 {scrimmage.status !== 'cancelled' && (
                   <Button
                     size="sm"
@@ -812,7 +790,7 @@ export function RemindUnpaidButton(props: {
   );
 }
 
-function CreateSessionForm(props: {
+export function CreateSessionForm(props: {
   busy: boolean;
   setBusy: (b: boolean) => void;
   setError: (e: string | null) => void;
@@ -940,7 +918,7 @@ function CreateSessionForm(props: {
   );
 }
 
-function AddSignupForm(props: {
+export function AddSignupForm(props: {
   sessionId: string;
   busy: boolean;
   setBusy: (b: boolean) => void;
