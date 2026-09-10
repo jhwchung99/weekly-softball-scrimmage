@@ -14,6 +14,7 @@ const scrimmage = {
   locationName: '',
   locationUrl: '',
   numFields: 1,
+  teamsStatus: '' as const,
 };
 
 const baseProps = {

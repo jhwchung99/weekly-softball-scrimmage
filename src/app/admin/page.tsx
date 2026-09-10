@@ -14,25 +14,14 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 
-import type { SignupStatus, SessionStatus } from '../../sheets/schema';
-import type { AdminRosterEntry } from '../../lib/views';
+import type { SignupStatus } from '../../sheets/schema';
+import type { AdminRosterEntry, AdminSessionView } from '../../lib/views';
 
 /** The organizer's roster row, as the projection module defines it. */
 type AdminSignup = AdminRosterEntry;
 
-interface SessionInfo {
-  sessionId: string;
-  gameDate: string;
-  gameTime: string;
-  capacity: number;
-  numFields: number;
-  status: SessionStatus;
-  cost: number;
-  pricePerSpot: number;
-  locationArea: string;
-  locationName: string;
-  locationUrl: string;
-}
+/** The week as the projection module sends it to an organizer. */
+type SessionInfo = AdminSessionView;
 
 class HttpError extends Error {
   status: number;
