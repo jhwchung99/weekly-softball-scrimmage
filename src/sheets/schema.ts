@@ -69,7 +69,7 @@ export interface Signup {
   // player-facing display and no automatic consequence: repeat no-shows are a
   // social problem, and the app's job is only to remember what happened.
   subRequestTargetEmail: string; // who this signup is asking to share a
-  // slot with; '' when no request is outstanding
+  // spot with; '' when no request is outstanding
   subRequestStatus: '' | 'pending' | 'declined'; // '' = no active request.
   // No 'accepted' value: on acceptance the pair is formed via pairId (the
   // permanent record) and these three fields reset back to ''/empty.

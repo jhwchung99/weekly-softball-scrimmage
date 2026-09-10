@@ -3,7 +3,7 @@ import { requireCronSecret } from '../../../../lib/cronAuth';
 import { getSessionByAnyId } from '../../../../sheets/sessions';
 import { listSignupsForSession } from '../../../../sheets/signups';
 import { currentWeekGameDayCandidates } from '../../../../lib/time';
-import { countConfirmedSlots } from '../../../../lib/payments';
+import { countConfirmedSpots } from '../../../../lib/payments';
 import { sendPush } from '../../../../lib/ntfy';
 import { sendEmail } from '../../../../lib/gmail';
 import { handleApiError } from '../../../../lib/apiErrors';
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       const session = await getSessionByAnyId(currentWeekGameDayCandidates(startedAt));
       if (!session) return 'read Sessions tab; no session for this week';
       const signups = await listSignupsForSession(session.sessionId);
-      const confirmed = countConfirmedSlots(signups);
+      const confirmed = countConfirmedSpots(signups);
       return `session ${session.sessionId} (${session.status}), ${confirmed}/${session.capacity} confirmed, ${signups.length} signup rows`;
     });
 

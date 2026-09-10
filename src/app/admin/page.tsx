@@ -7,7 +7,7 @@ import { BookOpen } from 'lucide-react';
 import { POSITIONS } from '../../lib/positions';
 import { GENDERS } from '../../lib/genders';
 import { TeamEditor } from '../../components/TeamEditor';
-import { computePaymentSummary, countConfirmedSlots } from '../../lib/payments';
+import { computePaymentSummary, countConfirmedSpots } from '../../lib/payments';
 import { sessionChangeAudience, unpaidAudience } from '../../lib/audiences';
 import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/adminRoster';
 import { Card } from '../../components/Card';
@@ -384,13 +384,13 @@ export default function AdminPage() {
                   // stored number — a later cancellation must not silently re-price
                   // people who have already paid (see computeCostShare).
                   //
-                  // Divides by confirmed *slots*, not people, because a pair pays
+                  // Divides by confirmed *spots*, not people, because a pair pays
                   // one spot's price between them — dividing by heads would
                   // under-collect by exactly the number of shared spots.
-                  const slots = countConfirmedSlots(roster ?? []);
+                  const spots = countConfirmedSpots(roster ?? []);
                   const total = Number(costInput);
-                  const canSplit = total > 0 && slots > 0;
-                  const each = canSplit ? Math.round((total / slots) * 100) / 100 : 0;
+                  const canSplit = total > 0 && spots > 0;
+                  const each = canSplit ? Math.round((total / spots) * 100) / 100 : 0;
                   return (
                     <>
                       <Button
@@ -403,7 +403,7 @@ export default function AdminPage() {
                       </Button>
                       {canSplit && (
                         <span className="ml-2 text-xs text-slate-500">
-                          ${total.toFixed(2)} / {slots} confirmed = ${each.toFixed(2)} each
+                          ${total.toFixed(2)} / {spots} confirmed = ${each.toFixed(2)} each
                         </span>
                       )}
                     </>
@@ -1063,7 +1063,7 @@ function AddSignupForm(props: {
             />
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={willingToShare} onChange={(e) => setWillingToShare(e.target.checked)} />
-              Willing to share a slot
+              Willing to share a spot
             </label>
           </div>
         )}

@@ -6,7 +6,7 @@ import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ signupId: string }> };
 
-/** A waitlisted player proposes to share targetEmail's slot. */
+/** A waitlisted player proposes to share targetEmail's spot. */
 export async function POST(request: Request, { params }: Params) {
   try {
     const email = await getSessionEmail();

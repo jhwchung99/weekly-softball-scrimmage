@@ -11,12 +11,12 @@ import { withMutationLock } from './lock';
 const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
 
 /**
- * A waitlisted player proposing to share a specific active player's slot
+ * A waitlisted player proposing to share a specific active player's spot
  * (Section-adjacent feature — see
  * planner/2026-09-04-sub-requests-roster-cost-plan.md). Reuses the
- * existing pairId slot-sharing mechanic: accepting this never changes
- * capacity, since a pair always counts as one slot
- * (countConfirmedSlots) — so there's no promotion cascade to run here,
+ * existing pairId spot-sharing mechanic: accepting this never changes
+ * capacity, since a pair always counts as one spot
+ * (countConfirmedSpots) — so there's no promotion cascade to run here,
  * unlike a normal signup.
  */
 export async function requestSub(signupId: string, requesterEmail: string, targetEmail: string): Promise<Signup> {
@@ -116,7 +116,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     // Re-check the same precondition requestSub enforced, because the
     // requester's status can change between asking and answering (an admin
     // status override doesn't clear pending requests). Without this, accepting
-    // folds an already-confirmed player into the target's slot, silently
+    // folds an already-confirmed player into the target's spot, silently
     // dropping the roster below capacity with no promotion cascade to refill
     // it. See planner/2026-09-05-code-security-review.md, Bug 2.
     if (requester.status !== 'waitlisted') {
@@ -164,7 +164,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
 
 /** Cleanup used by cancelMySignup/promoteNextWaitlisted (signupFlow.ts):
  * a signup's own outgoing pending request becomes moot once that signup
- * is cancelled or gets its own slot via normal promotion. */
+ * is cancelled or gets its own spot via normal promotion. */
 export async function clearOwnPendingRequest(signup: Signup): Promise<void> {
   if (signup.subRequestStatus === 'pending') {
     await updateSignup(signup.signupId, { ...NO_REQUEST });

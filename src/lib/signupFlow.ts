@@ -15,13 +15,13 @@ import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { getWeeklyMilestones } from './time';
 import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
-import { isPaired, slotsFor, slotKey } from './pair';
+import { isPaired, spotsFor, spotKey } from './pair';
 import { normalizeEmail } from './email';
-import { countConfirmedSlots, computeCostShare } from './payments';
+import { countConfirmedSpots, computeCostShare } from './payments';
 
 // Moved to lib/payments.ts so client components can share the implementation;
 // re-exported here because this has been their import site all along.
-export { countConfirmedSlots, computeCostShare, computePaymentSummary } from './payments';
+export { countConfirmedSpots, computeCostShare, computePaymentSummary } from './payments';
 import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail, deliver } from './notifications';
 import { WAIVER_TEXT } from './waiver';
 import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
@@ -48,7 +48,7 @@ const NEW_SIGNUP_EXTRAS = {
 
 async function computeCapacityStatus(sessionId: string, capacity: number): Promise<'confirmed' | 'waitlisted'> {
   const existing = await listSignupsForSession(sessionId);
-  return countConfirmedSlots(existing) < capacity ? 'confirmed' : 'waitlisted';
+  return countConfirmedSpots(existing) < capacity ? 'confirmed' : 'waitlisted';
 }
 
 export interface SignupOptions {
@@ -145,8 +145,8 @@ async function proposeGuestPair(guest: Signup, member: Signup, session: Session)
 
 /**
  * Whether a pairing can be offered at all. The guest must be waitlisted:
- * one who already has their own confirmed slot gains nothing from sharing,
- * and folding them into someone else's slot would drop the roster under
+ * one who already has their own confirmed spot gains nothing from sharing,
+ * and folding them into someone else's spot would drop the roster under
  * capacity with no promotion to refill it — the same reason
  * respondToSubRequest refuses a requester who isn't waitlisted.
  */
@@ -208,7 +208,7 @@ export async function signUpForSession(
 /**
  * A guest signing up. `invitedByName` is required; `willingToShare` drives
  * the pairing behavior from Section 5 — it does not by itself guarantee a
- * shared slot, only that one is attempted if the named member has already
+ * shared spot, only that one is attempted if the named member has already
  * signed up (and isn't already paired with someone else).
  */
 export async function signUpAsGuestForSession(
@@ -228,8 +228,8 @@ export async function signUpAsGuestForSession(
     const { session, player } = await requireOpenSessionAndProfile(sessionId, email, options);
     const waiverFields = { waiverAcceptedAt: new Date().toISOString(), waiverText: WAIVER_TEXT };
 
-    // Always their own slot, decided by capacity like anyone else's. Naming a
-    // member no longer short-circuits this into that member's slot.
+    // Always their own spot, decided by capacity like anyone else's. Naming a
+    // member no longer short-circuits this into that member's spot.
     const status = await computeCapacityStatus(sessionId, session.capacity);
     const created = await createSignup({
       sessionId,
@@ -274,10 +274,10 @@ interface WaitlistUnit {
 /**
  * Waitlisted rows to consider for promotion, grouped so a waitlisted pair
  * is promoted together (both flip to 'confirmed' as one unit, since they
- * share one slot) rather than as two independent candidates.
+ * share one spot) rather than as two independent candidates.
  *
  * Judgment call: a pairId with ANY row already 'confirmed' is excluded
- * entirely — that pair already has its slot via the other partner, so the
+ * entirely — that pair already has its spot via the other partner, so the
  * waitlisted row is just along for the ride, not actually waiting for
  * anything. Section 5/6 don't address a pair split across statuses
  * directly (possible when a guest and member signed up independently
@@ -288,22 +288,22 @@ function groupWaitlistUnits(allSignupsForSession: Signup[]): WaitlistUnit[] {
   // Spots already held by a confirmed row. Only shared spots can appear here,
   // since an unpaired row's key is its own — so a solo waitlister can never
   // match one.
-  const confirmedSharedSlots = new Set(
-    allSignupsForSession.filter((s) => s.status === 'confirmed' && isPaired(s)).map(slotKey)
+  const confirmedSharedSpots = new Set(
+    allSignupsForSession.filter((s) => s.status === 'confirmed' && isPaired(s)).map(spotKey)
   );
 
-  return slotsFor(waitlisted)
+  return spotsFor(waitlisted)
     // A pair with a row already confirmed has its spot via the other partner,
     // so the waitlisted row is along for the ride rather than waiting.
-    .filter((slot) => !confirmedSharedSlots.has(slotKey(slot[0])))
-    .map((slot) => {
-      // A slot goes as one: the best tier and the earliest timestamp among its
+    .filter((spot) => !confirmedSharedSpots.has(spotKey(spot[0])))
+    .map((spot) => {
+      // A spot goes as one: the best tier and the earliest timestamp among its
       // rows, so sharing never costs the pair its place in the queue.
-      const memberRow = slot.find((s) => s.memberStatus === 'member');
+      const memberRow = spot.find((s) => s.memberStatus === 'member');
       return {
-        signupIds: slot.map((s) => s.signupId),
-        tier: memberRow ? 0 : Math.min(...slot.map(tierOf)),
-        timestamp: slot.reduce((min, s) => (s.timestamp < min ? s.timestamp : min), slot[0].timestamp),
+        signupIds: spot.map((s) => s.signupId),
+        tier: memberRow ? 0 : Math.min(...spot.map(tierOf)),
+        timestamp: spot.reduce((min, s) => (s.timestamp < min ? s.timestamp : min), spot[0].timestamp),
       };
     });
 }
@@ -339,16 +339,16 @@ export interface CancelResult {
 
 /**
  * Either partner in a pair can cancel without affecting the other's row
- * or the pair's slot (Section 5) — this just updates the one row being
- * cancelled. Whether that actually freed a confirmed slot is determined
- * by comparing countConfirmedSlots before/after, not by looking at the
+ * or the pair's spot (Section 5) — this just updates the one row being
+ * cancelled. Whether that actually freed a confirmed spot is determined
+ * by comparing countConfirmedSpots before/after, not by looking at the
  * cancelled row's own status — that's what makes "both partners must be
  * out" fall out for free instead of needing special-case logic.
  *
- * If a slot was freed and we're not within the 5-hour cutoff (Section 6),
+ * If a spot was freed and we're not within the 5-hour cutoff (Section 6),
  * promotes the next eligible waitlisted person/pair. Exactly one
  * promotion per call is always correct here, since even a full pair
- * drop-out only ever frees one slot (a pair only ever consumed one).
+ * drop-out only ever frees one spot (a pair only ever consumed one).
  * If that promoted person later cancels too, that cancellation triggers
  * this same function again — which is what makes "cascade until someone
  * confirms" (Section 6) work, without needing a response-tracking loop.
@@ -372,13 +372,13 @@ export async function cancelMySignup(
     const session = await getSession(signup.sessionId);
     if (!session) throw new ApiError(404, 'No such session.');
 
-    const before = countConfirmedSlots(sessionSignups);
+    const before = countConfirmedSpots(sessionSignups);
     // Captured before the status flips: computeCostShare only counts confirmed
     // rows, so afterwards this person's share would read as 0.
     const owedAtCancellation = computeCostShare(session, sessionSignups)[signupId] ?? 0;
     await updateSignupStatus(signupId, 'cancelled');
     const afterSignups = await listSignupsForSession(signup.sessionId);
-    const after = countConfirmedSlots(afterSignups);
+    const after = countConfirmedSpots(afterSignups);
 
     // Sub-request cleanup: this signup's own outgoing request (if any) and
     // anyone else's pending request that was targeting this now-cancelled
@@ -386,10 +386,10 @@ export async function cancelMySignup(
     await clearOwnPendingRequest(signup);
     await clearPendingRequestsTargeting(signup.email, afterSignups, signupId);
 
-    if (after >= before) return { promoted: [] }; // no slot actually freed
+    if (after >= before) return { promoted: [] }; // no spot actually freed
     if (isRosterLocked(phaseOf(session))) {
       // Section 6/7: no auto-promotion this close to game time, but the
-      // organizer needs to know a slot just opened so they can personally
+      // organizer needs to know a spot just opened so they can personally
       // text someone. Same awaited-but-swallowed pattern as the promotion
       // email below — a failed push shouldn't affect the cancellation.
       await deliver(`organizer alert for cancelled signup ${signup.signupId}`, () => sendLateCancellationAlert(signup, session, owedAtCancellation));
@@ -399,7 +399,7 @@ export async function cancelMySignup(
     const promotedSignups = await promoteNextWaitlisted(afterSignups);
     for (const promoted of promotedSignups) {
       // A promoted signup's own outstanding outgoing sub request is moot —
-      // it just got its own slot.
+      // it just got its own spot.
       await clearOwnPendingRequest(promoted);
       // Awaited, not fire-and-forget: on Vercel's serverless runtime, an
       // unawaited promise can get killed once the response is sent, so
@@ -437,7 +437,7 @@ export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
     let signups = await listSignupsForSession(sessionId);
     const toConfirm: string[] = [];
 
-    while (countConfirmedSlots(signups) < session.capacity) {
+    while (countConfirmedSpots(signups) < session.capacity) {
       const winner = nextWaitlistUnit(signups);
       if (!winner) break;
       toConfirm.push(...winner.signupIds);
@@ -462,7 +462,7 @@ export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
 
 export interface MyStatus {
   signup: Signup | null;
-  /** Other players' pending requests to share a slot with this caller.
+  /** Other players' pending requests to share a spot with this caller.
    * `fromGuestInvite` distinguishes a guest who named this caller as their
    * inviter from a waitlisted player asking to sub in — accepting means the
    * same thing mechanically, but the member is owed an accurate description

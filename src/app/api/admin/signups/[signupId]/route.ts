@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/auth';
-import { validateCost } from '../../../../../lib/validation';
+import { validateSignupOverride } from '../../../../../lib/validation';
 import { overrideSignup, removeSignup } from '../../../../../lib/adminFlow';
-import { SignupStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ signupId: string }> };
-
-const VALID_STATUSES: SignupStatus[] = ['confirmed', 'waitlisted', 'cancelled'];
 
 /**
  * "Manually move someone between confirmed / waitlisted / cancelled"
@@ -26,24 +23,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const { signupId } = await params;
     const body = await request.json().catch(() => ({}));
 
-    if (body?.status !== undefined && !VALID_STATUSES.includes(body.status)) {
-      throw new ApiError(400, `status must be one of: ${VALID_STATUSES.join(', ')}.`);
-    }
-    const fieldsProvided =
-      body?.status !== undefined ||
-      body?.paid !== undefined ||
-      body?.amountPaid !== undefined ||
-      body?.attended !== undefined;
-    if (!fieldsProvided) {
-      throw new ApiError(400, 'Provide at least one of: status, paid, amountPaid, attended.');
-    }
-
-    const signup = await overrideSignup(signupId, {
-      status: body?.status,
-      paid: body?.paid,
-      amountPaid: body?.amountPaid !== undefined ? validateCost(body.amountPaid) : undefined,
-      attended: body?.attended,
-    });
+    const signup = await overrideSignup(signupId, validateSignupOverride(body));
     return NextResponse.json({ signup });
   } catch (err) {
     return handleApiError(err);

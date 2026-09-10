@@ -2,7 +2,7 @@ import { getSessionByAnyId, createSession, updateSession } from '../sheets/sessi
 import { listSignupsForSession } from '../sheets/signups';
 import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, todayEastern } from './time';
 import { phaseOf, hasRegistrationClosed } from './sessionPhase';
-import { countConfirmedSlots, computeCostShare } from './payments';
+import { countConfirmedSpots, computeCostShare } from './payments';
 import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert, deliver } from './notifications';
 
 export const DEFAULT_GAME_TIME = process.env.SESSION_DEFAULT_GAME_TIME || '18:00';
@@ -130,7 +130,7 @@ export async function closeRegistrationForCurrentSession(now: Date = new Date())
   await updateSession(existing.sessionId, { status: 'closed', registrationClosesAt: now.toISOString() });
 
   const signups = await listSignupsForSession(existing.sessionId);
-  const confirmed = countConfirmedSlots(signups);
+  const confirmed = countConfirmedSpots(signups);
   const openSpots = existing.capacity - confirmed;
 
   // Always sent, unlike the open-spots alert below: the headcount is what the
