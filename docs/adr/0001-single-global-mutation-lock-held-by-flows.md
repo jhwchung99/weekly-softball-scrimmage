@@ -39,5 +39,11 @@ existed.
 The TTL has to exceed the worst case of the work it protects, or the lock
 expires mid-flight and a second request starts mutating alongside the first.
 Revising a session is the longest critical section — a rekey, a field write and
-the promotion cascade under one hold — and is the first place to look if that
-ceiling ever needs raising again.
+the promotion cascade under one hold.
+
+That ceiling was reached. Measuring the flow rather than estimating it showed
+~9 sequential Sheets calls, and `withRateLimitRetry` can sleep 7s on each, so
+its worst case is ~63s against what was then a 60s TTL. The TTL is now 120s,
+and `lib/__tests__/lockBudget.test.ts` measures the call count and fails if the
+flow outgrows it again — so the number is checked rather than remembered. It is
+the second time this TTL has needed raising; the first was from 15s.

@@ -10,6 +10,7 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
 import { paymentStateOf, paymentOpensAt } from '../lib/payments';
+import { requestFor, failureMessage, type PlayerAction } from '../lib/homeConsole';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
@@ -136,13 +137,22 @@ export default function Home() {
     loadHome();
   }, [authStatus]);
 
-  async function handleCancel() {
-    if (!mySignup) return;
+  /**
+   * Every player action, on one policy: mark busy, clear the last error, send
+   * the request, show the server's message if it refuses, reload, and stop
+   * being busy whatever happened.
+   *
+   * This was four near-identical handlers. The reload is the part worth
+   * keeping together — every one of these changes the roster, so the page has
+   * to re-read rather than guess at the new state.
+   */
+  async function runAction(action: PlayerAction) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/signups/${encodeURIComponent(mySignup.signupId)}/cancel`, { method: 'POST' });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Cancel failed');
+      const { url, init, fallbackError } = requestFor(action);
+      const res = await fetch(url, init);
+      if (!res.ok) throw new Error(failureMessage(await res.json().catch(() => ({})), fallbackError));
       await loadHome();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -151,57 +161,14 @@ export default function Home() {
     }
   }
 
-  async function handleRequestSub(targetEmail: string) {
-    if (!mySignup) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/signups/${encodeURIComponent(mySignup.signupId)}/sub-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetEmail }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Request failed');
-      await loadHome();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const handleCancel = () => (mySignup ? runAction({ kind: 'cancel', signupId: mySignup.signupId }) : undefined);
+  const handleRequestSub = (targetEmail: string) =>
+    mySignup ? runAction({ kind: 'requestSub', signupId: mySignup.signupId, targetEmail }) : undefined;
+  const handleCancelSubRequest = () =>
+    mySignup ? runAction({ kind: 'cancelSubRequest', signupId: mySignup.signupId }) : undefined;
+  const handleRespondToSubRequest = (fromSignupId: string, accept: boolean) =>
+    runAction({ kind: 'respondToSubRequest', fromSignupId, accept });
 
-  async function handleCancelSubRequest() {
-    if (!mySignup) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/signups/${encodeURIComponent(mySignup.signupId)}/sub-request`, { method: 'DELETE' });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Cancel failed');
-      await loadHome();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleRespondToSubRequest(fromSignupId: string, accept: boolean) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/signups/${encodeURIComponent(fromSignupId)}/sub-request/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accept }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Response failed');
-      await loadHome();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <main className="mx-auto max-w-xl px-4 py-10">

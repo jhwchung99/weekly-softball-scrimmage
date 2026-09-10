@@ -1,4 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+/**
+ * An integration test by choice now, rather than by necessity.
+ *
+ * The architecture review flagged that this drives two flow modules through
+ * five mocks to assert one invariant, and that it was shaped that way because
+ * "a pair is one spot" had no interface to be tested through. It has one now
+ * (lib/pair.ts, and lib/waitlist.ts for promotion order), and both are covered
+ * directly by their own tests.
+ *
+ * This stays because what it checks is different: that the invariant survives
+ * the real signup and sub-request paths end to end, including the writes. The
+ * mocks are the cost of running those paths, not a symptom of a missing
+ * interface — so thinning it out would trade real coverage for tidiness.
+ */
 import { fakeSessionsModule, fakeSignupsModule, fakePlayersModule, resetFakeStore, makeSession, makePlayer , duringRegistration} from '../../test/fakeSheets';
 import type { FakeStore } from '../../test/fakeSheets';
 

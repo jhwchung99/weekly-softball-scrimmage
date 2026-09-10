@@ -68,7 +68,9 @@ function loadKey(): Record<string, unknown> {
 // testing — see planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md).
 // This adds a longer, targeted retry specifically for 429/rateLimitExceeded
 // on top of that, rather than replacing it.
-const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 5000];
+/** Exported so the lock's TTL can be checked against the worst case it has to
+ * cover — see lib/__tests__/lockBudget.test.ts. */
+export const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 5000];
 
 function isRateLimitError(err: unknown): boolean {
   const status = (err as { status?: number; code?: number } | undefined)?.status ?? (err as { code?: number } | undefined)?.code;

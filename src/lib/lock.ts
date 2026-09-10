@@ -23,14 +23,19 @@ import { ApiError } from './apiErrors';
 const LOCK_KEY = 'weekly-softball-scrimmage:mutation-lock';
 // Safety valve if a holder crashes before releasing — but it MUST exceed the
 // worst-case duration of the work it protects, or the lock expires mid-flight
-// and a second request starts mutating alongside the first, losing the
-// mutual exclusion this exists for. Worst case here is roughly
-// (Sheets calls per mutation) x (rate-limit backoff per call): cancelMySignup
-// makes ~6 sequential calls, and withRateLimitRetry sleeps up to 7s on each
-// (client.ts, RATE_LIMIT_RETRY_DELAYS_MS) — so 15s was too tight in exactly
-// the rate-limited conditions the lock matters most. See
-// planner/2026-09-05-code-security-review.md, Bug 5.
-const LOCK_TTL_SECONDS = 60;
+// and a second request starts mutating alongside the first, losing the mutual
+// exclusion this exists for.
+//
+// Raised from 60s once the admin session revision became a single hold: that
+// flow makes ~9 sequential Sheets calls (a rekey, a field write, and the
+// promotion cascade), and withRateLimitRetry can sleep 7s on each, so its
+// worst case is ~63s — over the old ceiling. It had already been raised once
+// before, from 15s, for the same reason.
+//
+// lib/__tests__/lockBudget.test.ts measures the call count of that flow and
+// fails if it outgrows this value again, so the number is checked rather than
+// remembered. See ADR-0001.
+export const LOCK_TTL_SECONDS = 120;
 const ACQUIRE_RETRY_DELAY_MS = 250;
 const ACQUIRE_TIMEOUT_MS = 10000;
 
