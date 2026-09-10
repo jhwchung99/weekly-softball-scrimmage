@@ -29,3 +29,6 @@ coverage/
 .agents/
 .claude/skills/
 skills-lock.json
+
+# macOS Finder metadata, created wherever a folder is opened.
+.DS_Store

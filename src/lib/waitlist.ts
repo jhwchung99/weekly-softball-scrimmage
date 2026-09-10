@@ -73,23 +73,32 @@ export function nextInLine(sessionSignups: Signup[]): WaitingSpot | null {
 }
 
 /**
- * How many people are ahead of this player, as a 1-based place, or null when
- * they are not waiting.
+ * This player's place in the queue, 1-based, or null when they are not waiting.
  *
- * Deliberately counts rows in signup order rather than following the promotion
- * ordering above. The two answer different questions: this one is "how many
- * people are ahead of me", which is what a player is actually asking, and
+ * Counts *spots*, not rows, because a spot is what the player is queuing for:
+ * a waiting pair is one place in line ahead of you, not two, and one spot
+ * freeing up is what would reach them. Counting rows told a player three
+ * people were ahead of them when only two spots were, and the pair themselves
+ * saw two different numbers for the one place they jointly hold. Both halves
+ * of a pair now read the same position.
+ *
+ * Ordered by arrival rather than by the promotion ordering above. The two
+ * answer different questions: this one is "how many are ahead of me", and
  * promotion additionally tiers members above guests. So a player low in this
  * list can still be promoted first, and this stays a good-faith indicator
  * rather than a promise about who moves up next.
  *
  * Keeping both in one file is the point — the discrepancy is deliberate, and
- * it is only obvious as a decision when the two sit next to each other.
+ * it is only obvious as a decision when the two sit next to each other. One
+ * difference beyond ordering: a waitlisted row whose partner is already
+ * confirmed is excluded from `waitingSpots` (their spot is held, so nothing
+ * promotes them) but still occupies a place here, because they are still on
+ * the list a player is counting along.
  */
 export function positionOf(signupId: string, sessionSignups: Signup[]): number | null {
   const queue = sessionSignups
     .filter((s) => s.status === 'waitlisted')
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const index = queue.findIndex((s) => s.signupId === signupId);
+  const index = spotsFor(queue).findIndex((spot) => spot.some((s) => s.signupId === signupId));
   return index >= 0 ? index + 1 : null;
 }

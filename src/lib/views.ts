@@ -192,6 +192,26 @@ export function adminRosterView(signups: Signup[]): AdminRosterEntry[] {
   }));
 }
 
+/**
+ * How one recipient is named back to the organizer after an announcement.
+ *
+ * The announcement result is the only evidence a send happened, and what an
+ * organizer wants from it is whether one particular person was on the list —
+ * so it carries labels rather than a count.
+ *
+ * Here rather than inline in `announcements.ts` because it was the last place
+ * a `Signup` field reached a response without passing through this module, and
+ * "every path goes through views.ts" is only worth anything while it is true
+ * of every path. Being small is not an exemption.
+ *
+ * The address fallback is deliberate and admin-only: a row with no name has no
+ * other identifier, and the organizer's own roster shows them every address on
+ * the same screen. Never reuse this in a player-facing payload.
+ */
+export function recipientLabel(signup: Pick<Signup, 'fullName' | 'email'>): string {
+  return signup.fullName || signup.email;
+}
+
 // ---------------------------------------------------------------------------
 // The session itself
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { sessionChangeAudience, unpaidAudience } from './audiences';
 import { SEND_GAP_MS } from './scheduling';
 import { Signup } from '../sheets/schema';
 import { deliver } from './notifications';
+import { recipientLabel } from './views';
 import {
   sendSessionUpdateEmail,
   sendSessionCancelledEmail,
@@ -63,7 +64,7 @@ async function fanOut(
   for (const [index, signup] of signups.entries()) {
     if (await deliver(`announcement to ${signup.email}`, () => send(signup))) {
       sent += 1;
-      recipients.push(signup.fullName || signup.email);
+      recipients.push(recipientLabel(signup));
     } else {
       failed += 1;
     }
