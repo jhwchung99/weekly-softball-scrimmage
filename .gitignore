@@ -22,3 +22,10 @@ next-env.d.ts
 
 # Test coverage output
 coverage/
+
+# Agent skills installed by `npx skills add` — third-party files, pinned by
+# content hash in skills-lock.json. .claude/skills/ rather than all of
+# .claude/, so project-level Claude Code config stays committable.
+.agents/
+.claude/skills/
+skills-lock.json
