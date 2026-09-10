@@ -48,8 +48,13 @@ export async function GET(request: Request, { params }: Params) {
     if (!email) throw new ApiError(401, 'Not signed in.');
 
     const { sessionId } = await params;
-    const { signup, incomingSubRequests, costOwed } = await getMyStatusForSession(sessionId, email);
-    return NextResponse.json({ signup, incomingSubRequests, costOwed });
+    // Forwarded whole rather than destructured field by field: this route
+    // previously listed three of the four and silently dropped
+    // waitlistPosition, so a waitlisted player asking here was told nothing
+    // about where they stood while the homepage told them exactly. `MyStatus`
+    // is already the shape this endpoint returns, so naming the fields again
+    // only creates somewhere for them to go missing.
+    return NextResponse.json(await getMyStatusForSession(sessionId, email));
   } catch (err) {
     return handleApiError(err);
   }
