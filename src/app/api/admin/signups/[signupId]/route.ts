@@ -3,6 +3,7 @@ import { requireAdmin } from '../../../../../lib/auth';
 import { validateSignupOverride } from '../../../../../lib/validation';
 import { overrideSignup, removeSignup } from '../../../../../lib/adminFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
+import { adminRosterView } from '../../../../../lib/views';
 
 type Params = { params: Promise<{ signupId: string }> };
 
@@ -23,8 +24,8 @@ export async function PATCH(request: Request, { params }: Params) {
     const { signupId } = await params;
     const body = await request.json().catch(() => ({}));
 
-    const signup = await overrideSignup(signupId, validateSignupOverride(body));
-    return NextResponse.json({ signup });
+    const updated = await overrideSignup(signupId, validateSignupOverride(body));
+    return NextResponse.json({ signup: adminRosterView([updated])[0] });
   } catch (err) {
     return handleApiError(err);
   }

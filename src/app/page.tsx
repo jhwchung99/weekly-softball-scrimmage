@@ -15,21 +15,14 @@ import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
 import type { SignupStatus, MemberStatus, Signup } from '../sheets/schema';
-import type { RosterEntry, RosterView, SessionView } from '../lib/views';
+import type { RosterEntry, RosterView, SessionView, MySignupView, PlayerView } from '../lib/views';
 import { isRosterLocked, type SessionPhase } from '../lib/sessionPhase';
 
 /** The week as the projection module sends it. */
 export type SessionInfo = SessionView;
 
-export interface SignupInfo {
-  signupId: string;
-  status: SignupStatus;
-  memberStatus: MemberStatus;
-  /** Whether the organizer has recorded this person's payment. */
-  paid: boolean;
-  subRequestTargetEmail: string;
-  subRequestStatus: Signup['subRequestStatus'];
-}
+/** The caller's own signup, as the projection module sends it. */
+export type SignupInfo = MySignupView;
 
 export interface IncomingSubRequest {
   fromSignupId: string;
@@ -39,11 +32,8 @@ export interface IncomingSubRequest {
   fromGuestInvite: boolean;
 }
 
-export interface PlayerInfo {
-  fullName: string;
-  gender: string;
-  savedPositions: string;
-}
+/** The caller's own profile, as the projection module sends it. */
+export type PlayerInfo = PlayerView;
 
 /** The roster as the projection module defines it — the same declaration the
  * server builds against, rather than a copy that can drift from it. */

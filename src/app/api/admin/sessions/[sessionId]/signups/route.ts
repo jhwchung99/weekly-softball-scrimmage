@@ -54,8 +54,8 @@ export async function POST(request: Request, { params }: Params) {
     // Same lock as the player-facing signup route: this runs the identical
     // capacity accounting, so without it an admin add racing a player signup
     // can read "room available" twice and oversubscribe the roster.
-    const signup = await adminAddSignup({ sessionId, email, profile, invitedByName, willingToShare, waiverAccepted });
-    return NextResponse.json({ signup }, { status: 201 });
+    const created = await adminAddSignup({ sessionId, email, profile, invitedByName, willingToShare, waiverAccepted });
+    return NextResponse.json({ signup: adminRosterView([created])[0] }, { status: 201 });
   } catch (err) {
     return handleApiError(err);
   }

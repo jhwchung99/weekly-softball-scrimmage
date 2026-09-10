@@ -3,6 +3,7 @@ import { getSessionEmail } from '../../../../lib/auth';
 import { getPlayer, upsertPlayer } from '../../../../sheets/players';
 import { ApiError, handleApiError } from '../../../../lib/apiErrors';
 import { validatePlayerProfile } from '../../../../lib/validation';
+import { playerView } from '../../../../lib/views';
 
 export async function GET() {
   try {
@@ -10,7 +11,7 @@ export async function GET() {
     if (!email) throw new ApiError(401, 'Not signed in.');
 
     const player = await getPlayer(email);
-    return NextResponse.json({ player });
+    return NextResponse.json({ player: player ? playerView(player) : null });
   } catch (err) {
     return handleApiError(err);
   }

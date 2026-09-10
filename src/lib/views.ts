@@ -1,4 +1,4 @@
-import { Session, Signup } from '../sheets/schema';
+import { Player, Session, Signup } from '../sheets/schema';
 import { normalizeEmail } from './email';
 import { analyzeTeam } from './teams';
 import { partnerOf } from './pair';
@@ -251,4 +251,58 @@ export interface AdminSessionView extends SessionView {
 
 export function adminSessionView(session: Session): AdminSessionView {
   return { ...sessionView(session), cost: session.cost };
+}
+
+// ---------------------------------------------------------------------------
+// The caller's own record
+// ---------------------------------------------------------------------------
+
+/**
+ * A player's own signup, as they need it.
+ *
+ * Sending the whole row here was never a disclosure — it is their own record,
+ * and a player may see their own waiver text. It was still the shape that
+ * produced the teams leak: a narrow type declared on the client over a wide
+ * payload on the wire, with nothing checking the two agree. The homepage
+ * declared six fields while twenty-two crossed, so the sixteen it did not
+ * declare were invisible to every reader and to the compiler.
+ *
+ * Same rule as every other view, for the same reason: construct explicitly, so
+ * a new column on the Signups tab cannot join a payload by default.
+ */
+export interface MySignupView {
+  signupId: string;
+  status: Signup['status'];
+  memberStatus: Signup['memberStatus'];
+  /** Whether the organizer has recorded this person's payment. */
+  paid: boolean;
+  subRequestTargetEmail: string;
+  subRequestStatus: Signup['subRequestStatus'];
+}
+
+export function mySignupView(signup: Signup): MySignupView {
+  return {
+    signupId: signup.signupId,
+    status: signup.status,
+    memberStatus: signup.memberStatus,
+    paid: signup.paid,
+    subRequestTargetEmail: signup.subRequestTargetEmail,
+    subRequestStatus: signup.subRequestStatus,
+  };
+}
+
+/**
+ * A player's own saved profile.
+ *
+ * `email` is dropped: the browser already knows who it is signed in as, so
+ * sending it back is a field with no reader.
+ */
+export interface PlayerView {
+  fullName: string;
+  gender: string;
+  savedPositions: string;
+}
+
+export function playerView(player: Player): PlayerView {
+  return { fullName: player.fullName, gender: player.gender, savedPositions: player.savedPositions };
 }
