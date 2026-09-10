@@ -13,22 +13,12 @@ import { getWeeklyMilestones } from '../lib/time';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
-import type { SessionStatus, SignupStatus, MemberStatus, Signup } from '../sheets/schema';
-import type { RosterEntry, RosterView } from '../lib/views';
+import type { SignupStatus, MemberStatus, Signup } from '../sheets/schema';
+import type { RosterEntry, RosterView, SessionView } from '../lib/views';
 import { isRosterLocked, type SessionPhase } from '../lib/sessionPhase';
 
-export interface SessionInfo {
-  sessionId: string;
-  gameDate: string;
-  gameTime: string;
-  capacity: number;
-  numFields: number;
-  status: SessionStatus;
-  pricePerSpot: number;
-  locationArea: string;
-  locationName: string;
-  locationUrl: string;
-}
+/** The week as the projection module sends it. */
+export type SessionInfo = SessionView;
 
 export interface SignupInfo {
   signupId: string;

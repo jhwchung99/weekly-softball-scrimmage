@@ -5,7 +5,7 @@ import { listSignupsForSession } from '../../../sheets/signups';
 import { getPlayer } from '../../../sheets/players';
 import { currentWeekGameDayCandidates } from '../../../lib/time';
 import { buildMyStatus } from '../../../lib/signupFlow';
-import { rosterView, teamView } from '../../../lib/views';
+import { rosterView, teamView, sessionView } from '../../../lib/views';
 import { teamCountFor } from '../../../lib/teamFlow';
 import { WAIVER_TEXT } from '../../../lib/waiver';
 import { handleApiError } from '../../../lib/apiErrors';
@@ -42,7 +42,7 @@ export async function GET() {
 
     if (!email || !session) {
       return NextResponse.json({
-        session,
+        session: session ? sessionView(session) : null,
         phase: session ? phaseOf(session) : null,
         signedIn: Boolean(email),
         player: null,
@@ -64,7 +64,7 @@ export async function GET() {
     const { signup, incomingSubRequests, costOwed, waitlistPosition } = buildMyStatus(session, allSignups, email);
 
     return NextResponse.json({
-      session,
+      session: sessionView(session),
       /**
        * Where the week stands, decided by the server's clock.
        *

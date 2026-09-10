@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../../lib/auth';
-import { getSession, updateSession } from '../../../../../sheets/sessions';
-import { adminRescheduleSession } from '../../../../../lib/adminFlow';
-import { withMutationLock } from '../../../../../lib/lock';
+import { getSession } from '../../../../../sheets/sessions';
+import { reviseSession } from '../../../../../lib/adminFlow';
 import { Session, SessionStatus } from '../../../../../sheets/schema';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
-import { fillOpenSpots } from '../../../../../lib/signupFlow';
 import {
   validateCost,
   validateCapacity,
@@ -14,6 +12,7 @@ import {
   validateLocationName,
   validateLocationUrl,
 } from '../../../../../lib/validation';
+import { adminSessionView } from '../../../../../lib/views';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
@@ -27,7 +26,7 @@ export async function GET(request: Request, { params }: Params) {
     const { sessionId } = await params;
     const session = await getSession(sessionId);
     if (!session) throw new ApiError(404, 'No such session.');
-    return NextResponse.json({ session });
+    return NextResponse.json({ session: adminSessionView(session) });
   } catch (err) {
     return handleApiError(err);
   }
@@ -58,21 +57,10 @@ export async function GET(request: Request, { params }: Params) {
  * reschedule can no longer be observed half-applied either.
  *
  *
- * This is one of the last two handlers still acquiring the lock itself. Every
- * other route now calls a flow that guards itself (see lock.ts). These two
- * can't yet, because their orchestration lives here in the route rather than
- * in a flow module — the acquisition follows the logic, so it moves when
- * `reviseSession` and the signup override become flow functions. The lock is
- * reentrant, so nothing breaks in the meantime: a route-level hold simply
- * contains any flow that guards itself.
- *
- * The cost is a longer critical section: worst case this is now a rekey
- * (~5 Sheets calls), the field write (1), and the cascade (3 + one per
- * promoted player) under one hold, where the longest single hold before was
- * the cascade alone. Under sustained rate limiting — up to 7s of backoff per
- * call (client.ts, RATE_LIMIT_RETRY_DELAYS_MS) — this is the handler most
- * likely to approach LOCK_TTL_SECONDS, and the first place to look if that
- * ceiling ever needs raising again.
+ * Validates, then hands the whole edit to `reviseSession`, which serializes
+ * it. Validation stays here and stays outside the lock: it needs nothing from
+ * the sheet, and a request that is going to 400 should not queue behind other
+ * mutations or time out waiting for a lock it never needed.
  */
 export async function PATCH(request: Request, { params }: Params) {
   try {
@@ -141,34 +129,13 @@ export async function PATCH(request: Request, { params }: Params) {
       updates.cost = validateCost(body.cost);
     }
 
-    let session = existing;
-    let promoted: Awaited<ReturnType<typeof fillOpenSpots>> = [];
-
-    await withMutationLock(async () => {
-      let currentSessionId = sessionId;
-
-      if (body.gameDate !== undefined || body.gameTime !== undefined) {
-        session = await adminRescheduleSession(
-          sessionId,
-          body.gameDate ?? existing.gameDate,
-          body.gameTime ?? existing.gameTime
-        );
-        currentSessionId = session.sessionId;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        session = await updateSession(currentSessionId, updates);
-      }
-
-      // Raising capacity is how the organizer opens a second field, so it has to
-      // actually let people in. Without this the new spots stay empty and
-      // everyone above the old capacity keeps waiting.
-      if (updates.capacity !== undefined && updates.capacity > existing.capacity) {
-        promoted = await fillOpenSpots(currentSessionId);
-      }
+    const { session, promoted } = await reviseSession(sessionId, existing, {
+      updates,
+      gameDate: body.gameDate,
+      gameTime: body.gameTime,
     });
 
-    return NextResponse.json({ session, promoted: promoted.length });
+    return NextResponse.json({ session: adminSessionView(session), promoted: promoted.length });
   } catch (err) {
     return handleApiError(err);
   }

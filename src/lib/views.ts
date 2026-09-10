@@ -1,4 +1,4 @@
-import { Signup } from '../sheets/schema';
+import { Session, Signup } from '../sheets/schema';
 import { normalizeEmail } from './email';
 import { analyzeTeam } from './teams';
 import { partnerOf } from './pair';
@@ -193,4 +193,65 @@ export function adminRosterView(signups: Signup[]): AdminRosterEntry[] {
     amountPaid: s.amountPaid,
     attended: s.attended,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// The session itself
+// ---------------------------------------------------------------------------
+
+/**
+ * The week, as a player needs to see it.
+ *
+ * Everything here is on a poster the organizer would happily pin to the fence:
+ * when and where the game is, how many spots there are, what one costs.
+ *
+ * `cost` is the notable absence. That is what the *permit* cost the organizer
+ * — their bookkeeping, not the player's business — and it was crossing to
+ * every player because the whole row was being serialized. Not personal data,
+ * so this is tidiness rather than a leak, but there is no reason for a page to
+ * carry a number nobody on it is meant to read. `registrationOpensAt` and
+ * `registrationClosesAt` go too: they are the *recorded* timestamps, often
+ * blank, and what the client actually renders is the computed schedule (see
+ * sessionPhase).
+ */
+export interface SessionView {
+  sessionId: string;
+  gameDate: string;
+  gameTime: string;
+  capacity: number;
+  numFields: number;
+  status: Session['status'];
+  pricePerSpot: number;
+  locationArea: string;
+  locationName: string;
+  locationUrl: string;
+  teamsStatus: Session['teamsStatus'];
+}
+
+export function sessionView(session: Session): SessionView {
+  return {
+    sessionId: session.sessionId,
+    gameDate: session.gameDate,
+    gameTime: session.gameTime,
+    capacity: session.capacity,
+    numFields: session.numFields,
+    status: session.status,
+    pricePerSpot: session.pricePerSpot,
+    locationArea: session.locationArea,
+    locationName: session.locationName,
+    locationUrl: session.locationUrl,
+    teamsStatus: session.teamsStatus,
+  };
+}
+
+/**
+ * The week as the organizer needs it: everything a player sees, plus `cost`,
+ * which is the permit figure they reconcile their float against.
+ */
+export interface AdminSessionView extends SessionView {
+  cost: number;
+}
+
+export function adminSessionView(session: Session): AdminSessionView {
+  return { ...sessionView(session), cost: session.cost };
 }

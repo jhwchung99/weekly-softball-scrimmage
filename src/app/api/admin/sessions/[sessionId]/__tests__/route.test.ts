@@ -4,34 +4,28 @@ const requireAdmin = vi.fn();
 vi.mock('../../../../../../lib/auth', () => ({ requireAdmin }));
 
 const getSession = vi.fn();
-const updateSession = vi.fn();
-vi.mock('../../../../../../sheets/sessions', () => ({ getSession, updateSession }));
+vi.mock('../../../../../../sheets/sessions', () => ({ getSession }));
 
-const adminRescheduleSession = vi.fn();
-vi.mock('../../../../../../lib/adminFlow', () => ({ adminRescheduleSession }));
-
-const withMutationLock = vi.fn((fn: () => unknown) => fn());
-vi.mock('../../../../../../lib/lock', () => ({ withMutationLock }));
-
-const fillOpenSpots = vi.fn();
-vi.mock('../../../../../../lib/signupFlow', () => ({ fillOpenSpots }));
+const reviseSession = vi.fn();
+vi.mock('../../../../../../lib/adminFlow', () => ({ reviseSession }));
 
 const { GET, PATCH } = await import('../route');
-
-/** A lock that refuses to run its callback, so anything the handler still
- * manages to write is a write that was never inside the lock. */
-function lockNeverRuns() {
-  withMutationLock.mockImplementation(() => Promise.resolve(undefined));
-}
 
 function makeParams(sessionId: string) {
   return { params: Promise.resolve({ sessionId }) };
 }
 
+function patch(sessionId: string, body: unknown) {
+  return PATCH(new Request('http://x', { method: 'PATCH', body: JSON.stringify(body) }), makeParams(sessionId));
+}
+
+const SESSION = { sessionId: '2099-01-01', gameDate: '2099-01-01', gameTime: '18:00', capacity: 10 };
+
 beforeEach(() => {
   vi.clearAllMocks();
-  withMutationLock.mockImplementation((fn: () => unknown) => fn());
-  fillOpenSpots.mockResolvedValue([]);
+  requireAdmin.mockResolvedValue('admin@dummy.test');
+  getSession.mockResolvedValue(SESSION);
+  reviseSession.mockResolvedValue({ session: SESSION, promoted: [] });
 });
 
 describe('GET /api/admin/sessions/[sessionId]', () => {
@@ -44,7 +38,6 @@ describe('GET /api/admin/sessions/[sessionId]', () => {
   });
 
   it('returns 404 for a session that does not exist', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
     getSession.mockResolvedValue(null);
 
     const res = await GET(new Request('http://x'), makeParams('2099-01-01'));
@@ -52,216 +45,119 @@ describe('GET /api/admin/sessions/[sessionId]', () => {
   });
 
   it('returns the session for an admin', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2099-01-01', capacity: 10 });
-
     const res = await GET(new Request('http://x'), makeParams('2099-01-01'));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.session.capacity).toBe(10);
-  });
-});
-
-describe('PATCH /api/admin/sessions/[sessionId]', () => {
-  it('rejects a negative cost', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2099-01-01' });
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ cost: -5 }) }),
-      makeParams('2099-01-01')
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('accepts a valid cost update', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2099-01-01' });
-    updateSession.mockResolvedValue({ sessionId: '2099-01-01', cost: 12.5 });
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ cost: 12.5 }) }),
-      makeParams('2099-01-01')
-    );
-    expect(res.status).toBe(200);
-    expect(updateSession).toHaveBeenCalledWith('2099-01-01', { cost: 12.5 });
-  });
-
-  it('rejects an empty update body', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2099-01-01' });
-
-    const res = await PATCH(new Request('http://x', { method: 'PATCH', body: '{}' }), makeParams('2099-01-01'));
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects a negative capacity', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2099-01-01' });
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: -1 }) }),
-      makeParams('2099-01-01')
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('reschedules under the mutation lock and applies other field updates against the (possibly new) id', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00' });
-    adminRescheduleSession.mockResolvedValue({ sessionId: '2026-07-11', gameDate: '2026-07-11', gameTime: '20:00' });
-    updateSession.mockResolvedValue({ sessionId: '2026-07-11', gameDate: '2026-07-11', gameTime: '20:00', capacity: 15 });
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ gameDate: '2026-07-11', gameTime: '20:00', capacity: 15 }) }),
-      makeParams('2026-07-10')
-    );
 
     expect(res.status).toBe(200);
-    expect(withMutationLock).toHaveBeenCalledTimes(1);
-    expect(adminRescheduleSession).toHaveBeenCalledWith('2026-07-10', '2026-07-11', '20:00');
-    // capacity update lands on the NEW id returned by the reschedule, not the original one.
-    expect(updateSession).toHaveBeenCalledWith('2026-07-11', { capacity: 15 });
-    const body = await res.json();
-    expect(body.session.sessionId).toBe('2026-07-11');
-  });
-
-  it('fills in the existing gameDate/gameTime when only one of the two is provided', async () => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00' });
-    adminRescheduleSession.mockResolvedValue({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '20:00' });
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ gameTime: '20:00' }) }),
-      makeParams('2026-07-10')
-    );
-
-    expect(res.status).toBe(200);
-    expect(adminRescheduleSession).toHaveBeenCalledWith('2026-07-10', '2026-07-10', '20:00');
-  });
-
-  it('propagates a rejection from adminRescheduleSession (e.g. an id collision)', async () => {
-    const { ApiError } = await import('../../../../../../lib/apiErrors');
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00' });
-    adminRescheduleSession.mockRejectedValue(new ApiError(409, 'A session for 2026-07-11 already exists.'));
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ gameDate: '2026-07-11' }) }),
-      makeParams('2026-07-10')
-    );
-    expect(res.status).toBe(409);
+    expect((await res.json()).session.capacity).toBe(10);
   });
 });
 
 /**
- * Every write this route makes changes who holds a spot for the week, so every
- * one of them has to be inside the mutation lock — a capacity that lands
- * outside it can be read as "there is room" by a signup arriving before the
- * promotion cascade runs.
+ * The route validates and delegates; `reviseSession` does the work and
+ * serializes itself (see lib/adminFlow.ts, and flowSerialization.test.ts for
+ * the assertion that none of its writes escape the lock).
  *
- * These assert what reaches the repository rather than how the lock is called,
- * so they keep working when the acquisition eventually moves down into the
- * flow modules.
+ * So what belongs here is what the route is still responsible for: rejecting
+ * bad input before anything is attempted, passing on exactly what it was
+ * given, and reporting back what the flow returned.
  */
-describe('PATCH /api/admin/sessions/[sessionId] — serialization', () => {
-  beforeEach(() => {
-    requireAdmin.mockResolvedValue('admin@dummy.test');
-    getSession.mockResolvedValue({ sessionId: '2099-01-01', gameDate: '2099-01-01', gameTime: '18:00', capacity: 10 });
-    updateSession.mockResolvedValue({ sessionId: '2099-01-01', capacity: 20 });
-    adminRescheduleSession.mockResolvedValue({ sessionId: '2099-01-02', gameDate: '2099-01-02', gameTime: '18:00' });
+describe('PATCH /api/admin/sessions/[sessionId] — validation', () => {
+  it('rejects a negative cost', async () => {
+    expect((await patch('2099-01-01', { cost: -5 })).status).toBe(400);
   });
 
-  it('writes no capacity change when the lock does not run its callback', async () => {
-    lockNeverRuns();
-
-    await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 20 }) }),
-      makeParams('2099-01-01')
-    );
-
-    expect(updateSession).not.toHaveBeenCalled();
+  it('rejects a negative capacity', async () => {
+    expect((await patch('2099-01-01', { capacity: -1 })).status).toBe(400);
   });
 
-  it('runs no part of a reschedule-plus-capacity revision outside the lock', async () => {
-    lockNeverRuns();
+  it('rejects an unknown status', async () => {
+    const res = await patch('2099-01-01', { status: 'paused' });
 
-    await PATCH(
-      new Request('http://x', {
-        method: 'PATCH',
-        body: JSON.stringify({ gameDate: '2099-01-02', capacity: 20, status: 'closed', cost: 40 }),
-      }),
-      makeParams('2099-01-01')
-    );
-
-    expect(adminRescheduleSession).not.toHaveBeenCalled();
-    expect(updateSession).not.toHaveBeenCalled();
-    expect(fillOpenSpots).not.toHaveBeenCalled();
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/status must be one of/);
   });
 
-  it('runs no promotion cascade when the lock does not run its callback', async () => {
-    lockNeverRuns();
-
-    await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 30 }) }),
-      makeParams('2099-01-01')
-    );
-
-    expect(fillOpenSpots).not.toHaveBeenCalled();
+  it('rejects an empty update body', async () => {
+    expect((await patch('2099-01-01', {})).status).toBe(400);
   });
 
-  it('still raises capacity and promotes from the waitlist when the lock runs normally', async () => {
-    fillOpenSpots.mockResolvedValue([{ signupId: 'a' }, { signupId: 'b' }]);
+  it('returns 404 for a session that does not exist', async () => {
+    getSession.mockResolvedValue(null);
 
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 20 }) }),
-      makeParams('2099-01-01')
+    expect((await patch('2099-01-01', { capacity: 12 })).status).toBe(404);
+  });
+
+  it('attempts nothing at all when the input is bad', async () => {
+    // Validation runs before the flow is called, so a request that is going to
+    // 400 never queues behind another mutation waiting for the lock.
+    await patch('2099-01-01', { capacity: -1 });
+
+    expect(reviseSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/admin/sessions/[sessionId] — delegation', () => {
+  it('passes the validated field updates through', async () => {
+    await patch('2099-01-01', { cost: 12.5, capacity: 15 });
+
+    expect(reviseSession).toHaveBeenCalledWith(
+      '2099-01-01',
+      SESSION,
+      expect.objectContaining({ updates: { capacity: 15, cost: 12.5 } })
     );
+  });
+
+  it('passes a reschedule through alongside the other fields', async () => {
+    await patch('2026-07-10', { gameDate: '2026-07-11', gameTime: '20:00', capacity: 15 });
+
+    expect(reviseSession).toHaveBeenCalledWith(
+      '2026-07-10',
+      SESSION,
+      expect.objectContaining({ gameDate: '2026-07-11', gameTime: '20:00', updates: { capacity: 15 } })
+    );
+  });
+
+  it('leaves the flow to fill in a half-given reschedule from the existing session', async () => {
+    // The route does not guess the missing half; the flow has the existing row.
+    await patch('2026-07-10', { gameTime: '20:00' });
+
+    expect(reviseSession).toHaveBeenCalledWith(
+      '2026-07-10',
+      SESSION,
+      expect.objectContaining({ gameDate: undefined, gameTime: '20:00' })
+    );
+  });
+
+  it('reports the session the flow returned, which may have a new id', async () => {
+    reviseSession.mockResolvedValue({
+      session: { ...SESSION, sessionId: '2026-07-11' },
+      promoted: [{ signupId: 'a' }, { signupId: 'b' }],
+    });
+
+    const res = await patch('2026-07-10', { gameDate: '2026-07-11' });
+    const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(updateSession).toHaveBeenCalledWith('2099-01-01', { capacity: 20 });
-    expect(fillOpenSpots).toHaveBeenCalledWith('2099-01-01');
-    expect((await res.json()).promoted).toBe(2);
+    expect(body.session.sessionId).toBe('2026-07-11');
+    expect(body.promoted).toBe(2);
   });
 
-  it('leaves the waitlist alone when capacity is only lowered', async () => {
-    updateSession.mockResolvedValue({ sessionId: '2099-01-01', capacity: 5 });
-
-    await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 5 }) }),
-      makeParams('2099-01-01')
-    );
-
-    expect(fillOpenSpots).not.toHaveBeenCalled();
-  });
-
-  it('returns the same busy error as every other locked route', async () => {
+  it('propagates a rejection from the flow, such as an id collision', async () => {
     const { ApiError } = await import('../../../../../../lib/apiErrors');
-    withMutationLock.mockRejectedValue(
+    reviseSession.mockRejectedValue(new ApiError(409, 'A session for 2026-07-11 already exists.'));
+
+    expect((await patch('2026-07-10', { gameDate: '2026-07-11' })).status).toBe(409);
+  });
+
+  it('returns the same busy error as every other serialized route', async () => {
+    const { ApiError } = await import('../../../../../../lib/apiErrors');
+    reviseSession.mockRejectedValue(
       new ApiError(503, 'The server is busy processing other requests. Please try again in a moment.')
     );
 
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: 20 }) }),
-      makeParams('2099-01-01')
-    );
+    const res = await patch('2099-01-01', { capacity: 20 });
 
     expect(res.status).toBe(503);
     expect((await res.json()).error).toMatch(/busy processing other requests/);
-  });
-
-  it('still rejects an invalid field with a 400, rather than making it queue for a lock it never needed', async () => {
-    const { ApiError } = await import('../../../../../../lib/apiErrors');
-    // A lock nobody can take. Validation happens before it, so this is still a 400.
-    withMutationLock.mockRejectedValue(
-      new ApiError(503, 'The server is busy processing other requests. Please try again in a moment.')
-    );
-
-    const res = await PATCH(
-      new Request('http://x', { method: 'PATCH', body: JSON.stringify({ capacity: -1 }) }),
-      makeParams('2099-01-01')
-    );
-
-    expect(res.status).toBe(400);
   });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '../../../../lib/auth';
 import { adminCreateSession } from '../../../../lib/adminFlow';
 import { handleApiError } from '../../../../lib/apiErrors';
+import { adminSessionView } from '../../../../lib/views';
 
 /** Create a new session (Section 8) — mainly for scheduling a
  * Saturday/Sunday game, or setting up Friday's ahead of the Monday-open
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
         locationArea: body?.locationArea,
         openImmediately: Boolean(body?.openImmediately),
       });
-    return NextResponse.json({ session }, { status: 201 });
+    return NextResponse.json({ session: adminSessionView(session) }, { status: 201 });
   } catch (err) {
     return handleApiError(err);
   }

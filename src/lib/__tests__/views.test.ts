@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { makeSignup } from '../../test/fakeSheets';
-import { rosterView, teamView, adminRosterView } from '../views';
-import { SIGNUP_HEADERS } from '../../sheets/schema';
+import { rosterView, teamView, adminRosterView, sessionView, adminSessionView } from '../views';
+import { SIGNUP_HEADERS, SESSION_HEADERS } from '../../sheets/schema';
+import { makeSession } from '../../test/fakeSheets';
 
 /**
  * The projections are an access-control boundary, so these tests are written
@@ -183,5 +184,75 @@ describe('adminRosterView', () => {
     ]);
 
     expect(rows.map((r) => r.signupId)).toEqual(['first', 'second', 'third']);
+  });
+});
+
+describe('sessionView', () => {
+  const loadedSession = () =>
+    makeSession({
+      sessionId: '2099-01-01',
+      gameDate: '2099-01-01',
+      gameTime: '18:00',
+      capacity: 12,
+      numFields: 2,
+      status: 'open',
+      cost: 240,
+      pricePerSpot: 20,
+      locationArea: 'Mississauga',
+      locationName: 'Iceland Park Diamond 3',
+      locationUrl: 'https://maps.example/x',
+      teamsStatus: 'posted',
+      registrationOpensAt: '2098-12-29T14:00:00.000Z',
+      registrationClosesAt: '2098-12-30T05:00:00.000Z',
+    });
+
+  it('sends a player the week, and not the organizer’s bookkeeping', () => {
+    const view = sessionView(loadedSession()) as unknown as Record<string, unknown>;
+
+    const allowed = [
+      'sessionId',
+      'gameDate',
+      'gameTime',
+      'capacity',
+      'numFields',
+      'status',
+      'pricePerSpot',
+      'locationArea',
+      'locationName',
+      'locationUrl',
+      'teamsStatus',
+    ];
+    expect(Object.keys(view).sort()).toEqual([...allowed].sort());
+    for (const field of SESSION_HEADERS.filter((h) => !allowed.includes(h))) {
+      expect(view).not.toHaveProperty(field);
+    }
+  });
+
+  it('keeps the permit cost off a player’s page', () => {
+    // What the permit cost the organizer is their float, not a number anyone
+    // on the roster is meant to read.
+    expect(JSON.stringify(sessionView(loadedSession()))).not.toMatch(/240/);
+  });
+
+  it('still tells a player what a spot costs them', () => {
+    expect(sessionView(loadedSession()).pricePerSpot).toBe(20);
+  });
+
+  it('still says where and when the game is', () => {
+    const view = sessionView(loadedSession());
+
+    expect(view).toMatchObject({
+      gameDate: '2099-01-01',
+      gameTime: '18:00',
+      locationArea: 'Mississauga',
+      locationName: 'Iceland Park Diamond 3',
+    });
+  });
+
+  it('gives the organizer the permit cost on top of everything a player sees', () => {
+    const admin = adminSessionView(loadedSession());
+
+    expect(admin.cost).toBe(240);
+    expect(admin).toMatchObject(sessionView(loadedSession()));
   });
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionByAnyId } from '../../../../sheets/sessions';
 import { currentWeekGameDayCandidates } from '../../../../lib/time';
+import { sessionView } from '../../../../lib/views';
 
 /**
  * Public (no auth) — a player should be able to see whether there's a
@@ -11,5 +12,5 @@ import { currentWeekGameDayCandidates } from '../../../../lib/time';
  */
 export async function GET() {
   const session = await getSessionByAnyId(currentWeekGameDayCandidates());
-  return NextResponse.json({ session });
+  return NextResponse.json({ session: session ? sessionView(session) : null });
 }

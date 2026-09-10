@@ -113,6 +113,9 @@ const flows: [name: string, run: () => Promise<unknown>][] = [
   ['adminAddSignup', () => adminFlow.adminAddSignup({ sessionId: '2099-01-01', email: 'a@dummy.test', waiverAccepted: true })],
   ['adminCreateSession', () => adminFlow.adminCreateSession({ gameDate: '2099-06-06' })],
   ['adminRescheduleSession', () => adminFlow.adminRescheduleSession('2099-01-01', '2099-06-06', '18:00')],
+  ['reviseSession', () => adminFlow.reviseSession('2099-01-01', { sessionId: '2099-01-01', gameDate: '2099-01-01', gameTime: '18:00', capacity: 10 } as never, { updates: { capacity: 40 } })],
+  ['overrideSignup', () => adminFlow.overrideSignup('sid', { status: 'confirmed' })],
+  ['removeSignup', () => adminFlow.removeSignup('sid')],
   ['generateTeams', () => teamFlow.generateTeams('2099-01-01')],
   ['saveTeams', () => teamFlow.saveTeams('2099-01-01', [{ signupId: 'sid', teamName: 'Team 1' }])],
 ];
