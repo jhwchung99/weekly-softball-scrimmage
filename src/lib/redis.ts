@@ -21,8 +21,9 @@ export function getRedis(): Redis | null {
     if (!warnedNotConfigured) {
       console.warn(
         'UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set — mutation requests are running ' +
-          'unlocked and the feedback rate limiter is inactive. See ' +
-          'planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md for setup.'
+          'unlocked and the feedback rate limiter is inactive. Two simultaneous signups can both read ' +
+          '"there is room" and both be confirmed, oversubscribing the week. Set both from an Upstash ' +
+          'Redis database to close it.'
       );
       warnedNotConfigured = true;
     }

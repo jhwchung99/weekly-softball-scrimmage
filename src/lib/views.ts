@@ -23,8 +23,6 @@ import { partnerOf } from './pair';
  *
  * The exported types are the wire contract, and the client imports them rather
  * than declaring its own copies.
- *
- * See planner/2026-09-09-architecture-review.html, candidate 1.
  */
 
 // ---------------------------------------------------------------------------
@@ -57,8 +55,7 @@ function toRosterEntry(s: Signup, active: Signup[]): RosterEntry {
  *
  * Sharing matters here beyond deduplication: the "names only for
  * participants" rule is an access-control boundary, and having two copies of
- * it is how one of them eventually drifts open. See
- * planner/2026-09-05-code-security-review.md, S1.
+ * it is how one of them eventually drifts open.
  */
 export function rosterView(allSignups: Signup[], viewerEmail: string): RosterView {
   const active = allSignups.filter((s) => s.status !== 'cancelled');

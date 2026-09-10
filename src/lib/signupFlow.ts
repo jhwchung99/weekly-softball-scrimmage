@@ -335,7 +335,7 @@ export async function cancelMySignup(
 
     const promotedSignups = await promoteNextWaitlisted(afterSignups);
     for (const promoted of promotedSignups) {
-      // A promoted signup's own outstanding outgoing sub request is moot —
+      // A promoted signup's own outstanding outgoing sub request is moot
       // it just got its own spot.
       await clearOwnPendingRequest(promoted);
       // Awaited, not fire-and-forget: on Vercel's serverless runtime, an
@@ -359,8 +359,7 @@ export async function cancelMySignup(
  * number straight through and nothing re-examined the waitlist, so anyone
  * above the old capacity stayed waitlisted indefinitely and only trickled in
  * as a side effect of other people cancelling. That is the whole point of
- * raising it, so it has to cascade. See
- * planner/2026-09-07-team-generation-plan.md.
+ * raising it, so it has to cascade.
  *
  * The whole cascade is worked out in memory first, so this costs one read and
  * one batched write however many spots just opened, rather than a read and a

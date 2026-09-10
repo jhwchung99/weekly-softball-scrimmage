@@ -38,8 +38,8 @@ describe('normalizeEmail', () => {
 });
 
 /**
- * Regression coverage for Bug 1 in planner/2026-09-05-code-security-review.md:
- * ownership checks compared emails case-sensitively while lookups normalized,
+ * Regression coverage for a real bug: ownership checks compared emails
+ * case-sensitively while lookups normalized,
  * so a row stored with different casing (e.g. an organizer hand-typing it into
  * the admin add-signup form) left the player able to SEE their signup but not
  * cancel it.

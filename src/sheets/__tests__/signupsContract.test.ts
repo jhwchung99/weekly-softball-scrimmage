@@ -14,11 +14,10 @@ import { Signup, SIGNUP_HEADERS, RawRow } from '../schema';
  * rule that gates giving away a roster spot: it accepted any non-cancelled
  * guest where production accepts only a waitlisted one, and dropped the
  * "not already waiting on an answer" clause entirely. Tests written against
- * the fake were therefore asserting a rule the app does not have. See
- * planner/2026-09-09-architecture-review.html, candidate 5.
+ * the fake were therefore asserting a rule the app does not have.
  *
  * The real adapter runs here against an in-memory stand-in for `client`, so
- * every rule under test is the production one. Only storage is substituted —
+ * every rule under test is the production one. Only storage is substituted
  * and it stores strings, because that is all a Sheets cell ever returns.
  */
 

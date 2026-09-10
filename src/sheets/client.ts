@@ -10,8 +10,7 @@ const KEY_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS || 'credentials/serv
  * No hardcoded fallback. A default meant any environment that forgot to set
  * this — a preview deploy, a test run, a script — silently read and wrote the
  * live production spreadsheet instead of failing loudly. That is exactly how a
- * unit test ended up hitting production data on 2026-09-05. See
- * planner/2026-09-05-code-security-review.md, S3.
+ * unit test ended up hitting production data on 2026-09-05.
  *
  * Deliberately NOT validated at module scope: that would throw during
  * `next build` (which imports route modules) and take down static pages that
@@ -32,7 +31,7 @@ function assertSpreadsheetConfigured(): void {
 
 function loadKey(): Record<string, unknown> {
   // Production (Vercel): the key is set as a GOOGLE_SERVICE_ACCOUNT_KEY env
-  // var (the raw JSON key file's contents, as a single-line string) —
+  // var (the raw JSON key file's contents, as a single-line string)
   // there's no credentials/service-account.json file on Vercel at all,
   // since it's gitignored and never deployed.
   const inlineKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
@@ -65,7 +64,7 @@ function loadKey(): Record<string, unknown> {
 // The googleapis client already retries transient failures a few times
 // with a short backoff, but that wasn't enough to outlast a genuinely
 // exhausted per-minute read-request quota (hit live during 2026-09-04
-// testing — see planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md).
+// testing
 // This adds a longer, targeted retry specifically for 429/rateLimitExceeded
 // on top of that, rather than replacing it.
 /** Exported so the lock's TTL can be checked against the worst case it has to
@@ -138,7 +137,7 @@ export async function appendValues(
       // as formulas. Never change this back: user-supplied fields (names,
       // etc.) flow straight into these rows, and USER_ENTERED lets a
       // leading "=" turn a cell into a live formula. See the 2026-09-04
-      // security review / planner/2026-09-04-security-hardening-plan.md.
+      // security review
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: rows },
@@ -203,8 +202,7 @@ export async function getRowObjects<T extends Record<string, unknown>>(
   // blank rows are dropped. Numbering after the filter shifted every row below
   // a blank one up by one, and since rowNumber is what updateRow/deleteRow
   // target, a single cleared-but-not-deleted row would make every subsequent
-  // write land on the wrong person. See
-  // planner/2026-09-05-code-security-review.md, Bug 6.
+  // write land on the wrong person.
   return rows
     .map((row, i) => ({ row, rowNumber: i + 2 }))
     .filter(({ row }) => row.some((cell) => cell !== undefined && cell !== ''))
@@ -252,8 +250,7 @@ export interface RangeUpdate {
  * one call per row — each call is its own quota unit, so a caller that
  * already knows it's about to write several related rows (e.g. pairing
  * two signups together, or declining several other pending requests at
- * once) should batch them here rather than looping updateRow. See
- * planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md, Step 2.
+ * once) should batch them here rather than looping updateRow.
  */
 export async function batchUpdateRows(spreadsheetId: string, updates: RangeUpdate[]): Promise<void> {
   if (updates.length === 0) return;

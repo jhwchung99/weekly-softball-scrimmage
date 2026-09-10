@@ -337,5 +337,12 @@ app end-to-end without real players.
 
 - `credentials/` and `.env*.local` are gitignored — never commit a
   service account key or a refresh token.
-- See `planner/PROJECT_GUIDELINES.md` for the original spec this app was
-  built against, and `planner/*.md` for the implementation history.
+- `CONTEXT.md` is the glossary: the word this project uses for each
+  concept, and the ones it avoids. Read it before naming anything.
+- `docs/adr/` records the decisions that are hard to reverse and would
+  otherwise look arbitrary — why there is one global mutation lock, why
+  nothing reaches the browser unprojected, why a session's phase is decided
+  on the server, and why a shared spot is one spot with two rows.
+- Everything else is explained where it lives. Comments here carry their own
+  reasoning rather than pointing at a document, so a surprising line should
+  say why it is that way at the line itself.

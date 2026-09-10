@@ -152,7 +152,7 @@ function seeded(seed: number): () => number {
 // is not. Measured across six 40-player rosters, 1 and 3 restarts each missed
 // on two of them by two unfillable slots, while 10 and 20 matched every time.
 // 20 costs ~100ms at two teams and ~1s at four, which both sit comfortably
-// inside a request. See planner/2026-09-07-team-generation-plan.md.
+// inside a request.
 const RESTARTS = 20;
 
 /**

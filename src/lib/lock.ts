@@ -9,8 +9,7 @@ import { ApiError } from './apiErrors';
 // otherwise both read "room available" and both get confirmed,
 // oversubscribing capacity) and smooths Sheets API quota bursts, while
 // keeping every mutation route fully synchronous: same validation
-// errors, same response shape as without this. See
-// planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md.
+// errors, same response shape as without this.
 //
 // An async queue (originally planned as Upstash QStash) was considered
 // and rejected: QStash's model is enqueue-and-process-later via a

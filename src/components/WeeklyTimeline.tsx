@@ -93,7 +93,6 @@ function Line({ state }: { state: LineState }) {
  * Green means a moment has passed; amber on a line means that stretch of
  * the week is the one you're in. `status` only decides whether this renders
  * at all (a cancelled session shows nothing).
- * See planner/2026-09-05-visual-redesign-timeline-guidelines-plan.md.
  */
 export function WeeklyTimeline({ gameDate, gameTime, status, phase }: WeeklyTimelineProps) {
   // Re-render once a minute so "closes in 2 days" doesn't go stale on a

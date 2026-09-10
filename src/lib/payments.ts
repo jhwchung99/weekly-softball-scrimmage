@@ -44,8 +44,7 @@ export function countConfirmedSpots(signups: SpotOccupant[]): number {
  * can be shown at signup and paid immediately on confirmation. Over- or
  * under-collection against the permit becomes the organizer's float, visible
  * on the admin dashboard rather than implicit. `session.cost` is still
- * recorded, but purely for the organizer's own books. See
- * planner/2026-09-05-location-payments-qol-plan.md, section 3.
+ * recorded, but purely for the organizer's own books.
  *
  * Still derived rather than stored: what someone *owes* is a calculation, and
  * storing it would let it drift. What they actually *paid* is a fact, and that
@@ -83,7 +82,7 @@ export interface PaymentSummary {
 export function computePaymentSummary(session: Costed, signups: Payable[]): PaymentSummary {
   const owedBySignup = computeCostShare(session, signups);
   const expected = Object.values(owedBySignup).reduce((sum, n) => sum + n, 0);
-  // Every payment counts, including one from someone who later cancelled —
+  // Every payment counts, including one from someone who later cancelled
   // payments are never refunded or recalculated (see the guidelines).
   const collected = signups.reduce((sum, s) => sum + (s.amountPaid || 0), 0);
   const unpaidCount = signups.filter((s) => s.status === 'confirmed' && !s.paid).length;

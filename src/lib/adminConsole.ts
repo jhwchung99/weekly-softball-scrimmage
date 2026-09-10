@@ -13,8 +13,6 @@ import { AdminRosterEntry, AdminSessionView } from './views';
  *
  * Nothing here touches React, the network or the DOM. What is left in the page
  * is holding state and drawing it.
- *
- * See planner/2026-09-09-architecture-review.html, candidate 6.
  */
 
 /** A request that failed with a status the console treats specially. */
@@ -137,7 +135,7 @@ export interface SessionInputs {
  * The edit form's starting values for a session.
  *
  * Eight of the console's state slots are just session fields mirrored into
- * inputs, and they have to be refilled together every time a session loads —
+ * inputs, and they have to be refilled together every time a session loads
  * missing one leaves a box showing the previous week's value, which the
  * organizer would then save.
  */

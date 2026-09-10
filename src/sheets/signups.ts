@@ -33,8 +33,7 @@ export async function getSignup(signupId: string): Promise<Signup | null> {
  * One signup plus every signup in its session, from a single tab read —
  * for callers (requestSub, respondToSubRequest, cancelMySignup) that
  * previously called getSignup then separately listSignupsForSession,
- * doing two full-tab reads where one suffices. See
- * planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md, Step 2.
+ * doing two full-tab reads where one suffices.
  */
 export async function getSignupWithSessionSignups(
   signupId: string
@@ -74,7 +73,7 @@ export function generateSignupId(): string {
 }
 
 /**
- * Enforces the "uniqueness on (sessionId, email)" rule from Section 4 —
+ * Enforces the "uniqueness on (sessionId, email)" rule from Section 4
  * the Sheet itself has no constraint mechanism, so this is the only place
  * it's actually enforced. `signup.signupId` is ignored if already set;
  * one is always generated here so callers can't accidentally collide ids.

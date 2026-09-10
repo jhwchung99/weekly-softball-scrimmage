@@ -11,9 +11,11 @@ import { withMutationLock } from './lock';
 const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
 
 /**
- * A waitlisted player proposing to share a specific active player's spot
- * (Section-adjacent feature — see
- * planner/2026-09-04-sub-requests-roster-cost-plan.md). Reuses the
+ * A waitlisted player proposing to share a specific active player's spot.
+ *
+ * Not in the original guidelines: it was added so a full week can still fit
+ * one more person, by letting someone already holding a spot share it rather
+ * than the waitlist simply stalling. Reuses the
  * existing pairId spot-sharing mechanic: accepting this never changes
  * capacity, since a pair always counts as one spot
  * (countConfirmedSpots) — so there's no promotion cascade to run here,
@@ -118,7 +120,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     // status override doesn't clear pending requests). Without this, accepting
     // folds an already-confirmed player into the target's spot, silently
     // dropping the roster below capacity with no promotion cascade to refill
-    // it. See planner/2026-09-05-code-security-review.md, Bug 2.
+    // it.
     if (requester.status !== 'waitlisted') {
       throw new ApiError(409, 'That person already has their own spot, so there is nothing to sub into.');
     }

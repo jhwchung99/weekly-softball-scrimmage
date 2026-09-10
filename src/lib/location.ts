@@ -6,8 +6,6 @@
  * after registration closes Tuesday — the whole reason the window is short. So
  * a player signing up on Monday should see "Mississauga (specific field TBD)",
  * and the same player on Thursday should see the actual diamond.
- *
- * See planner/2026-09-05-location-payments-qol-plan.md, section 2.
  */
 export interface LocationParts {
   area: string;

@@ -12,8 +12,6 @@ import type { FakeStore } from '../../../../../../test/fakeSheets';
  * that three, and this one answered to nobody: it returned whatever each test
  * told it to, including states the real repository would never produce. Now
  * this route is exercised against the same adapter the contract pins.
- *
- * See planner/2026-09-09-architecture-review.html, candidate 5.
  */
 
 const store = vi.hoisted((): FakeStore => ({ sessions: new Map(), signups: new Map(), players: new Map() }));

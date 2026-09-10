@@ -10,13 +10,11 @@ import { getWeeklyMilestones } from './time';
  * the *viewer's* clock, so two people looking at the same session on two
  * devices could be told different things about whether the roster was locked.
  *
- * The milestone arithmetic — Eastern time, DST, the Monday/Tuesday schedule —
+ * The milestone arithmetic — Eastern time, DST, the Monday/Tuesday schedule
  * already lived in one place (`getWeeklyMilestones`). What did not was the
  * comparison to now. This module is the only thing that makes it, it takes an
  * injectable clock, and the server sends the answer to the client rather than
  * letting the client work it out again.
- *
- * See planner/2026-09-09-architecture-review.html, candidate 3.
  */
 export type SessionPhase =
   /** Before registration opens — the week exists but nobody can sign up yet. */

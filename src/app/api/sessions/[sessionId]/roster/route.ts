@@ -20,8 +20,7 @@ type Params = { params: Promise<{ sessionId: string }> };
  * are just dates, so an ungated roster let anyone who found the URL enumerate
  * the full membership of the group, week by week. Requiring skin in the game to
  * see names keeps sub requests working — you have to be on the list to ask
- * someone on the list — while closing that. See
- * planner/2026-09-05-code-security-review.md, S1.
+ * someone on the list — while closing that.
  *
  * The shaping itself lives in lib/roster.ts, shared with /api/home so the
  * access-control rule has exactly one implementation.
