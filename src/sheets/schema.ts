@@ -58,7 +58,7 @@ export interface Signup {
   // stronger evidence than a checkbox flag if the wording ever changes later
   paid: boolean; // admin-tracked, per session — a person who owes for one
   // week still owes it even after paying for a later week (no cross-week
-  // ledger; see planner/2026-09-04-sub-requests-roster-cost-plan.md)
+  // ledger)
   amountPaid: number; // what they actually handed over. Recorded because it's
   // a fact, unlike the owed amount, which stays derived. Payment is not
   // refunded or recalculated afterwards — including a late cancellation — so

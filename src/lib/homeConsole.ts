@@ -10,8 +10,8 @@
  * The actions are data here, and the policy around them is one function in the
  * page. Nothing in this file touches React, the network or the DOM.
  *
- * See planner/2026-09-09-architecture-review.html, candidate 6 — "the same
- * shape applies to page.tsx".
+ * The admin console got the same treatment first (lib/adminConsole.ts); this
+ * is the player-facing half of the same shape.
  */
 
 /** Something a player can do to their own signup. */

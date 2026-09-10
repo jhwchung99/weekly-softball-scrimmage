@@ -9,7 +9,6 @@ export const DEFAULT_GAME_TIME = process.env.SESSION_DEFAULT_GAME_TIME || '18:00
 export const DEFAULT_CAPACITY = Number(process.env.SESSION_DEFAULT_CAPACITY) || 20;
 // What one spot costs a player. Fixed rather than derived from the permit
 // total so the number is stable and knowable at signup time — see
-// planner/2026-09-05-location-payments-qol-plan.md, section 3.
 export const DEFAULT_PRICE_PER_SPOT = Number(process.env.SESSION_DEFAULT_PRICE_PER_SPOT) || 0;
 
 // GitHub Actions can be badly late firing a scheduled workflow (delays of

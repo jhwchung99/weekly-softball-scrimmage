@@ -48,8 +48,7 @@ describe('SPREADSHEET_ID', () => {
  * getRowObjects maps sheet columns to field names by POSITION — it never reads
  * the header row. The *_HEADERS arrays therefore *are* the physical column
  * layout, and any drift between them and the sheet silently writes data into
- * the wrong fields with no error. These tests pin that contract down; see
- * planner/2026-09-05-code-security-review.md, R1.
+ * the wrong fields with no error. These tests pin that contract down;
  */
 describe('getRowObjects positional mapping', () => {
   const HEADERS = ['id', 'name', 'status'] as const;

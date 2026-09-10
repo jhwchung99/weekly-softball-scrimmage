@@ -45,8 +45,8 @@ afterEach(() => {
 });
 
 /**
- * Bug 3 (planner/2026-09-05-code-security-review.md) was a pair split across
- * statuses, left behind by the two asymmetric auto-merge paths. Those paths
+ * A pair split across statuses, left behind by the two asymmetric auto-merge
+ * paths, was a real bug once. Those paths
  * are gone: since the 2026-09-07 consent change a pair is only ever created
  * by respondToSubRequest, which writes one status to both rows at once, so a
  * split pair can no longer be constructed at signup time at all.

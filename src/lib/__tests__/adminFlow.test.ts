@@ -163,7 +163,7 @@ describe('adminRescheduleSession', () => {
 });
 
 /**
- * Regression coverage for planner/2026-09-05-location-payments-qol-plan.md §1.
+ * Regression coverage for
  * adminCreateSession used to hardcode status 'open', and signups are gated on
  * status alone with no date check — so a session created for any future date
  * accepted signups immediately, months early, via a guessable date-shaped id.

@@ -21,8 +21,7 @@ import { phaseOf } from '../../../lib/sessionPhase';
  * the binding quota is 60 reads/minute for the entire app — and registration
  * opening at a fixed weekly time means everyone arrives at once. Reading each
  * tab exactly once takes a page load to **3 reads**, raising the ceiling from
- * roughly 6 to 10 simultaneous signups. See
- * planner/2026-09-05-code-security-review.md, S4.
+ * roughly 6 to 10 simultaneous signups.
  *
  * Deliberately a view-model endpoint shaped for one screen rather than a
  * resource: the granular routes still exist and still work, and both paths

@@ -14,8 +14,6 @@ import { Signup } from '../sheets/schema';
  * The invariant is one sentence — **a pair is one spot, and its rows move
  * together** — and everything here is a way of asking about it. Callers ask
  * this module rather than reading the field.
- *
- * See planner/2026-09-09-architecture-review.html, candidate 4.
  */
 
 /** The fields a pairing question needs. Narrow, so client DTOs qualify too. */
@@ -118,7 +116,7 @@ export function spotSizeOf(signup: Pairable, among: Pairable[]): number {
  * status code, since those two answer 400 and 409 for their own reasons.
  *
  * Says "spot", which CONTEXT.md settles as the word for a place on the roster.
- * "Slot" is reserved for a lineup slot — one of the nine fielding positions —
+ * "Slot" is reserved for a lineup slot — one of the nine fielding positions
  * and using it for both was the ambiguity worth removing.
  */
 export function alreadySharingReason(signup: Pairable, subject: string = "You're"): string | null {

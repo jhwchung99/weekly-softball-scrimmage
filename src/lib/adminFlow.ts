@@ -93,7 +93,7 @@ export interface AdminCreateSessionInput {
  * and therefore guessable. The Monday 9am cron opens whichever session belongs
  * to the current week, which is the intended path; `openImmediately` is the
  * deliberate escape hatch (e.g. the cron failed and this week needs opening
- * now). See planner/2026-09-05-location-payments-qol-plan.md, §1.
+ * now).
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
   return withMutationLock(async () => {
@@ -216,7 +216,6 @@ export async function overrideSignup(signupId: string, override: SignupOverride)
       // request only made sense while this person was waitlisted, and
       // leaving it pending lets a later acceptance collapse an
       // already-confirmed player into someone else's spot (see
-      // planner/2026-09-05-code-security-review.md, Bug 2).
       if (override.status !== 'waitlisted' && existing.subRequestStatus === 'pending') {
         Object.assign(updates, { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' });
       }

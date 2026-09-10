@@ -4,9 +4,9 @@ import { GENDERS, normalizeGender } from './genders';
 import { normalizeEmail } from './email';
 import { FEEDBACK_KINDS, FeedbackKind, MAX_FEEDBACK_LENGTH } from './feedbackKinds';
 
-// Added in the 2026-09-04 security hardening pass — these fields were
-// previously accepted as arbitrary, unbounded free text (see
-// planner/2026-09-04-security-hardening-plan.md, Step 2).
+// These fields were previously accepted as arbitrary, unbounded free text.
+// Every one of them ends up in a Sheet cell, an email body or a push
+// notification, so an unbounded value is somebody else's problem downstream.
 
 const MAX_NAME_LENGTH = 100;
 

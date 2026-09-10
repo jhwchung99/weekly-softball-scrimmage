@@ -395,7 +395,7 @@ describe('cancelMySignup', () => {
 /**
  * Raising capacity is how the organizer opens a second field. It used to
  * promote nobody: the admin route wrote the new number through and nothing
- * re-examined the waitlist. See planner/2026-09-07-team-generation-plan.md.
+ * re-examined the waitlist.
  */
 describe('fillOpenSpots', () => {
   it('promotes the whole waitlist when capacity is raised past it', async () => {

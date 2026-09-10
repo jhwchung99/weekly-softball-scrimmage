@@ -12,8 +12,13 @@ import { getWeeklyMilestones } from '../lib/time';
  * real repository function's observable behavior (including the
  * specific duplicate-signup rejection and "no such X" error messages
  * business-logic code relies on catching), not the Sheets API itself.
- * See planner/2026-09-04-profile-edit-rate-limiting-testing-plan.md,
- * Step 3.
+ *
+ * That equivalence is not a promise, it is a test: sheets/__tests__/
+ * signupsContract.test.ts runs one suite against this adapter and the real
+ * repository and fails if they disagree. It exists because this fake had
+ * already drifted once, accepting guests for a shared spot that production
+ * rejects — so tests written against it were asserting a rule the app does
+ * not have. Change a rule here only alongside that contract.
  */
 export function createFakeStore() {
   return {
