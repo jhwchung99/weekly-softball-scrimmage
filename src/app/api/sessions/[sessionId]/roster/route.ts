@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionEmail } from '../../../../../lib/auth';
+import { requireSignedIn } from '../../../../../lib/auth';
 import { listSignupsForSession } from '../../../../../sheets/signups';
 import { rosterView } from '../../../../../lib/views';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
@@ -27,8 +27,7 @@ type Params = { params: Promise<{ sessionId: string }> };
  */
 export async function GET(request: Request, { params }: Params) {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     const { sessionId } = await params;
     const signups = await listSignupsForSession(sessionId);

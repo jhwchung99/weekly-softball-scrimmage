@@ -15,6 +15,78 @@ import { AdminRosterEntry, AdminSessionView } from './views';
  * is holding state and drawing it.
  */
 
+/** Something the organizer can do from the console. */
+export type AdminAction =
+  | { kind: 'reviseSession'; sessionId: string; updates: Record<string, unknown> }
+  | { kind: 'announce'; sessionId: string; path: string; body?: Record<string, unknown> }
+  | { kind: 'overrideSignup'; signupId: string; updates: Record<string, unknown> }
+  | { kind: 'removeSignup'; signupId: string };
+
+export interface AdminRequest {
+  url: string;
+  init: RequestInit;
+  /** Shown when the server fails without saying why. */
+  fallbackError: string;
+}
+
+const asJson = (body: unknown, method = 'POST'): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+/**
+ * The request one organizer action makes.
+ *
+ * The console had four handlers of the same shape — mark busy, clear the
+ * error, send, throw the server's message or a fallback, reload, report, stop
+ * being busy. The homepage had the same four and they were collapsed into one
+ * policy plus data; the console was left alone, which is the least defensible
+ * state to be in: the pattern named, demonstrated, and half-applied.
+ *
+ * Ids are encoded, because a signup id ends up in the path.
+ */
+export function adminRequestFor(action: AdminAction): AdminRequest {
+  switch (action.kind) {
+    case 'reviseSession':
+      return {
+        url: `/api/admin/sessions/${encodeURIComponent(action.sessionId)}`,
+        init: asJson(action.updates, 'PATCH'),
+        fallbackError: 'Update failed',
+      };
+    case 'announce':
+      return {
+        url: `/api/admin/sessions/${encodeURIComponent(action.sessionId)}/${action.path}`,
+        init: asJson(action.body ?? {}),
+        fallbackError: 'Send failed',
+      };
+    case 'overrideSignup':
+      return {
+        url: `/api/admin/signups/${encodeURIComponent(action.signupId)}`,
+        init: asJson(action.updates, 'PATCH'),
+        fallbackError: 'Update failed',
+      };
+    case 'removeSignup':
+      return {
+        url: `/api/admin/signups/${encodeURIComponent(action.signupId)}`,
+        init: { method: 'DELETE' },
+        fallbackError: 'Remove failed',
+      };
+  }
+}
+
+/**
+ * What to tell the organizer when a request fails.
+ *
+ * The server's own message when it sent one — those are written for a reader
+ * ("Kevin Kim already has an active signup for this session") and are far
+ * better than anything generic.
+ */
+export function adminFailureMessage(body: unknown, fallback: string): string {
+  const error = (body as { error?: unknown } | null)?.error;
+  return typeof error === 'string' && error ? error : fallback;
+}
+
 /** A request that failed with a status the console treats specially. */
 export interface FailedRequest {
   status?: number;

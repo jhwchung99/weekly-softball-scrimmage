@@ -39,6 +39,24 @@ export async function getSessionUser(): Promise<{ email: string; name: string } 
   return { email: normalizeEmail(email), name: session.user?.name ?? '' };
 }
 
+/**
+ * The signed-in player's email, or a 401.
+ *
+ * The deep half of what nine routes were writing out by hand — fetch the
+ * session email, throw `401 Not signed in.` when there isn't one. Written out
+ * per route it is two lines that look too small to own, which is exactly how
+ * `requireAdmin` came to exist for organizers while players kept the copies.
+ *
+ * Same shape as `requireAdmin` deliberately: both return the email, both throw
+ * rather than returning null, so a route reads as one line of gate followed by
+ * its actual work.
+ */
+export async function requireSignedIn(): Promise<string> {
+  const email = await getSessionEmail();
+  if (!email) throw new ApiError(401, 'Not signed in.');
+  return email;
+}
+
 /** Throws if there's no session, or if the session's email isn't on the Admins tab. */
 export async function requireAdmin(): Promise<string> {
   const email = await getSessionEmail();

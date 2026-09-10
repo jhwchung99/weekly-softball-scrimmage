@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionEmail } from '../../../../lib/auth';
+import { requireSignedIn } from '../../../../lib/auth';
 import { getPlayer, upsertPlayer } from '../../../../sheets/players';
 import { ApiError, handleApiError } from '../../../../lib/apiErrors';
 import { validatePlayerProfile } from '../../../../lib/validation';
@@ -7,8 +7,7 @@ import { playerView } from '../../../../lib/views';
 
 export async function GET() {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     const player = await getPlayer(email);
     return NextResponse.json({ player: player ? playerView(player) : null });
@@ -19,8 +18,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const email = await getSessionEmail();
-    if (!email) throw new ApiError(401, 'Not signed in.');
+    const email = await requireSignedIn();
 
     // Guarded like every other mutation route — an unparseable body is a
     // client error (400 from validatePlayerProfile), not a server fault.

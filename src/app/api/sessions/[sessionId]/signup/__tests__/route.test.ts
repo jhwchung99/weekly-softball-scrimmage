@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ApiError } from '../../../../../../lib/apiErrors';
 
-const getSessionEmail = vi.fn();
-vi.mock('../../../../../../lib/auth', () => ({ getSessionEmail }));
+const requireSignedIn = vi.fn();
+vi.mock('../../../../../../lib/auth', () => ({ requireSignedIn }));
 
 const signUpForSession = vi.fn();
 const signUpAsGuestForSession = vi.fn();
@@ -21,13 +22,13 @@ beforeEach(() => {
 
 describe('GET /api/sessions/[sessionId]/signup', () => {
   it('returns 401 when not signed in', async () => {
-    getSessionEmail.mockResolvedValue(null);
+    requireSignedIn.mockRejectedValue(new ApiError(401, 'Not signed in.'));
     const res = await GET(new Request('http://x'), makeParams('2099-01-01'));
     expect(res.status).toBe(401);
   });
 
   it('returns the caller\'s status when signed in', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     getMyStatusForSession.mockResolvedValue({
       signup: { signupId: 's1' },
       incomingSubRequests: [],
@@ -54,7 +55,7 @@ describe('GET /api/sessions/[sessionId]/signup', () => {
    * arrive, and picking them off individually is how one goes missing again.
    */
   it('tells a waitlisted caller their place in the queue', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     getMyStatusForSession.mockResolvedValue({
       signup: { signupId: 's1', status: 'waitlisted' },
       incomingSubRequests: [],
@@ -68,7 +69,7 @@ describe('GET /api/sessions/[sessionId]/signup', () => {
   });
 
   it('forwards every field the status builder promises, so none can be dropped again', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     const status = {
       signup: { signupId: 's1', status: 'waitlisted' },
       incomingSubRequests: [{ fromSignupId: 's2', fromFullName: 'Asker', fromGuestInvite: false }],
@@ -85,13 +86,13 @@ describe('GET /api/sessions/[sessionId]/signup', () => {
 
 describe('POST /api/sessions/[sessionId]/signup', () => {
   it('returns 401 when not signed in', async () => {
-    getSessionEmail.mockResolvedValue(null);
+    requireSignedIn.mockRejectedValue(new ApiError(401, 'Not signed in.'));
     const res = await POST(new Request('http://x', { method: 'POST', body: '{}' }), makeParams('2099-01-01'));
     expect(res.status).toBe(401);
   });
 
   it('routes to signUpForSession for a member signup', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     signUpForSession.mockResolvedValue({ signupId: 's1', status: 'confirmed' });
 
     const res = await POST(
@@ -104,7 +105,7 @@ describe('POST /api/sessions/[sessionId]/signup', () => {
   });
 
   it('routes to signUpAsGuestForSession when invitedByName is present', async () => {
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     signUpAsGuestForSession.mockResolvedValue({ signupId: 's1', status: 'waitlisted' });
 
     await POST(
@@ -119,7 +120,7 @@ describe('POST /api/sessions/[sessionId]/signup', () => {
 
   it('surfaces a business-logic ApiError with its own status code', async () => {
     const { ApiError } = await import('../../../../../../lib/apiErrors');
-    getSessionEmail.mockResolvedValue('a@dummy.test');
+    requireSignedIn.mockResolvedValue('a@dummy.test');
     signUpForSession.mockRejectedValue(new ApiError(409, "You're already signed up for this week"));
 
     const res = await POST(
