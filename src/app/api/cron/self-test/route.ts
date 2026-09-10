@@ -84,13 +84,20 @@ export async function POST(request: Request) {
       }
 
       const key = 'weekly-softball-scrimmage:self-test';
-      const token = String(startedAt.getTime());
+      // Prefixed so the token is not valid JSON. `@upstash/redis` parses what
+      // it reads back, so a bare timestamp is written as a string and returned
+      // as a *number* — which fails a `!==` while printing identically, and
+      // reported production as broken when it was fine.
+      const token = `self-test-${startedAt.getTime()}`;
+
       await redis.set(key, token, { ex: 30 });
       const readBack = await redis.get<string>(key);
       await redis.del(key);
 
-      if (readBack !== token) {
-        throw new Error(`wrote ${token} to ${key} but read back ${String(readBack)}`);
+      // Compared as text as well, so the check cannot be fooled by that a
+      // second time if the value ever stops being prefixed.
+      if (String(readBack) !== token) {
+        throw new Error(`wrote "${token}" to ${key} but read back ${JSON.stringify(readBack)}`);
       }
       return 'lock store reachable, round-tripped a key';
     });

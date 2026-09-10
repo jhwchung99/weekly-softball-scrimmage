@@ -26,12 +26,30 @@ vi.mock('../../../../../lib/gmail', () => ({ sendEmail }));
 
 const { POST } = await import('../route');
 
-/** A Redis that behaves, remembering what it was given. */
+/**
+ * A Redis that behaves *the way Upstash behaves*, which is not the same as
+ * behaving simply.
+ *
+ * `@upstash/redis` parses what it reads back, so a value that happens to be
+ * valid JSON does not return as the string that was written: a bare timestamp
+ * goes in as text and comes out as a **number**. The first version of this
+ * fake stored and returned the exact string, so it could not have caught that
+ * — and the check shipped, then reported healthy production as broken with an
+ * error message where the two values printed identically.
+ */
 function workingRedis() {
   const store = new Map<string, string>();
   return {
     set: vi.fn(async (key: string, value: string) => void store.set(key, value)),
-    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    get: vi.fn(async (key: string) => {
+      const raw = store.get(key);
+      if (raw === undefined) return null;
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        return raw;
+      }
+    }),
     del: vi.fn(async (key: string) => void store.delete(key)),
     store,
   };
@@ -77,6 +95,30 @@ describe('POST /api/cron/self-test — the redis check', () => {
     const { body } = await run();
 
     expect(body.checks.redis).toMatch(/FAILED — WRONGPASS/);
+  });
+
+  it('does not mistake Upstash deserializing the value for a broken store', async () => {
+    // The bug this replaces: the token was a bare timestamp, so it was written
+    // as a string and read back as a number. `!==` was true, production was
+    // reported down, and the error said it wrote 1789071262443 and read back
+    // 1789071262443.
+    const redis = workingRedis();
+    getRedis.mockReturnValue(redis);
+
+    const { status, body } = await run();
+
+    expect(body.checks.redis).toMatch(/^ok —/);
+    expect(status).toBe(200);
+  });
+
+  it('writes a token that survives a JSON round-trip as itself', async () => {
+    const redis = workingRedis();
+    getRedis.mockReturnValue(redis);
+
+    await run();
+
+    const [, written] = redis.set.mock.calls.at(-1)!;
+    expect(() => JSON.parse(String(written))).toThrow();
   });
 
   it('fails when the key does not read back as written', async () => {
