@@ -3,7 +3,7 @@ import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
 import { Team, teamNote } from './teams';
 import { formatLocation } from './location';
-import { getWeeklyMilestones } from './time';
+import { paymentOpensAt, paymentStateOf } from './payments';
 import { phaseOf, isRosterLocked } from './sessionPhase';
 
 /**
@@ -225,16 +225,17 @@ function whenAndWhere(session: Session): string {
 function paymentLines(session: Session, amountOwed: number, now: Date): string[] {
   if (amountOwed <= 0) return [];
 
-  const { cutoffStart } = getWeeklyMilestones(session.gameDate, session.gameTime);
-  const opensAt = cutoffStart.toLocaleString('en-US', {
+  const opensAt = paymentOpensAt(session).toLocaleString('en-US', {
     timeZone: 'America/New_York',
     hour: 'numeric',
     minute: '2-digit',
   });
 
+  const state = paymentStateOf({ amountOwed, paid: false, rosterLocked: isRosterLocked(phaseOf(session, now)) });
+
   const lines = [
     '',
-    !isRosterLocked(phaseOf(session, now))
+    state === 'not-yet-open'
       ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks. Send it any time between then and the game.`
       : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`,
   ];

@@ -9,7 +9,7 @@ import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
-import { getWeeklyMilestones } from '../lib/time';
+import { paymentStateOf, paymentOpensAt } from '../lib/payments';
 import { SessionLocation } from '../components/SessionLocation';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
@@ -443,7 +443,12 @@ function PaymentPrompt({
   gameTime: string;
   instructions: string;
 }) {
-  if (paid) {
+  // The same rule the reminder email applies (payments.ts). The wording
+  // differs because a page and an email should read differently; the decision
+  // behind them should not.
+  const state = paymentStateOf({ amountOwed: amount, paid, rosterLocked });
+
+  if (state === 'settled') {
     return (
       <p className="mt-2 text-sm text-green-700">
         Payment received, thanks. You&apos;re all settled for this week.
@@ -451,15 +456,14 @@ function PaymentPrompt({
     );
   }
 
-  const { cutoffStart } = getWeeklyMilestones(gameDate, gameTime);
-  const opensAt = cutoffStart.toLocaleString('en-US', {
+  const opensAt = paymentOpensAt({ gameDate, gameTime }).toLocaleString('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
     hour: 'numeric',
     minute: '2-digit',
   });
 
-  if (!rosterLocked) {
+  if (state === 'not-yet-open') {
     return (
       <p className="mt-2 text-sm text-slate-500">
         Your spot costs <strong>${amount.toFixed(2)}</strong>. Nothing to pay yet. Payment opens {opensAt}, once the
