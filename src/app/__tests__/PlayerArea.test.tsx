@@ -81,7 +81,7 @@ describe('PlayerArea', () => {
         mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
       />
     );
-    expect(screen.queryByRole('button', { name: /request to sub/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ask to share/i })).not.toBeInTheDocument();
 
     rerender(
       <PlayerArea
@@ -89,7 +89,7 @@ describe('PlayerArea', () => {
         mySignup={{ signupId: 's1', status: 'waitlisted', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
       />
     );
-    expect(screen.getByRole('button', { name: /request to sub/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ask to share/i })).toBeInTheDocument();
   });
 
   it('shows the cost share only when confirmed and a share is known', () => {
@@ -176,7 +176,7 @@ describe('PlayerArea locked-cancellation notice', () => {
     render(<PlayerArea {...baseProps} phase="locked" mySignup={confirmed} costOwed={10} />);
 
     expect(screen.getByText(/if you have not sent payment, please still send your \$10\.00/i)).toBeInTheDocument();
-    expect(screen.getByText(/if you have sent the payment, please try and get someone to sub in/i)).toBeInTheDocument();
+    expect(screen.getByText(/nobody is added in your place automatically this late/i)).toBeInTheDocument();
     expect(screen.getByText(/between the two of you/i)).toBeInTheDocument();
   });
 
