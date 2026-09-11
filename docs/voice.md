@@ -37,6 +37,21 @@ any of it.
    a lock screen. "3 of 20 spots unfilled", not "Registration closed with 3 of
    20 spots still open".
 
+9. **"ET" means Eastern Time and nothing else.** It was also being used as a
+   verb for an Interac e-Transfer — "Please ET the organizer" — on the same
+   page that used it for the time zone two bullets earlier. Write
+   **e-transfer** in full. And pick one of ET or "Eastern": it is ET.
+
+10. **Bullets take no full stop.** They are fragments, and a list mixing
+    "First-come, first-served" with "Play without a rover." reads as careless.
+    A bullet needing two sentences wants a comma or a "so" instead.
+
+11. **Times match `formatGameTime`.** It renders "9am", not "9:00am", so prose
+    quoting the same moment says "9am" too.
+
+12. **Oxford comma.** "Friday, Saturday, or Sunday" — five places already did,
+    one did not.
+
 ## What this is not
 
 Neutral means no manufactured cheer. It does not mean cold. "Please cancel so
