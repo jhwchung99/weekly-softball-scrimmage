@@ -23,6 +23,9 @@ const COPY_FILES = [
   'lib/gameDayNotes.ts',
   'lib/signupFlow.ts',
   'lib/subRequestFlow.ts',
+  // Organizer-facing, but it is still copy this app writes, and it was the
+  // one module shipping raw ISO timestamps to a lock screen.
+  'lib/weekWatchdog.ts',
   'app/page.tsx',
   'app/guidelines/page.tsx',
 ];

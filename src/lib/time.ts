@@ -224,3 +224,30 @@ export function formatGameTime(gameTime: string): string {
 export function formatGameDay(gameDate: string, gameTime: string): string {
   return `${formatGameDate(gameDate)} at ${formatGameTime(gameTime)}`;
 }
+
+/**
+ * A moment in league time, as a person would say it: "Monday, September 14 at 9am".
+ *
+ * For the times the app has to name that are not a game's start — when
+ * registration opens, when it closed, when a job should have run. Same shape
+ * as `formatGameDay` on purpose: one way of writing a date and time, so the
+ * app does not speak three dialects.
+ *
+ * Always Eastern, never the server's zone, and never the reader's. The league
+ * runs on one clock and every milestone in `getWeeklyMilestones` is computed
+ * against it.
+ */
+export function formatEasternMoment(at: Date, timeZone: string = LEAGUE_TIME_ZONE): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('weekday')}, ${get('month')} ${get('day')} at ${formatGameTime(`${get('hour')}:${get('minute')}`)}`;
+}

@@ -235,7 +235,7 @@ describe('signUpForSession: the registration window', () => {
     vi.setSystemTime(new Date(new Date(WINDOW.opens).getTime() - 60_000)); // one minute early
     expect(store.sessions.get('2026-07-10')?.status).toBe('open');
 
-    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/opens Mon, Jul 6, 9:00 AM ET/);
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/open Monday, July 6 at 9am ET/);
   });
 
   it('accepts it once the window opens', async () => {
@@ -247,7 +247,7 @@ describe('signUpForSession: the registration window', () => {
   it('refuses after Tuesday midnight, so a close job that never ran cannot leave signups open', async () => {
     openSessionFor('a@dummy.test');
     vi.setSystemTime(new Date(WINDOW.closes));
-    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/closed Tue, Jul 7, 12:00 AM ET/);
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/closed Tuesday, July 7 at 12am ET/);
   });
 
   it('applies to guest signups too, not just members', async () => {
@@ -255,7 +255,7 @@ describe('signUpForSession: the registration window', () => {
     vi.setSystemTime(new Date(new Date(WINDOW.opens).getTime() - 60_000));
     await expect(
       signUpAsGuestForSession('2026-07-10', 'guest@dummy.test', 'Member One', false, true)
-    ).rejects.toThrow(/opens Mon/);
+    ).rejects.toThrow(/open Monday/);
   });
 
   it('still defers to status: an in-window signup on a closed session is refused', async () => {

@@ -186,7 +186,7 @@ describe('a newly created session does not accept signups until it is opened', (
     // early doesn't let players in early — that is the entire point of the
     // window check, and it can't tell a deliberate open from an accidental
     // one. An admin who needs someone in early adds them directly.
-    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/opens Mon/);
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/open Monday/);
 
     await expect(
       adminAddSignup({ sessionId: '2027-01-08', email: 'p@dummy.test', waiverAccepted: true })

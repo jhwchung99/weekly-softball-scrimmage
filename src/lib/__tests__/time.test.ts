@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay } from '../time';
+import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -198,5 +198,22 @@ describe('formatGameTime', () => {
 describe('formatGameDay', () => {
   it('is how every player-facing mention of a game reads', () => {
     expect(formatGameDay('2026-07-10', '18:00')).toBe('Friday, July 10 at 6pm');
+  });
+});
+
+describe('formatEasternMoment', () => {
+  it('names a moment the same way a game is named', () => {
+    // One dialect. Before this there were three: formatGameDay, a private
+    // formatEastern in signupFlow, and raw toISOString in the watchdog.
+    expect(formatEasternMoment(new Date('2026-09-14T13:00:00Z'))).toBe('Monday, September 14 at 9am');
+  });
+
+  it('is Eastern, not the server zone', () => {
+    // Registration opens 9am ET whatever clock the runner is on.
+    expect(formatEasternMoment(new Date('2026-01-05T14:00:00Z'))).toBe('Monday, January 5 at 9am');
+  });
+
+  it('gets midnight right, which is when registration closes', () => {
+    expect(formatEasternMoment(new Date('2026-09-15T04:00:00Z'))).toBe('Tuesday, September 15 at 12am');
   });
 });

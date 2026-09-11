@@ -2,7 +2,7 @@ import { Session } from '../sheets/schema';
 import { getRedis } from './redis';
 import { sendPush } from './ntfy';
 import { deliver } from './notifications';
-import { currentWeekGameDayCandidates, getWeeklyMilestones } from './time';
+import { currentWeekGameDayCandidates, getWeeklyMilestones, formatEasternMoment, formatGameDate } from './time';
 import { DEFAULT_GAME_TIME } from './scheduling';
 
 /**
@@ -82,7 +82,7 @@ export function missedJobsFor(session: Session | null, now: Date = new Date()): 
     if (!session) {
       missed.push({
         job: 'open-registration',
-        message: `No session exists for ${expectedGameDate}. Registration should have opened at ${milestones.registrationOpensAt.toISOString()} and nobody can sign up.`,
+        message: `Nobody can sign up: no game exists for ${formatGameDate(expectedGameDate)}. Registration should have opened ${formatEasternMoment(milestones.registrationOpensAt)}.`,
         urgent: true,
       });
     } else if (session.status === 'closed' && now < milestones.registrationClosesAt) {
@@ -92,7 +92,7 @@ export function missedJobsFor(session: Session | null, now: Date = new Date()): 
       // to sign up for right now.
       missed.push({
         job: 'open-registration',
-        message: `Session ${session.sessionId} is still closed, but registration should have opened at ${milestones.registrationOpensAt.toISOString()} and does not close until ${milestones.registrationClosesAt.toISOString()}.`,
+        message: `Nobody can sign up: ${formatGameDate(session.gameDate)} is still closed. Registration should have opened ${formatEasternMoment(milestones.registrationOpensAt)} and does not close until ${formatEasternMoment(milestones.registrationClosesAt)}.`,
         urgent: true,
       });
     }
@@ -104,7 +104,7 @@ export function missedJobsFor(session: Session | null, now: Date = new Date()): 
   if (session && session.status === 'open' && overdue(milestones.registrationClosesAt)) {
     missed.push({
       job: 'close-registration',
-      message: `Session ${session.sessionId} is still marked open past ${milestones.registrationClosesAt.toISOString()}. The headcount and open-spots alerts were never sent.`,
+      message: `No headcount was sent for ${formatGameDate(session.gameDate)}. It is still marked open past ${formatEasternMoment(milestones.registrationClosesAt)}.`,
       urgent: false,
     });
   }
@@ -112,7 +112,7 @@ export function missedJobsFor(session: Session | null, now: Date = new Date()): 
   if (session && session.teamsStatus === '' && overdue(milestones.cutoffStart)) {
     missed.push({
       job: 'generate-teams',
-      message: `Session ${session.sessionId} has no teams and the roster locked at ${milestones.cutoffStart.toISOString()}.`,
+      message: `No teams for ${formatGameDate(session.gameDate)}. The roster locked ${formatEasternMoment(milestones.cutoffStart)}.`,
       urgent: false,
     });
   }
