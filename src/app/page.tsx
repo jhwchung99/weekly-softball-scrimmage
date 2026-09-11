@@ -174,9 +174,9 @@ export default function Home() {
         </h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
           <li>First-come, first-served. Extra signups go to an automatic waitlist.</li>
-          <li>Cancel any time, but cancellations within 5 hours of game time won&apos;t trigger an auto-replacement.</li>
-          <li>Bringing a guest? They can optionally share your spot instead of taking a separate one.</li>
-          <li>Once the week is priced, cost splits evenly across confirmed spots.</li>
+          <li>Cancel any time. Within 5 hours of game time, nobody is auto-promoted into your spot.</li>
+          <li>Bringing a guest? They can share your spot instead of taking a separate one.</li>
+          <li>Cost splits evenly across confirmed spots, once the organizer sets a price.</li>
         </ul>
         <a href="/guidelines" className="mt-2 inline-block text-sm text-blue-600 hover:underline">
           Full guidelines →
@@ -235,7 +235,7 @@ export default function Home() {
           </p>
         )}
         {scrimmageLoaded && !scrimmage && (
-          <p className="text-slate-600">No scrimmage scheduled yet for this week. Check back Monday morning.</p>
+          <p className="text-slate-600">No game scheduled yet. Check back Monday morning.</p>
         )}
         {scrimmageLoaded && scrimmage && (
           <>
@@ -252,7 +252,7 @@ export default function Home() {
               {scrimmage.capacity} spots
               {scrimmage.pricePerSpot > 0 ? ` · $${scrimmage.pricePerSpot.toFixed(2)} each` : ''}
             </p>
-            {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s scrimmage has been cancelled.</p>}
+            {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s game has been cancelled.</p>}
             {scrimmage.status !== 'cancelled' && (
               <WeeklyTimeline
                 gameDate={scrimmage.gameDate}

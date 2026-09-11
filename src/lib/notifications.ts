@@ -3,6 +3,7 @@ import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
 import { Team, teamNote } from './teams';
 import { formatLocation } from './location';
+import { formatGameDate, formatGameDay, formatGameTime } from './time';
 import { paymentOpensAt, paymentStateOf } from './payments';
 import { phaseOf, isRosterLocked } from './sessionPhase';
 
@@ -48,13 +49,17 @@ export async function deliver(what: string, send: () => Promise<void>): Promise<
  * they're in. No reminder emails for already-confirmed players.
  */
 export async function sendPromotionEmail(signup: Signup, session: Session): Promise<void> {
-  const subject = `You're in! Scrimmage on ${session.gameDate}`;
+  const subject = `Off the waitlist: softball on ${formatGameDate(session.gameDate)}`;
   const text = [
     `Hi ${signup.fullName},`,
     '',
-    `A spot opened up and you've moved up from the waitlist. You're now scheduled to play ${whenAndWhere(session)}.`,
+    "A spot opened up, so you're confirmed to play.",
     '',
-    'See you on the field!',
+    // Labelled and on their own lines: this is the email someone reopens on
+    // the day to check where to go, and a bare string of date and place reads
+    // as an afterthought rather than the thing they came back for.
+    `When: ${formatGameDay(session.gameDate, session.gameTime)}`,
+    `Where: ${formatLocation({ area: session.locationArea, name: session.locationName, url: session.locationUrl }) || 'still to be confirmed'}`,
   ].join('\n');
 
   await sendEmail(signup.email, subject, text);
@@ -68,10 +73,10 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
  * fill the spot.
  */
 export async function sendLateCancellationAlert(signup: Signup, session: Session, amountOwed = 0): Promise<void> {
-  const title = `Late cancellation: ${session.gameDate} scrimmage`;
+  const title = `Late cancellation: ${formatGameDate(session.gameDate)}`;
   const positions = signup.positions || 'no positions listed';
   const parts = [
-    `${signup.fullName} (${positions}) just cancelled within 5 hours of the ${session.gameDate} ${session.gameTime} scrimmage.`,
+    `${signup.fullName} (${positions}) cancelled within 5 hours of ${formatGameDay(session.gameDate, session.gameTime)}.`,
     'No one was auto-promoted, so their spot is open.',
   ];
 
@@ -96,8 +101,11 @@ export async function sendLateCancellationAlert(signup: Signup, session: Session
  * than discovering unused capacity only once it's too late to fill it.
  */
 export async function sendOpenSpotsAlert(session: Session, openSpots: number): Promise<void> {
-  const title = `${openSpots} open spot${openSpots === 1 ? '' : 's'} for the ${session.gameDate} scrimmage`;
-  const message = `Registration just closed for the ${session.gameDate} ${session.gameTime} scrimmage with ${openSpots} of ${session.capacity} spots still open. Consider manually adding someone.`;
+  const title = `${openSpots} open spot${openSpots === 1 ? '' : 's'} for ${formatGameDate(session.gameDate)}`;
+  // Number first: this is read at a glance on a lock screen. "Consider
+  // manually adding someone" told the organizer to think about it, when the
+  // point of sending it is that they should act.
+  const message = `${openSpots} of ${session.capacity} spots unfilled for ${formatGameDay(session.gameDate, session.gameTime)}. Registration has closed. Add people by hand if you want them.`;
 
   await sendPush(title, message);
 }
@@ -113,12 +121,12 @@ export async function sendTeamsReadyAlert(session: Session, teams: Team[]): Prom
   const players = teams.reduce((n, t) => n + t.members.length, 0);
   const short = teams.filter((t) => t.deficiency > 0).map((t) => `${t.name}: ${teamNote(t)}`);
 
-  const parts = [`${players} players split into ${teams.length} teams for the ${session.gameDate} scrimmage.`];
+  const parts = [`${players} players split into ${teams.length} teams for ${formatGameDate(session.gameDate)}.`];
   parts.push(short.length > 0 ? short.join(' ') : 'Every team can field a full lineup.');
   parts.push('Review and post them from the admin dashboard.');
 
   const base = process.env.NEXTAUTH_URL;
-  await sendPush(`Teams ready for review: ${session.gameDate}`, parts.join(' '), {
+  await sendPush(`Teams ready for review: ${formatGameDate(session.gameDate)}`, parts.join(' '), {
     priority: 4,
     tags: ['busts_in_silhouette'],
     click: base ? `${base}/admin` : undefined,
@@ -134,7 +142,7 @@ export async function sendTeamsReadyAlert(session: Session, teams: Team[]): Prom
  * whether to book one.
  */
 export async function sendHeadcountAlert(session: Session, confirmed: number, waitlisted: number): Promise<void> {
-  const parts = [`${confirmed} of ${session.capacity} spots filled for the ${session.gameDate} scrimmage.`];
+  const parts = [`${confirmed} of ${session.capacity} spots filled for ${formatGameDate(session.gameDate)}.`];
   if (waitlisted > 0) {
     parts.push(`${waitlisted} on the waitlist. Raise capacity to let them in, and book a second field if you need one.`);
   }
@@ -144,13 +152,17 @@ export async function sendHeadcountAlert(session: Session, confirmed: number, wa
 /** A waitlisted player has asked a specific signed-up player to share
  * their spot — notifies the target so they can log in and respond. */
 export async function sendSubRequestEmail(target: Signup, requester: Signup, session: Session): Promise<void> {
-  const subject = `Sub request for the ${session.gameDate} scrimmage`;
+  const subject = `${requester.fullName} asked to share your spot on ${formatGameDate(session.gameDate)}`;
   const text = [
     `Hi ${target.fullName},`,
     '',
-    `${requester.fullName} would like to know if you're willing to sub with them for the ${session.gameDate} scrimmage at ${session.gameTime}.`,
+    // "Willing to sub with them" never said what accepting does. It sets a
+    // shared pairId (subRequestFlow) — they share the spot and take turns,
+    // which is what CONTEXT.md means by a sub request and what the game-day
+    // notes tell them on the day.
+    `${requester.fullName} is on the waitlist and has asked to share your spot for ${formatGameDay(session.gameDate, session.gameTime)}. If you accept, the two of you take turns playing.`,
     '',
-    'Log into the app to accept or decline.',
+    'Open the app to accept or decline.',
   ].join('\n');
 
   await sendEmail(target.email, subject, text);
@@ -163,17 +175,18 @@ export async function sendSubRequestEmail(target: Signup, requester: Signup, ses
  * where the request came from, not just that one exists.
  */
 export async function sendGuestPairRequestEmail(member: Signup, guest: Signup, session: Session): Promise<void> {
-  const subject = `${guest.fullName} would like to share your spot`;
+  const subject = `${guest.fullName} asked to share your spot on ${formatGameDate(session.gameDate)}`;
   const text = [
     `Hi ${member.fullName},`,
     '',
-    `${guest.fullName} signed up as a guest for the ${session.gameDate} scrimmage at ${session.gameTime}, named you as the member who invited them, and is willing to share your spot rather than take a separate one.`,
+    `${guest.fullName} signed up as a guest for ${formatGameDay(session.gameDate, session.gameTime)} and named you as the member who invited them. They've asked to share your spot instead of taking a separate one, which means you take turns playing and split the cost.`,
     '',
-    "They're on the waitlist until you decide. Accepting means the two of you share one spot, and split its cost.",
+    // Kept, not trimmed: this is the sentence standing between a member and a
+    // stranger farming invitations, and it only works if declining is
+    // explicitly safe.
+    "They stay on the waitlist until you answer. If you don't know this person, decline. That changes nothing about your own spot.",
     '',
-    "If you don't know this person, decline. Nothing happens to your own spot either way.",
-    '',
-    'Log into the app to accept or decline.',
+    'Open the app to accept or decline.',
   ].join('\n');
 
   await sendEmail(member.email, subject, text);
@@ -182,14 +195,15 @@ export async function sendGuestPairRequestEmail(member: Signup, guest: Signup, s
 /** Sent to both parties once a sub request is accepted and they're
  * sharing a spot. */
 export async function sendSubRequestAcceptedEmail(a: Signup, b: Signup, session: Session): Promise<void> {
-  const subject = `You're set to share a spot for the ${session.gameDate} scrimmage`;
+  const subject = `You're sharing a spot on ${formatGameDate(session.gameDate)}`;
   const build = (self: Signup, other: Signup) =>
     [
       `Hi ${self.fullName},`,
       '',
-      `${other.fullName} and you are now sharing a spot for the ${session.gameDate} scrimmage at ${session.gameTime}.`,
+      `You and ${other.fullName} are now sharing a spot for ${formatGameDay(session.gameDate, session.gameTime)}.`,
       '',
-      'See you on the field!',
+      // The one email whose reader may not know what sharing means on the day.
+      'You take turns, so only one of you is on the field at a time.',
     ].join('\n');
 
   await sendEmail(a.email, subject, build(a, b));
@@ -203,7 +217,7 @@ function whenAndWhere(session: Session): string {
     name: session.locationName,
     url: session.locationUrl,
   });
-  const base = `${session.gameDate} at ${session.gameTime}`;
+  const base = formatGameDay(session.gameDate, session.gameTime);
   return location ? `${base}, ${location}` : base;
 }
 
@@ -236,8 +250,12 @@ function paymentLines(session: Session, amountOwed: number, now: Date): string[]
   const lines = [
     '',
     state === 'not-yet-open'
-      ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}, once the roster locks. Send it any time between then and the game.`
-      : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`,
+      ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}. Send it any time between then and the game.`
+      // Not "you still owe": that implies an earlier ask, and this is often
+      // the first one. A morning game locks its roster before the 9am reminder
+      // cron fires, so that email takes this branch — and anyone promoted off
+      // the waitlist after it went out never saw the other one either.
+      : `Your spot costs $${amountOwed.toFixed(2)}. Please send it before the game.`,
   ];
 
   const instructions = process.env.PAYMENT_INSTRUCTIONS;
@@ -263,16 +281,25 @@ export async function sendGameDayReminderEmail(
   hasWaitlist: boolean,
   now: Date = new Date()
 ): Promise<void> {
-  const subject = `Softball this ${session.gameDate} at ${session.gameTime}`;
+  // Sent on game-day morning by a cron that no-ops unless gameDate is today,
+  // so "today" is a fact rather than a guess. Nobody needs the year of a game
+  // they are playing in nine hours.
+  const subject = `Softball today at ${formatGameTime(session.gameTime)}`;
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    `Reminder: you're confirmed to play ${whenAndWhere(session)}.`,
+    `You're confirmed to play today at ${formatGameTime(session.gameTime)}.`,
   ];
 
-  if (session.locationUrl) {
-    lines.push('', `Field: ${session.locationUrl}`);
-  }
+  // Named, not just linked. This is the email someone opens in the car, and a
+  // bare URL is no use to a passenger reading it aloud.
+  const location = formatLocation({
+    area: session.locationArea,
+    name: session.locationName,
+    url: session.locationUrl,
+  });
+  if (location) lines.push('', `Where: ${location}`);
+  if (session.locationUrl) lines.push(`Map: ${session.locationUrl}`);
 
   if (!signup.paid) {
     lines.push(...paymentLines(session, amountOwed, now));
@@ -301,7 +328,7 @@ export async function sendGameDayReminderEmail(
  * not a list of edits since Monday.
  */
 export async function sendSessionUpdateEmail(signup: Signup, session: Session, note: string): Promise<void> {
-  const subject = `Updated details: softball on ${session.gameDate}`;
+  const subject = `Updated details: softball on ${formatGameDate(session.gameDate)}`;
   const location = formatLocation({
     area: session.locationArea,
     name: session.locationName,
@@ -311,14 +338,20 @@ export async function sendSessionUpdateEmail(signup: Signup, session: Session, n
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    "Here are the current details for this week's scrimmage:",
-    '',
-    `When: ${session.gameDate} at ${session.gameTime}`,
-    `Where: ${location || 'still to be confirmed'}`,
   ];
 
-  if (session.locationUrl) lines.push(`Field: ${session.locationUrl}`);
-  if (note) lines.push('', note);
+  // The organizer's note first: it is why this email arrived, and burying it
+  // under a block of details the reader may already know makes them hunt for
+  // the one thing that changed.
+  if (note) lines.push(note, '');
+
+  lines.push(
+    "Here's where the game stands:",
+    '',
+    `When: ${formatGameDay(session.gameDate, session.gameTime)}`,
+    `Where: ${location || 'still to be confirmed'}`
+  );
+  if (session.locationUrl) lines.push(`Map: ${session.locationUrl}`);
 
   lines.push(
     '',
@@ -335,14 +368,19 @@ export async function sendSessionUpdateEmail(signup: Signup, session: Session, n
  * promotion email would tell them anyway.
  */
 export async function sendSessionCancelledEmail(signup: Signup, session: Session, note: string): Promise<void> {
-  const subject = `Cancelled: softball on ${session.gameDate}`;
+  const subject = `Cancelled: softball on ${formatGameDate(session.gameDate)}`;
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    `The scrimmage on ${session.gameDate} at ${session.gameTime} has been cancelled. There's no game — please don't head to the field.`,
+    // No time: a cancelled game does not have one.
+    `The game on ${formatGameDate(session.gameDate)} has been cancelled. Don't head to the field.`,
   ];
 
-  if (note) lines.push('', note);
+  // Labelled, because an unlabelled sentence between two paragraphs reads as
+  // a stray thought rather than the organizer explaining themselves. Omitted
+  // entirely when they wrote nothing — "Reason:" with nothing after it is
+  // worse than no line at all.
+  if (note) lines.push('', `Reason: ${note}`);
 
   // Cancelling a session deliberately leaves its signups alone (see the PATCH
   // route), so this is a description of what actually happens to their row,
@@ -368,14 +406,12 @@ export async function sendPaymentNudgeEmail(
   amountOwed: number,
   now: Date = new Date()
 ): Promise<void> {
-  const subject = `Payment for the ${session.gameDate} scrimmage`;
+  const subject = `Payment for the ${formatGameDate(session.gameDate)} game`;
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    `A quick reminder about your spot for the scrimmage ${whenAndWhere(session)}.`,
+    `You're confirmed to play ${whenAndWhere(session)}.`,
     ...paymentLines(session, amountOwed, now),
-    '',
-    'Thanks!',
   ];
 
   await sendEmail(signup.email, subject, lines.join('\n'));

@@ -21,8 +21,8 @@ const request = { url: '/api/thing', init: { method: 'POST' }, fallbackError: 'T
 
 describe('failureMessage', () => {
   it("prefers the server's own words, which are written for whoever is looking", () => {
-    expect(failureMessage({ error: "You're already signed up for this week" }, 'Cancel failed')).toBe(
-      "You're already signed up for this week"
+    expect(failureMessage({ error: "You're already signed up for this week." }, 'Cancel failed')).toBe(
+      "You're already signed up for this week."
     );
   });
 

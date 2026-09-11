@@ -13,7 +13,7 @@ import {
 import { getPlayer } from '../sheets/players';
 import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
-import { getWeeklyMilestones } from './time';
+import { getWeeklyMilestones, formatEasternMoment } from './time';
 import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
 import { isPaired } from './pair';
 import { nextInLine } from './waitlist';
@@ -59,22 +59,11 @@ export interface SignupOptions {
   now?: Date;
 }
 
-function formatEastern(d: Date): string {
-  return d.toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 async function requireOpenSessionAndProfile(sessionId: string, email: string, options: SignupOptions = {}) {
   const session = await getSession(sessionId);
   if (!session) throw new ApiError(404, 'No such session.');
   if (session.status !== 'open') {
-    throw new ApiError(409, 'Registration is not currently open for this session.');
+    throw new ApiError(409, "Signups aren't open for this week.");
   }
 
   // `status` alone used to be the entire gate, which made it a single point
@@ -92,21 +81,21 @@ async function requireOpenSessionAndProfile(sessionId: string, email: string, op
       throw new ApiError(
         409,
         now < registrationOpensAt
-          ? `Registration for this session opens ${formatEastern(registrationOpensAt)} ET.`
-          : `Registration for this session closed ${formatEastern(registrationClosesAt)} ET.`
+          ? `Signups for this week open ${formatEasternMoment(registrationOpensAt)} ET.`
+          : `Signups for this week closed ${formatEasternMoment(registrationClosesAt)} ET.`
       );
     }
   }
 
   const player = await getPlayer(email);
   if (!player) {
-    throw new ApiError(428, 'PROFILE_REQUIRED: complete your player profile before signing up.');
+    throw new ApiError(428, 'Fill in your player profile before signing up.');
   }
 
   const existingActive = await findActiveSignup(sessionId, email);
   if (existingActive) {
     // Exact wording from PROJECT_GUIDELINES.md Section 4.
-    throw new ApiError(409, "You're already signed up for this week");
+    throw new ApiError(409, "You're already signed up for this week.");
   }
 
   return { session, player };

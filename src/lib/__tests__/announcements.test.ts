@@ -67,7 +67,8 @@ describe('notifySessionChange', () => {
     expect(sentTo()).toEqual(['in@dummy.test']);
     // The whole point of the button: the details a player needs on Thursday.
     expect(bodyFor('in@dummy.test')).toContain('Iceland Diamond 3, Mississauga');
-    expect(bodyFor('in@dummy.test')).toContain('18:00');
+    // Players read "6pm", not "18:00" — see docs/voice.md.
+    expect(bodyFor('in@dummy.test')).toContain('6pm');
   });
 
   it('emails the waitlist too when the session is cancelled, because there is no spot left to wait for', async () => {
@@ -81,7 +82,7 @@ describe('notifySessionChange', () => {
     expect(result.sent).toBe(2);
     expect(sentTo().sort()).toEqual(['in@dummy.test', 'waiting@dummy.test']);
     expect(bodyFor('waiting@dummy.test')).toMatch(/has been cancelled/);
-    expect(bodyFor('waiting@dummy.test')).toMatch(/don't head to the field/);
+    expect(bodyFor('waiting@dummy.test')).toMatch(/Don't head to the field/);
   });
 
   it('never writes to someone who already cancelled their own signup', async () => {
@@ -161,7 +162,20 @@ describe('nudgeUnpaidPlayers', () => {
 
     await drain(nudgeUnpaidPlayers(SESSION_ID, AFTER_LOCK));
 
-    expect(bodyFor('owes@dummy.test')).toMatch(/still owe \$10\.00/);
+    expect(bodyFor('owes@dummy.test')).toMatch(/costs \$10\.00/);
+    expect(bodyFor('owes@dummy.test')).toMatch(/send it before the game/i);
+  });
+
+  it('does not say "still owe", which assumes an earlier ask that may not have happened', async () => {
+    // A morning game locks its roster before the 9am reminder cron fires, so
+    // that email takes this branch too — and anyone promoted off the waitlist
+    // after it went out never saw the other one either. For both of them this
+    // is the first time the app has mentioned money.
+    seed({ pricePerSpot: 10 }, [unpaid()]);
+
+    await drain(nudgeUnpaidPlayers(SESSION_ID, AFTER_LOCK));
+
+    expect(bodyFor('owes@dummy.test')).not.toMatch(/still/i);
   });
 
   it('says when payment opens rather than asking for it early', async () => {

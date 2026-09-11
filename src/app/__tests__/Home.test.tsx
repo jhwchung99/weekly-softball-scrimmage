@@ -111,7 +111,7 @@ describe('Home', () => {
     respondWith(home({ session: null, phase: null }));
     render(<Home />);
 
-    expect(await screen.findByText(/No scrimmage scheduled yet for this week/)).toBeInTheDocument();
+    expect(await screen.findByText(/No game scheduled yet/)).toBeInTheDocument();
   });
 
   it('says a cancelled week is cancelled, and drops the timeline', async () => {

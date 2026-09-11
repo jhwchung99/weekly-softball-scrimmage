@@ -123,9 +123,9 @@ describe('what the messages say', () => {
 
     const { to, subject, text } = lastEmail();
     expect(to).toBe('kevin@dummy.test');
-    expect(subject).toMatch(/You're in/);
+    expect(subject).toMatch(/Off the waitlist/);
     expect(text).toMatch(/Hi Kevin Kim/);
-    expect(text).toMatch(/moved up from the waitlist/);
+    expect(text).toMatch(/confirmed to play/);
     expect(text).toMatch(/Iceland Park Diamond 3/);
   });
 
@@ -211,7 +211,16 @@ describe('what the messages say', () => {
 
     const { subject, text } = lastEmail();
     expect(subject).toMatch(/cancel/i);
-    expect(text).toMatch(/Rained out\./);
+    // Labelled: an unlabelled sentence between two paragraphs reads as a
+    // stray thought rather than the organizer explaining themselves.
+    expect(text).toMatch(/Reason: Rained out\./);
+  });
+
+  it('omits the label entirely when the organizer wrote no reason', async () => {
+    // "Reason:" with nothing after it is worse than no line at all.
+    await notifications.sendSessionCancelledEmail(PLAYER, SESSION, '');
+
+    expect(lastEmail().text).not.toMatch(/Reason:/);
   });
 
   it('asks for the amount owed once payment has opened', async () => {

@@ -177,3 +177,77 @@ export function isNearEasternTime(
   const diff = Math.abs(nowMinutes - targetMinutes);
   return Math.min(diff, 24 * 60 - diff) <= toleranceMinutes;
 }
+
+/**
+ * A game's date as a player should read it: "Friday, July 10".
+ *
+ * The sheet stores `2026-07-10` and that is the right shape for an id — it
+ * sorts, it is unambiguous across locales, and it *is* the session's key. It
+ * is the wrong shape for a sentence. Nobody converts an ISO date in their head
+ * on a Tuesday, and a date written that way in an email is the single loudest
+ * signal that software wrote it.
+ *
+ * Formatted from the date parts directly rather than through a `Date`, because
+ * a bare `new Date('2026-07-10')` is parsed as UTC midnight and renders as the
+ * 9th in every North American zone. That off-by-one would be invisible in
+ * review and wrong in every email.
+ */
+export function formatGameDate(gameDate: string): string {
+  const [year, month, day] = gameDate.split('-').map(Number);
+  // Noon UTC: far enough from either midnight that no zone shifts the date.
+  const noonUtc = new Date(Date.UTC(year, month - 1, day, 12));
+
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(noonUtc);
+}
+
+/**
+ * A game's start time as a player should read it: "6pm", or "6:30pm".
+ *
+ * No minutes when they are zero, and lower-case, because that is how someone
+ * writes a time to a friend. The stored `18:00` is a 24-hour string a North
+ * American church league does not speak.
+ */
+export function formatGameTime(gameTime: string): string {
+  const [hour, minute] = gameTime.split(':').map(Number);
+  const suffix = hour < 12 ? 'am' : 'pm';
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+
+  return minute === 0 ? `${twelve}${suffix}` : `${twelve}:${String(minute).padStart(2, '0')}${suffix}`;
+}
+
+/** "Friday, July 10 at 6pm" — how every player-facing mention of a game reads. */
+export function formatGameDay(gameDate: string, gameTime: string): string {
+  return `${formatGameDate(gameDate)} at ${formatGameTime(gameTime)}`;
+}
+
+/**
+ * A moment in league time, as a person would say it: "Monday, September 14 at 9am".
+ *
+ * For the times the app has to name that are not a game's start — when
+ * registration opens, when it closed, when a job should have run. Same shape
+ * as `formatGameDay` on purpose: one way of writing a date and time, so the
+ * app does not speak three dialects.
+ *
+ * Always Eastern, never the server's zone, and never the reader's. The league
+ * runs on one clock and every milestone in `getWeeklyMilestones` is computed
+ * against it.
+ */
+export function formatEasternMoment(at: Date, timeZone: string = LEAGUE_TIME_ZONE): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('weekday')}, ${get('month')} ${get('day')} at ${formatGameTime(`${get('hour')}:${get('minute')}`)}`;
+}
