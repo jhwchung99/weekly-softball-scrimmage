@@ -11,7 +11,7 @@
  */
 export const GAME_DAY_NOTES = [
   'If you are down to 8 players, play without a rover.',
-  'The regular season rule about 3 girls on the field does not apply. Just make sure everyone gets equal playing time.',
+  'The regular season rule about 3 girls on the field does not apply. Make sure everyone gets equal playing time.',
   'Two people sharing a spot take turns. Only one of them plays at a time.',
   'If someone cancels after teams are posted, that team plays a person short.',
 ];

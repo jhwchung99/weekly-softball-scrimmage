@@ -123,9 +123,9 @@ describe('what the messages say', () => {
 
     const { to, subject, text } = lastEmail();
     expect(to).toBe('kevin@dummy.test');
-    expect(subject).toMatch(/You're in/);
+    expect(subject).toMatch(/Off the waitlist/);
     expect(text).toMatch(/Hi Kevin Kim/);
-    expect(text).toMatch(/moved up from the waitlist/);
+    expect(text).toMatch(/confirmed to play/);
     expect(text).toMatch(/Iceland Park Diamond 3/);
   });
 

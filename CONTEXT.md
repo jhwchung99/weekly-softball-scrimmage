@@ -7,6 +7,13 @@ and one person running it.
 This is the glossary. Where two words are in use for one thing, the preferred
 one is here and the others are listed under _Avoid_.
 
+It governs the **code**, not what players read. A player has one game a week
+and no risk of confusing it with anything, so copy addressed to them says
+"the game" where this file says **Session**. The precision here exists to stop
+*us* conflating a Session with a Signup; imposing it on a player is precision
+with no reader. See `docs/voice.md` for how player-facing copy is written, and
+ADR-0005 for why the two diverge.
+
 ## The week
 
 **Session**:

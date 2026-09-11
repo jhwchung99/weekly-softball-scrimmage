@@ -19,13 +19,13 @@ export default function GuidelinesPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Guidelines</h1>
-      <p className="mt-1 text-sm text-slate-500">Everything about how weekly signups actually work.</p>
+      <p className="mt-1 text-sm text-slate-500">How signups work.</p>
 
       <Section title="When to sign up">
         <li><strong>Signups open Monday at 9:00am ET</strong></li>
-        <li><strong>Signups close Tuesday at 12:00am ET</strong> (midnight, i.e. the end of Monday)</li>
-        <li>No one will be added after the deadline</li>
-        <li>Games are Friday, Saturday, or Sunday. Check the homepage for which one this week is</li>
+        <li><strong>Signups close at midnight on Monday night</strong>, Eastern</li>
+        <li>Nobody is added after that</li>
+        <li>Games are Friday, Saturday or Sunday. The homepage says which</li>
       </Section>
 
       <Section title="Signing up">

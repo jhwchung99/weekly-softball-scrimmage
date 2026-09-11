@@ -171,13 +171,13 @@ describe('signUpForSession', () => {
 
   it('requires a player profile to exist first', async () => {
     store.sessions.set('2099-01-01', makeSession());
-    await expect(signUpForSession('2099-01-01', 'nobody@dummy.test', true)).rejects.toThrow(/PROFILE_REQUIRED/);
+    await expect(signUpForSession('2099-01-01', 'nobody@dummy.test', true)).rejects.toThrow(/player profile/);
   });
 
   it('rejects signup when the session is not open', async () => {
     store.sessions.set('2099-01-01', makeSession({ status: 'closed' }));
     store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
-    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/not currently open/);
+    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
   });
 
   it('offers the member a pairing when a guest named them, rather than merging silently', async () => {
@@ -264,7 +264,7 @@ describe('signUpForSession: the registration window', () => {
     vi.setSystemTime(new Date(WINDOW.opens));
 
     // The window is a second condition, not a replacement for the first.
-    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/not currently open/);
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
   });
 
   it('lets an admin add someone outside the window, which is what the open-spots alert asks for', async () => {

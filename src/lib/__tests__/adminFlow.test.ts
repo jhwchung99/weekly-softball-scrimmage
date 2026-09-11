@@ -72,7 +72,7 @@ describe('adminAddSignup', () => {
         profile: { fullName: 'New Player', gender: 'Male', savedPositions: '' },
         waiverAccepted: true,
       })
-    ).rejects.toThrow(/not currently open/);
+    ).rejects.toThrow(/Signups aren't open/);
   });
 
   it('requires waiverAccepted even for an admin-added signup', async () => {
@@ -174,7 +174,7 @@ describe('a newly created session does not accept signups until it is opened', (
     expect(created.status).toBe('closed');
 
     store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
-    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/not currently open/);
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
   });
 
   it('opens on purpose when asked, but still holds players to the registration window', async () => {

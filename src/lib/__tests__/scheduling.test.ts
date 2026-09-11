@@ -127,7 +127,7 @@ describe('closeRegistrationForCurrentSession', () => {
     expect(sendPush).toHaveBeenCalledTimes(2);
     expect(sendPush).toHaveBeenCalledWith(
       expect.stringContaining('4 open spots'),
-      expect.stringContaining('2026-07-10')
+      expect.stringContaining('Friday, July 10')
     );
   });
 
@@ -178,7 +178,7 @@ describe('sendGameDayReminders', () => {
 
     expect(result).toMatchObject({ sessionId: '2026-07-10', skipped: false, sent: 2, failed: 0 });
     expect(sendEmail).toHaveBeenCalledTimes(2);
-    expect(sendEmail).toHaveBeenCalledWith('a@dummy.test', expect.stringContaining('2026-07-10'), expect.stringContaining('$10.00'));
+    expect(sendEmail).toHaveBeenCalledWith('a@dummy.test', expect.stringContaining('today at'), expect.stringContaining('$10.00'));
   });
 
   it('tells players when payment opens rather than asking for it early', async () => {

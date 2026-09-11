@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  zonedTimeToUtc,
-  currentWeekFridayEastern,
-  currentWeekGameDayCandidates,
-  isNearEasternTime,
-  getWeeklyMilestones,
-} from '../time';
+import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -142,5 +136,67 @@ describe('currentWeekGameDayCandidates', () => {
       '2026-07-18',
       '2026-07-19',
     ]);
+  });
+});
+
+/**
+ * How a game reads to a player.
+ *
+ * The sheet stores `2026-07-10 / 18:00`, which is the right shape for an id
+ * and the wrong shape for a sentence. These guard the two ways that
+ * conversion goes silently wrong: a date landing on the previous day, and a
+ * time formatted in whatever zone the server happens to be in.
+ */
+describe('formatGameDate', () => {
+  it('reads as a person would say it', () => {
+    expect(formatGameDate('2026-07-10')).toBe('Friday, July 10');
+  });
+
+  it('does not slip to the previous day', () => {
+    // `new Date('2026-07-10')` is UTC midnight, which renders as the 9th in
+    // every North American zone. That would be wrong in every email and
+    // invisible in review.
+    expect(formatGameDate('2026-07-10')).toContain('10');
+    expect(formatGameDate('2026-01-01')).toBe('Thursday, January 1');
+  });
+
+  it('is the same either side of a daylight-saving change', () => {
+    // US DST begins 2026-03-08 and ends 2026-11-01. A date is a date.
+    expect(formatGameDate('2026-03-07')).toBe('Saturday, March 7');
+    expect(formatGameDate('2026-03-08')).toBe('Sunday, March 8');
+    expect(formatGameDate('2026-10-31')).toBe('Saturday, October 31');
+    expect(formatGameDate('2026-11-01')).toBe('Sunday, November 1');
+  });
+
+  it('names the weekday, which is what people actually plan by', () => {
+    expect(formatGameDate('2026-07-11')).toMatch(/^Saturday/);
+    expect(formatGameDate('2026-07-12')).toMatch(/^Sunday/);
+  });
+});
+
+describe('formatGameTime', () => {
+  it('drops the minutes when there are none', () => {
+    expect(formatGameTime('18:00')).toBe('6pm');
+  });
+
+  it('keeps them when there are', () => {
+    expect(formatGameTime('18:30')).toBe('6:30pm');
+    expect(formatGameTime('09:05')).toBe('9:05am');
+  });
+
+  it('gets both ends of the clock right', () => {
+    // The two every 12-hour conversion gets wrong.
+    expect(formatGameTime('00:00')).toBe('12am');
+    expect(formatGameTime('12:00')).toBe('12pm');
+  });
+
+  it('is lower case, the way someone writes a time to a friend', () => {
+    expect(formatGameTime('19:00')).toBe('7pm');
+  });
+});
+
+describe('formatGameDay', () => {
+  it('is how every player-facing mention of a game reads', () => {
+    expect(formatGameDay('2026-07-10', '18:00')).toBe('Friday, July 10 at 6pm');
   });
 });

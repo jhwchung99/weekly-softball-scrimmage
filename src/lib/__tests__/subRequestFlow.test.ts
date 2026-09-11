@@ -59,7 +59,7 @@ describe('requestSub', () => {
 
   it('rejects a request from a confirmed (non-waitlisted) signup', async () => {
     const { confirmed } = await setUpConfirmedAndWaitlisted();
-    await expect(requestSub(confirmed.signupId, 'confirmed@dummy.test', 'waitlisted@dummy.test')).rejects.toThrow(/waitlisted/);
+    await expect(requestSub(confirmed.signupId, 'confirmed@dummy.test', 'waitlisted@dummy.test')).rejects.toThrow(/on the waitlist/);
   });
 
   it('rejects requesting someone not signed up for the session', async () => {

@@ -31,7 +31,7 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail)) {
       throw new ApiError(403, 'You can only request a sub for your own signup.');
     }
-    if (signup.status !== 'waitlisted') throw new ApiError(409, 'Only a waitlisted signup can request to sub in.');
+    if (signup.status !== 'waitlisted') throw new ApiError(409, 'Only someone on the waitlist can ask to share a spot.');
     const selfSharing = alreadySharingReason(signup);
     if (selfSharing) throw new ApiError(409, selfSharing);
     // Anti-spam: only one outstanding outgoing request at a time. A prior
@@ -48,7 +48,7 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     }
 
     const target = sessionSignups.find((s) => normalizeEmail(s.email) === normalizedTarget && s.status !== 'cancelled');
-    if (!target) throw new ApiError(400, "That email isn't signed up for this session.");
+    if (!target) throw new ApiError(400, "That person isn't signed up this week.");
     const targetSharing = alreadySharingReason(target, 'That person is');
     if (targetSharing) throw new ApiError(400, targetSharing);
 
@@ -113,7 +113,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     }
 
     const target = allSignups.find((s) => normalizeEmail(s.email) === normalizedResponder && s.status !== 'cancelled');
-    if (!target) throw new ApiError(409, 'Your own signup for this session is no longer active.');
+    if (!target) throw new ApiError(409, 'Your own signup is no longer active.');
     if (requester.status === 'cancelled') throw new ApiError(409, 'That signup is no longer active.');
     // Re-check the same precondition requestSub enforced, because the
     // requester's status can change between asking and answering (an admin
@@ -122,7 +122,7 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     // dropping the roster below capacity with no promotion cascade to refill
     // it.
     if (requester.status !== 'waitlisted') {
-      throw new ApiError(409, 'That person already has their own spot, so there is nothing to sub into.');
+      throw new ApiError(409, "That person already has their own spot, so there's nothing to share.");
     }
     // The responder is `target` and the asker is `requester`, so "you" is the
     // target here — the reverse of requestSub, which is exactly the sort of

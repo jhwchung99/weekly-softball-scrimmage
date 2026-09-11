@@ -18,6 +18,12 @@ Issues live as GitHub issues in `jhwchung99/weekly-softball-scrimmage`, managed 
 
 The five canonical triage roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
 
+### Player-facing copy
+
+Wording shown to players or emailed to them follows `docs/voice.md`, which
+deliberately diverges from the glossary (ADR-0005). Read it before changing any
+user-visible string.
+
 ### Domain docs
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.

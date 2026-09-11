@@ -67,7 +67,8 @@ describe('notifySessionChange', () => {
     expect(sentTo()).toEqual(['in@dummy.test']);
     // The whole point of the button: the details a player needs on Thursday.
     expect(bodyFor('in@dummy.test')).toContain('Iceland Diamond 3, Mississauga');
-    expect(bodyFor('in@dummy.test')).toContain('18:00');
+    // Players read "6pm", not "18:00" — see docs/voice.md.
+    expect(bodyFor('in@dummy.test')).toContain('6pm');
   });
 
   it('emails the waitlist too when the session is cancelled, because there is no spot left to wait for', async () => {
@@ -81,7 +82,7 @@ describe('notifySessionChange', () => {
     expect(result.sent).toBe(2);
     expect(sentTo().sort()).toEqual(['in@dummy.test', 'waiting@dummy.test']);
     expect(bodyFor('waiting@dummy.test')).toMatch(/has been cancelled/);
-    expect(bodyFor('waiting@dummy.test')).toMatch(/don't head to the field/);
+    expect(bodyFor('waiting@dummy.test')).toMatch(/Don't head to the field/);
   });
 
   it('never writes to someone who already cancelled their own signup', async () => {
