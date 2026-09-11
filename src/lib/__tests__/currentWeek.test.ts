@@ -11,6 +11,9 @@ import { makeSession } from '../../test/fakeSheets';
 const getSessionByAnyId = vi.fn();
 vi.mock('../../sheets/sessions', () => ({ getSessionByAnyId }));
 
+const reportMissedJobs = vi.fn(async () => undefined);
+vi.mock('../weekWatchdog', () => ({ reportMissedJobs }));
+
 const { currentWeekSession, forgetCurrentWeek } = await import('../currentWeek');
 
 const SESSION = makeSession();
@@ -100,5 +103,41 @@ describe('currentWeekSession', () => {
     await currentWeekSession(T0);
 
     expect(getSessionByAnyId).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * The watchdog rides on this read rather than on a schedule of its own,
+ * because the jobs it watches are GitHub `schedule` triggers and a scheduled
+ * watchdog would be disabled by the same rule that disabled them.
+ */
+describe('the week watchdog rides on this read', () => {
+  it('is shown every week that is actually read', async () => {
+    await currentWeekSession(T0);
+
+    expect(reportMissedJobs).toHaveBeenCalledWith(SESSION, expect.any(Date));
+  });
+
+  it('is shown a missing week too, which is the case that matters most', async () => {
+    // "No session exists and registration should have opened" is the failure
+    // where players are standing at the door.
+    getSessionByAnyId.mockResolvedValue(null);
+    await currentWeekSession(T0);
+
+    expect(reportMissedJobs).toHaveBeenCalledWith(null, expect.any(Date));
+  });
+
+  it('runs once per read, not once per cached answer', async () => {
+    await currentWeekSession(T0);
+    await currentWeekSession(T0 + 1_000);
+
+    expect(reportMissedJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it('cannot fail the page load it runs off', async () => {
+    // A watchdog that breaks the homepage is worse than the problem it reports.
+    reportMissedJobs.mockRejectedValue(new Error('ntfy exploded'));
+
+    await expect(currentWeekSession(T0)).resolves.toEqual(SESSION);
   });
 });

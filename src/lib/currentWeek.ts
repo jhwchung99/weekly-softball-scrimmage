@@ -1,6 +1,8 @@
 import { Session } from '../sheets/schema';
+import { deliver } from './notifications';
 import { getSessionByAnyId } from '../sheets/sessions';
 import { currentWeekGameDayCandidates } from './time';
+import { reportMissedJobs } from './weekWatchdog';
 
 /**
  * This week's session, for the two routes that show it to anyone.
@@ -50,6 +52,15 @@ export async function currentWeekSession(now: number = Date.now()): Promise<Sess
   try {
     const session = await read;
     if (!session && entry === mine) mine.until = now + MISSING_TTL_MS;
+
+    // Off the read, not off a schedule: the jobs this watches are GitHub
+    // `schedule` triggers, and a watchdog on a schedule of its own would be
+    // disabled by the same 60-day rule that disabled them. Costs nothing when
+    // the week is on track — the check is pure and only reaches Redis once it
+    // has something to report — and it is swallowed, because a watchdog that
+    // can fail a player's page load is worse than the problem it reports.
+    await deliver('week watchdog', () => reportMissedJobs(session, new Date(now)));
+
     return session;
   } catch (err) {
     // A failed read must not be served to everyone for the next 30 seconds.
