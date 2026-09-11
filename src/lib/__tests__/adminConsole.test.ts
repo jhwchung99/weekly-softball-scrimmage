@@ -5,6 +5,7 @@ import {
   classifyLoadFailure,
   sessionIdAfterRevision,
   splitAcrossRoster,
+  capacityRaiseWarning,
   announcementNotice,
   sessionInputsFor,
 } from '../adminConsole';
@@ -251,3 +252,49 @@ describe('adminRequestFor', () => {
   });
 });
 
+describe('capacityRaiseWarning', () => {
+  // Raising capacity promotes off the waitlist and emails each person that
+  // they are in. It is the only save on the dashboard that mails players, and
+  // an email cannot be taken back — so the click has to be deliberate.
+  const confirmed = (n: number) => Array.from({ length: n }, (_, i) => entry({ signupId: `c${i}`, status: 'confirmed' }));
+  const waiting = (n: number) => Array.from({ length: n }, (_, i) => entry({ signupId: `w${i}`, status: 'waitlisted' }));
+
+  it('warns, with the number of spots that would be told they are in', () => {
+    const roster = [...confirmed(20), ...waiting(5)];
+
+    expect(capacityRaiseWarning(20, 23, roster)).toMatch(/promote 3 waitlisted spots and email them/);
+  });
+
+  it('counts a shared spot once, the way capacity does', () => {
+    // A pair waiting on one spot is one promotion, not two.
+    const pair = [
+      entry({ signupId: 'p1', status: 'waitlisted', pairId: 'pair' }),
+      entry({ signupId: 'p2', status: 'waitlisted', pairId: 'pair' }),
+    ];
+
+    expect(capacityRaiseWarning(20, 21, [...confirmed(20), ...pair])).toMatch(/promote 1 waitlisted spot and/);
+  });
+
+  it('stays silent when nobody is waiting, because the save emails nobody', () => {
+    expect(capacityRaiseWarning(20, 30, confirmed(12))).toBeNull();
+  });
+
+  it('stays silent when capacity is lowered or unchanged', () => {
+    const roster = [...confirmed(20), ...waiting(5)];
+
+    expect(capacityRaiseWarning(20, 20, roster)).toBeNull();
+    expect(capacityRaiseWarning(20, 15, roster)).toBeNull();
+  });
+
+  it('promotes only as far as the new room reaches', () => {
+    // Ten waiting, but two spots opened: two emails, not ten.
+    const roster = [...confirmed(20), ...waiting(10)];
+
+    expect(capacityRaiseWarning(20, 22, roster)).toMatch(/promote 2 waitlisted spots/);
+  });
+
+  it('says nothing before the roster has loaded, or for a junk number', () => {
+    expect(capacityRaiseWarning(20, 25, null)).toBeNull();
+    expect(capacityRaiseWarning(20, Number.NaN, [...confirmed(20), ...waiting(5)])).toBeNull();
+  });
+});

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminPage from '../admin/page';
 
@@ -177,5 +177,82 @@ describe('AdminPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /reschedule/i }));
 
     await waitFor(() => expect(screen.getByLabelText(/Session \(defaults/)).toHaveValue('2026-07-11'));
+  });
+
+  /**
+   * Every path from this page that puts mail in a player's inbox has to ask
+   * first. An email cannot be recalled, the audience is everyone signed up,
+   * and the buttons sit beside harmless Save buttons — so one misclick must
+   * never be enough.
+   *
+   * Written as a rule over the page rather than per button, so a fifth send
+   * added later without a confirm fails this instead of shipping.
+   */
+  describe('nothing mails players on one click', () => {
+    /** The session's capacity box and its Save, not the create-session form's
+     * identically-labelled pair. */
+    function capacityControls() {
+      const input = document.getElementById('admin-capacity') as HTMLInputElement;
+      // The capacity Save and the fields Save share a row; capacity's comes
+      // first, immediately after its input.
+      const save = within(input.closest('div') as HTMLElement).getAllByRole('button', { name: /Save|Processing/ })[0];
+      return { input, save };
+    }
+
+    async function clickAndCount(name: RegExp) {
+      const confirmMock = vi.fn(() => false); // the organizer says no
+      vi.stubGlobal('confirm', confirmMock);
+      render(<AdminPage />);
+      await screen.findByText('Kevin Kim');
+
+      const button = await screen.findByRole('button', { name });
+      const before = fetchMock.mock.calls.length;
+      fireEvent.click(button);
+
+      return { confirmMock, sentAnything: fetchMock.mock.calls.length > before };
+    }
+
+    it('asks before notifying players, and sends nothing when refused', async () => {
+      const { confirmMock, sentAnything } = await clickAndCount(/Notify \d+ player/);
+
+      expect(confirmMock).toHaveBeenCalled();
+      expect(sentAnything).toBe(false);
+    });
+
+    it('asks before a capacity raise, which promotes and emails off the waitlist', async () => {
+      routes({
+        '/api/admin/sessions/2026-07-10/signups': () => ({
+          ok: true,
+          body: { signups: [SIGNUP, { ...SIGNUP, signupId: 's2', email: 'w@dummy.test', fullName: 'Waiting W', status: 'waitlisted' }] },
+        }),
+      });
+      const confirmMock = vi.fn(() => false);
+      vi.stubGlobal('confirm', confirmMock);
+      render(<AdminPage />);
+      await screen.findByText('Waiting W');
+
+      const { input, save } = capacityControls();
+      fireEvent.change(input, { target: { value: '30' } });
+      const before = fetchMock.mock.calls.length;
+      fireEvent.click(save);
+
+      expect(confirmMock).toHaveBeenCalledWith(expect.stringMatching(/promote 1 waitlisted spot and email them/));
+      expect(fetchMock.mock.calls.length).toBe(before);
+    });
+
+    it('does not ask when a capacity change emails nobody', async () => {
+      // Nobody waiting: the save is ordinary admin, and a pointless dialog
+      // teaches the organizer to click through dialogs.
+      const confirmMock = vi.fn(() => true);
+      vi.stubGlobal('confirm', confirmMock);
+      render(<AdminPage />);
+      await screen.findByText('Kevin Kim');
+
+      const { input, save } = capacityControls();
+      fireEvent.change(input, { target: { value: '30' } });
+      fireEvent.click(save);
+
+      expect(confirmMock).not.toHaveBeenCalled();
+    });
   });
 });
