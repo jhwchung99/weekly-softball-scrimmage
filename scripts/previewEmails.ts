@@ -102,8 +102,12 @@ function everyEmail(you: string) {
     ['sub request received', () => sendSubRequestEmail(me, other, SESSION)],
     ['guest asking to share your spot', () => sendGuestPairRequestEmail(me, guest, SESSION)],
     ['sub request accepted (sends both halves)', () => sendSubRequestAcceptedEmail(me, other, SESSION)],
-    ['game-day reminder, unpaid, waitlist waiting', () => sendGameDayReminderEmail(me, SESSION, 12.5, true, new Date())],
-    ['game-day reminder, already paid', () => sendGameDayReminderEmail({ ...me, paid: true }, SESSION, 0, false, new Date())],
+    // Two branches of ONE email, not two emails. A player gets a single
+    // reminder with whichever paragraphs apply to them. Both are sent here
+    // because the paragraphs are the part worth reading, but they share a
+    // subject line, so in an inbox they look like a double-send. They are not.
+    ['game-day reminder [1 of 2 branches] unpaid, waitlist waiting', () => sendGameDayReminderEmail(me, SESSION, 12.5, true, new Date())],
+    ['game-day reminder [2 of 2 branches] paid, nobody waiting', () => sendGameDayReminderEmail({ ...me, paid: true }, SESSION, 0, false, new Date())],
     ['session details updated', () => sendSessionUpdateEmail(me, SESSION, 'The city moved us to diamond 5.')],
     ['session cancelled', () => sendSessionCancelledEmail(me, { ...SESSION, status: 'cancelled' }, 'Rained out.')],
     ['payment nudge', () => sendPaymentNudgeEmail(me, SESSION, 12.5, new Date())],
@@ -124,6 +128,10 @@ async function main() {
     console.log(`DRY RUN — nothing will be sent.\n`);
     console.log(`${emails.length} emails would go to: ${sender ?? '(GMAIL_SENDER_EMAIL is not set)'}\n`);
     for (const [name] of emails) console.log(`  - ${name}`);
+    console.log(
+      `\nNote: the two game-day reminder branches share a subject line, so they` +
+        `\narrive looking like a double-send. A real player gets one of them.`
+    );
     console.log(`\nTo send them: npm run preview:emails -- --send --to=${sender ?? '<your address>'}`);
     return;
   }
