@@ -131,6 +131,8 @@ export function paymentStateOf(input: { amountOwed: number; paid: boolean; roste
 }
 
 /** The moment payment opens: when the roster locks. */
-export function paymentOpensAt(session: Pick<Session, 'gameDate' | 'gameTime'>): Date {
-  return getWeeklyMilestones(session.gameDate, session.gameTime).cutoffStart;
+export function paymentOpensAt(
+  session: Pick<Session, 'gameDate' | 'gameTime'> & Partial<Pick<Session, 'rosterLockAt'>>
+): Date {
+  return getWeeklyMilestones(session.gameDate, session.gameTime, session.rosterLockAt).cutoffStart;
 }

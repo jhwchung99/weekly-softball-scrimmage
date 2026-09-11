@@ -24,15 +24,16 @@ export type SessionPhase =
   /** Registration has closed, but the roster is still moving — cancellations
    * still free spots and the waitlist still promotes into them. */
   | 'closed'
-  /** Inside the promotion cutoff (5 hours before game time). The roster stops
-   * auto-promoting, and payment opens. */
+  /** Past the roster lock — five hours before game time by default, or
+   * whenever the session says. The roster stops auto-promoting, and payment
+   * opens. */
   | 'locked'
   /** Game time has passed. */
   | 'played';
 
 /** The session fields a phase depends on. Deliberately narrow, so callers can
  * pass a client DTO as readily as a sheet row. */
-export type Scheduled = Pick<Session, 'gameDate' | 'gameTime'>;
+export type Scheduled = Pick<Session, 'gameDate' | 'gameTime'> & Partial<Pick<Session, 'rosterLockAt'>>;
 
 /**
  * The phase this session is in at `now`.
@@ -46,7 +47,8 @@ export type Scheduled = Pick<Session, 'gameDate' | 'gameTime'>;
 export function phaseOf(session: Scheduled, now: Date = new Date()): SessionPhase {
   const { registrationOpensAt, registrationClosesAt, cutoffStart, gameStart } = getWeeklyMilestones(
     session.gameDate,
-    session.gameTime
+    session.gameTime,
+    session.rosterLockAt
   );
 
   if (now < registrationOpensAt) return 'before';

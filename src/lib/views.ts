@@ -235,6 +235,10 @@ export interface SessionView {
   sessionId: string;
   gameDate: string;
   gameTime: string;
+  /** When this week's roster locks, when it is not the usual five hours before
+   * the game. The timeline draws its mark from this, so a session that locks
+   * the night before shows that rather than the default. */
+  rosterLockAt: string;
   capacity: number;
   numFields: number;
   status: Session['status'];
@@ -250,6 +254,7 @@ export function sessionView(session: Session): SessionView {
     sessionId: session.sessionId,
     gameDate: session.gameDate,
     gameTime: session.gameTime,
+    rosterLockAt: session.rosterLockAt,
     capacity: session.capacity,
     numFields: session.numFields,
     status: session.status,
@@ -267,10 +272,14 @@ export function sessionView(session: Session): SessionView {
  */
 export interface AdminSessionView extends SessionView {
   cost: number;
+  /** When the game-day email went out, '' if it has not. Organizer-only: it is
+   * the state the send button reads, and no player needs to know whether
+   * somebody else's inbox has been written to. */
+  remindersSentAt: string;
 }
 
 export function adminSessionView(session: Session): AdminSessionView {
-  return { ...sessionView(session), cost: session.cost };
+  return { ...sessionView(session), cost: session.cost, remindersSentAt: session.remindersSentAt };
 }
 
 // ---------------------------------------------------------------------------

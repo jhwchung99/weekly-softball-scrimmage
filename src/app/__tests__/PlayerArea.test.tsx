@@ -14,6 +14,7 @@ const scrimmage = {
   locationName: '',
   locationUrl: '',
   numFields: 1,
+  rosterLockAt: '',
   teamsStatus: '' as const,
 };
 

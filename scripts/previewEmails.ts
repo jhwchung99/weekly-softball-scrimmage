@@ -45,7 +45,9 @@ const SESSION: Session = {
   locationName: 'Iceland Diamond 3',
   locationUrl: 'https://maps.app.goo.gl/example',
   numFields: 1,
+  rosterLockAt: '',
   teamsStatus: '',
+  remindersSentAt: '',
 };
 
 function signup(email: string, fullName: string, over: Partial<Signup> = {}): Signup {

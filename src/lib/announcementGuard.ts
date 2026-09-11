@@ -33,7 +33,7 @@ import { ApiError } from './apiErrors';
  */
 const COOLDOWN_SECONDS = 60;
 
-export type AnnouncementKind = 'notify' | 'payment-reminders';
+export type AnnouncementKind = 'notify' | 'payment-reminders' | 'game-day-email';
 
 export async function guardAnnouncement(kind: AnnouncementKind, sessionId: string): Promise<void> {
   const allowed = await checkRateLimit(`announce:${kind}:${sessionId}`, 1, COOLDOWN_SECONDS);

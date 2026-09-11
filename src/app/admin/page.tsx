@@ -27,6 +27,11 @@ import { Button } from '../../components/Button';
 
 import type { SignupStatus } from '../../sheets/schema';
 import type { AdminRosterEntry, AdminSessionView } from '../../lib/views';
+import type { SessionPhase } from '../../lib/sessionPhase';
+import { isRosterLocked, hasGameStarted } from '../../lib/sessionPhase';
+import { paymentOpensAt } from '../../lib/payments';
+import { formatEasternMoment } from '../../lib/time';
+import { localInputToIso } from '../../lib/adminConsole';
 
 /** The organizer's roster row, as the projection module defines it. */
 type AdminSignup = AdminRosterEntry;
@@ -56,6 +61,10 @@ export default function AdminPage() {
 
   const [sessionId, setSessionId] = useState('');
   const [scrimmage, setScrimmage] = useState<SessionInfo | null>(null);
+  // From the server, not computed here: whether the roster has locked decides
+  // whether the game-day email can go out, and that must not hang on the
+  // organizer's own clock (ADR-0003).
+  const [phase, setPhase] = useState<SessionPhase | null>(null);
   const [roster, setRoster] = useState<AdminSignup[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +81,7 @@ export default function AdminPage() {
   const [areaInput, setAreaInput] = useState('');
   const [fieldNameInput, setFieldNameInput] = useState('');
   const [fieldUrlInput, setFieldUrlInput] = useState('');
+  const [lockInput, setLockInput] = useState('');
 
   async function loadCurrentSessionId() {
     const { session } = await fetchJson<{ session: SessionInfo | null }>('/api/sessions/current');
@@ -86,10 +96,11 @@ export default function AdminPage() {
     setScrimmage(null);
     try {
       const [sessionRes, rosterRes] = await Promise.all([
-        fetchJson<{ session: SessionInfo }>(`/api/admin/sessions/${encodeURIComponent(id)}`),
+        fetchJson<{ session: SessionInfo; phase: SessionPhase }>(`/api/admin/sessions/${encodeURIComponent(id)}`),
         fetchJson<{ signups: AdminSignup[] }>(`/api/admin/sessions/${encodeURIComponent(id)}/signups`),
       ]);
       setScrimmage(sessionRes.session);
+      setPhase(sessionRes.phase);
       const inputs = sessionInputsFor(sessionRes.session);
       setCapacityInput(inputs.capacity);
       setCostInput(inputs.cost);
@@ -99,6 +110,7 @@ export default function AdminPage() {
       setAreaInput(inputs.area);
       setFieldNameInput(inputs.fieldName);
       setFieldUrlInput(inputs.fieldUrl);
+      setLockInput(inputs.rosterLock);
       setRoster(rosterRes.signups);
     } catch (err) {
       const failure = classifyLoadFailure(
@@ -409,6 +421,28 @@ export default function AdminPage() {
                 </Button>
               </div>
 
+              {/* The roster lock. Blank means the default, five hours before the
+                  game. Set for an early game, so the lock, the teams and the
+                  one email all land the evening before rather than at dawn. */}
+              <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2">
+                <div>
+                  <label htmlFor="admin-lock" className="block text-sm text-slate-700">Roster locks</label>
+                  <input
+                    id="admin-lock"
+                    type="datetime-local"
+                    value={lockInput}
+                    onChange={(e) => setLockInput(e.target.value)}
+                    className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <Button size="sm" disabled={busy} onClick={() => updateSession({ rosterLockAt: localInputToIso(lockInput) })}>
+                  Save lock
+                </Button>
+                <span className="text-xs text-slate-500">
+                  Blank uses the usual 5 hours before the game. Payment, teams and the game-day email all follow this.
+                </span>
+              </div>
+
               {/* Location arrives in two stages: the area up front, the actual
                   field once the permit is booked. */}
               <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2">
@@ -531,6 +565,16 @@ export default function AdminPage() {
           )}
 
           {sessionId && <TeamEditor sessionId={sessionId} onChanged={() => loadRoster(sessionId)} />}
+
+          {sessionId && scrimmage && roster && (
+            <GameDayEmailPanel
+              session={scrimmage}
+              phase={phase}
+              roster={roster}
+              busy={busy}
+              onSend={(confirmMessage) => sendAnnouncement('game-day-email', confirmMessage)}
+            />
+          )}
         </>
       )}
     </main>
@@ -769,6 +813,63 @@ export function RemindUnpaidButton(props: {
         asking for it.
       </span>
     </div>
+  );
+}
+
+
+/**
+ * "Send game-day email" — the one player email the organizer sends on purpose.
+ *
+ * Appears only once the roster has locked, which for most weeks is game day
+ * and for an early game is the evening before. That is not presentation: the
+ * email states what each player owes, and until the lock a cancellation can
+ * still move that figure, so there is nothing honest to send. Before the lock
+ * the panel says when the lock is rather than hiding, so the organizer knows
+ * what they are waiting for instead of hunting for a missing button.
+ */
+export function GameDayEmailPanel(props: {
+  session: Pick<SessionInfo, 'status' | 'gameDate' | 'gameTime' | 'rosterLockAt' | 'remindersSentAt'>;
+  phase: SessionPhase | null;
+  roster: AdminSignup[];
+  busy: boolean;
+  onSend: (confirmMessage: string) => void;
+}) {
+  const { session, phase, roster, busy, onSend } = props;
+  if (session.status === 'cancelled' || phase === null) return null;
+  // Nothing useful to send once people are on the field.
+  if (hasGameStarted(phase)) return null;
+
+  const audience = roster.filter((s) => s.status === 'confirmed');
+  const people = `${audience.length} player${audience.length === 1 ? '' : 's'}`;
+  const sentAt = session.remindersSentAt ? formatEasternMoment(new Date(session.remindersSentAt)) : '';
+
+  return (
+    <Card className="mt-4">
+      <h2 className="font-semibold text-slate-900">Game-day email</h2>
+      {!isRosterLocked(phase) ? (
+        <p className="mt-1 text-sm text-slate-600">
+          Sends once the roster locks, {formatEasternMoment(paymentOpensAt(session))}. Until then a cancellation can
+          still change what people owe, so the email has nothing final to tell them.
+        </p>
+      ) : (
+        <>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="success"
+              disabled={busy || audience.length === 0}
+              onClick={() => onSend(`Email ${people} that the game is on, with what they owe?`)}
+            >
+              {busy ? 'Sending...' : sentAt ? `Send again to ${people}` : `Send to ${people}`}
+            </Button>
+            <span className="text-xs text-slate-500">
+              Where and when, the posted teams, and each player&apos;s share. Confirmed players only.
+            </span>
+          </div>
+          {sentAt && <p className="mt-2 text-xs text-green-700">Sent {sentAt}.</p>}
+        </>
+      )}
+    </Card>
   );
 }
 

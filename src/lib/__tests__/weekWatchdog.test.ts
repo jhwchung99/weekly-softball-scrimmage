@@ -175,3 +175,52 @@ describe('reportMissedJobs', () => {
     await expect(reportMissedJobs(null, past(M.registrationOpensAt, 3))).resolves.toBeUndefined();
   });
 });
+
+describe('missedJobsFor — game-day-email', () => {
+  // The email is a button now, so what is watched is the organizer forgetting
+  // it, not a workflow failing.
+  const twoHoursBefore = new Date(M.gameStart.getTime() - 2 * HOUR);
+
+  it('says nothing until the game is close', () => {
+    expect(jobs(week({ status: 'closed', teamsStatus: 'posted' }), past(M.cutoffStart, 1))).not.toContain(
+      'game-day-email'
+    );
+  });
+
+  it('reports an unsent email in the last two hours before the game', () => {
+    expect(jobs(week({ status: 'closed', teamsStatus: 'posted' }), past(twoHoursBefore, 1))).toContain(
+      'game-day-email'
+    );
+  });
+
+  it('stays quiet once it has been sent', () => {
+    const sent = week({ status: 'closed', teamsStatus: 'posted', remindersSentAt: '2026-07-10T18:00:00.000Z' });
+    expect(jobs(sent, past(twoHoursBefore, 1))).not.toContain('game-day-email');
+  });
+
+  it('stops once the game has started, when the nudge would be useless', () => {
+    expect(jobs(week({ status: 'closed', teamsStatus: 'posted' }), past(M.gameStart, 1))).not.toContain(
+      'game-day-email'
+    );
+  });
+
+  it('says nothing about a cancelled week', () => {
+    expect(jobs(week({ status: 'cancelled' }), past(twoHoursBefore, 1))).toEqual([]);
+  });
+
+  it('follows a session that locks the night before', () => {
+    // An early game: the lock moves, and the nudge still hangs off the game,
+    // not off the lock.
+    const early = makeSession({
+      sessionId: '2026-07-11',
+      gameDate: '2026-07-11',
+      gameTime: '10:00',
+      status: 'closed',
+      teamsStatus: 'posted',
+      rosterLockAt: '2026-07-11T00:00:00.000Z',
+    });
+    const anHourBeforeTenAm = new Date('2026-07-11T13:00:00.000Z');
+
+    expect(missedJobsFor(early, anHourBeforeTenAm).map((m) => m.job)).toContain('game-day-email');
+  });
+});

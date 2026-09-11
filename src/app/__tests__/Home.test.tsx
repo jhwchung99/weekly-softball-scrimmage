@@ -37,6 +37,7 @@ const SESSION = {
   locationArea: 'Mississauga',
   locationName: '',
   locationUrl: '',
+  rosterLockAt: '',
   teamsStatus: '',
 };
 

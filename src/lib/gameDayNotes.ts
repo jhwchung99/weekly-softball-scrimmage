@@ -14,6 +14,9 @@
  * able to say why.
  */
 export const GAME_DAY_NOTES = [
+  // First on purpose: it frames the four under it, all of which are about
+  // running a game that does not match what the app printed.
+  'Teams are a suggestion so nobody spends game time picking sides, and you can change them at the field',
   'If you are down to 8 players, play without a rover',
   'The regular season rule about 3 girls on the field does not apply, but everyone should get equal playing time',
   'Two people sharing a spot take turns, so only one of them plays at a time',

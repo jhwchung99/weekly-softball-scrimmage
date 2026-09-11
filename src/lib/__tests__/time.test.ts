@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment } from '../time';
+import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -215,5 +215,50 @@ describe('formatEasternMoment', () => {
 
   it('gets midnight right, which is when registration closes', () => {
     expect(formatEasternMoment(new Date('2026-09-15T04:00:00Z'))).toBe('Tuesday, September 15 at 12am');
+  });
+});
+
+describe('a session that sets its own roster lock', () => {
+  it('locks when it says, not five hours before the game', () => {
+    // A 10am Saturday game would lock at 5am. Locked at 8pm the Friday
+    // instead, so the teams, the cost and the one email all land that evening.
+    const milestones = getWeeklyMilestones('2026-07-11', '10:00', '2026-07-11T00:00:00.000Z');
+
+    expect(milestones.cutoffStart.toISOString()).toBe('2026-07-11T00:00:00.000Z');
+    // Everything else is untouched by the override.
+    expect(milestones.gameStart.toISOString()).toBe('2026-07-11T14:00:00.000Z');
+    expect(milestones.registrationOpensAt.toISOString()).toBe('2026-07-06T13:00:00.000Z');
+  });
+
+  it('falls back to the default when the override is blank or unreadable', () => {
+    const fiveHoursBefore = '2026-07-10T17:00:00.000Z';
+
+    expect(getWeeklyMilestones('2026-07-10', '18:00', '').cutoffStart.toISOString()).toBe(fiveHoursBefore);
+    // A hand-edited cell should not be able to take the week's schedule out.
+    expect(getWeeklyMilestones('2026-07-10', '18:00', 'not a date').cutoffStart.toISOString()).toBe(fiveHoursBefore);
+  });
+});
+
+describe('formatEasternClockTime', () => {
+  it('spells a time the way formatGameTime does', () => {
+    // voice.md rule 11: one email must not contain both "2pm" and "2:00 PM".
+    expect(formatEasternClockTime(new Date('2026-07-10T18:00:00.000Z'))).toBe('2pm');
+    expect(formatEasternClockTime(new Date('2026-07-10T18:30:00.000Z'))).toBe('2:30pm');
+  });
+});
+
+describe('relativeGameDay', () => {
+  const game = { gameDate: '2026-07-11', gameTime: '10:00' };
+
+  it('says "today" on the day', () => {
+    expect(relativeGameDay(game, new Date('2026-07-11T13:00:00.000Z'))).toBe('today');
+  });
+
+  it('says "tomorrow" the evening before, which is when an early game sends', () => {
+    expect(relativeGameDay(game, new Date('2026-07-11T01:00:00.000Z'))).toBe('tomorrow');
+  });
+
+  it('names the day outright when it is further off than tomorrow', () => {
+    expect(relativeGameDay(game, new Date('2026-07-08T13:00:00.000Z'))).toBe('Saturday, July 11');
   });
 });

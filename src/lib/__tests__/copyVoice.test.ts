@@ -118,4 +118,35 @@ describe.each(COPY_FILES)('%s', (file) => {
     const offenders = strings.filter((s) => banned.some((b) => b.test(prose(s))));
     expect(offenders, 'state the fact; do not decorate it').toEqual([]);
   });
+
+  it('leaves the game-day email with no "payment opens" hedge', () => {
+    // The email only sends after the roster locks, so payment is open by
+    // definition when it lands. The nudge keeps that sentence, because it is
+    // allowed to go out early; this is about the email that is not.
+    const email = readFileSync(join(ROOT, 'lib', 'notifications.ts'), 'utf8');
+    const body = email.slice(email.indexOf('export async function sendGameDayReminderEmail'));
+    const untilNextExport = body.slice(0, body.indexOf('\nexport ', 1));
+
+    expect(untilNextExport).not.toMatch(/payment opens/i);
+  });
+
+  it('keeps the game-day notes free of terminal full stops', () => {
+    // They are bullets in all three places they appear, beside hand-written
+    // ones that have none.
+    const notes = readFileSync(join(ROOT, 'lib', 'gameDayNotes.ts'), 'utf8');
+    const bullets = [...notes.matchAll(/^\s+'([^']+)',$/gm)].map((m) => m[1]);
+
+    expect(bullets.length).toBeGreaterThan(0);
+    expect(bullets.filter((b) => b.endsWith('.'))).toEqual([]);
+  });
+
+  it('promises players an event, not a clock time, for the game-day email', () => {
+    // The guidelines used to say the email arrives "on game-day morning" and
+    // that payment opens "5 hours before game time". Both stopped being true
+    // when the send moved to the lock and the lock became per-session.
+    const guidelines = readFileSync(join(ROOT, 'app', 'guidelines', 'page.tsx'), 'utf8');
+
+    expect(guidelines).not.toMatch(/game-day morning/i);
+    expect(guidelines).not.toMatch(/5 hours before game time/i);
+  });
 });

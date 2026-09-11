@@ -184,7 +184,7 @@ describe('nudgeUnpaidPlayers', () => {
     await drain(nudgeUnpaidPlayers(SESSION_ID, BEFORE_LOCK));
 
     const body = bodyFor('owes@dummy.test');
-    expect(body).toMatch(/Payment opens at 1:00/);
+    expect(body).toMatch(/Payment opens at 1pm/);
     expect(body).not.toMatch(/still owe/);
   });
 

@@ -88,7 +88,9 @@ async function main() {
     locationName: '',
     locationUrl: '',
     numFields: 1,
+    rosterLockAt: '',
     teamsStatus: '',
+    remindersSentAt: '',
     cost: 0,
   });
 

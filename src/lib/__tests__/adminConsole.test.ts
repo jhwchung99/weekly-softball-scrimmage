@@ -168,12 +168,14 @@ describe('sessionInputsFor', () => {
     locationArea: 'Mississauga',
     locationName: 'Iceland Park Diamond 3',
     locationUrl: 'https://maps.example/x',
+    rosterLockAt: '',
     teamsStatus: '',
+    remindersSentAt: '',
     cost: 240,
   };
 
   it('fills every editable box from the session', () => {
-    // All eight together: missing one leaves a box showing the previous week's
+    // All nine together: missing one leaves a box showing the previous week's
     // value, which the organizer would then save.
     expect(sessionInputsFor(session)).toEqual({
       capacity: '12',
@@ -184,6 +186,7 @@ describe('sessionInputsFor', () => {
       area: 'Mississauga',
       fieldName: 'Iceland Park Diamond 3',
       fieldUrl: 'https://maps.example/x',
+      rosterLock: '',
     });
   });
 

@@ -1,6 +1,7 @@
 import { ApiRequest, asJson } from './apiRequest';
 import { countConfirmedSpots } from './payments';
 import { AdminRosterEntry, AdminSessionView } from './views';
+import { zonedTimeToUtc } from './time';
 
 /**
  * The organizer console's decisions, separated from its rendering.
@@ -178,6 +179,46 @@ export function announcementNotice(result: Partial<AnnouncementResult>): string 
     : `Emailed ${sent}: ${who}.`;
 }
 
+/**
+ * An ISO instant as a `datetime-local` input wants it, in league time.
+ *
+ * The input has no timezone, and the organizer thinks in Eastern — so the
+ * conversion is to league time rather than to the browser's, and the reverse
+ * happens on save. '' stays '' and means "use the default lock".
+ */
+export function toLocalInput(iso: string, timeZone: string = 'America/New_York'): string {
+  if (!iso) return '';
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+}
+
+/**
+ * The reverse of `toLocalInput`: a `datetime-local` value read as league time,
+ * returned as an ISO instant. '' stays '' and clears the override.
+ *
+ * The input gives no offset, so the browser would otherwise read "8:00pm" in
+ * whatever zone the organizer's laptop is set to. A lock is a league-time
+ * decision, so it is resolved against league time here.
+ */
+export function localInputToIso(local: string, timeZone: string = 'America/New_York'): string {
+  if (!local) return '';
+  const [datePart, timePart] = local.split('T');
+  if (!datePart || !timePart) return '';
+  return zonedTimeToUtc(datePart, timePart, timeZone).toISOString();
+}
+
 /** The session fields the console mirrors into editable inputs. */
 export interface SessionInputs {
   capacity: string;
@@ -188,6 +229,9 @@ export interface SessionInputs {
   area: string;
   fieldName: string;
   fieldUrl: string;
+  /** The roster lock as a `datetime-local` value, '' when the session uses the
+   * default of five hours before the game. */
+  rosterLock: string;
 }
 
 /**
@@ -208,5 +252,6 @@ export function sessionInputsFor(session: AdminSessionView): SessionInputs {
     area: session.locationArea,
     fieldName: session.locationName,
     fieldUrl: session.locationUrl,
+    rosterLock: toLocalInput(session.rosterLockAt),
   };
 }
