@@ -43,8 +43,12 @@ function copyStringsIn(file: string): string[] {
   const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
   const literals = withoutComments.match(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g) ?? [];
-  // JSX text is not a literal, so it is swept separately.
-  const jsxText = withoutComments.match(/>[^<>{}\n]{12,}</g) ?? [];
+  // JSX text is not a literal, so it is swept separately. No length floor:
+  // the first version required twelve characters and so could not see
+  // `</strong>, Eastern</li>` — nine characters, and exactly the kind of
+  // trailing fragment where an inconsistency hides. Anything with a letter in
+  // it counts.
+  const jsxText = (withoutComments.match(/>[^<>{}\n]+</g) ?? []).filter((t) => /[A-Za-z]/.test(t));
   return [...literals, ...jsxText];
 }
 
@@ -80,6 +84,20 @@ describe.each(COPY_FILES)('%s', (file) => {
     // one rule with no honest exception in copy this app sends.
     const offenders = strings.filter((s) => prose(s).includes('!'));
     expect(offenders, 'neutral means no performed enthusiasm').toEqual([]);
+  });
+
+  it('names the time zone one way, and that way is ET', () => {
+    // The guidelines page said "9am ET" and "midnight ... Eastern" two bullets
+    // apart, for the same zone.
+    const offenders = strings.filter((s) => /\bEastern\b/.test(prose(s)));
+    expect(offenders, 'write ET').toEqual([]);
+  });
+
+  it('writes a whole hour without its minutes', () => {
+    // formatGameTime renders "9am", so prose quoting the same moment must not
+    // say "9:00am" beside it.
+    const offenders = strings.filter((s) => /\d:00\s?(am|pm)/i.test(prose(s)));
+    expect(offenders, 'write 9am, not 9:00am').toEqual([]);
   });
 
   it('says "game", never "scrimmage" or "session", to a player', () => {
