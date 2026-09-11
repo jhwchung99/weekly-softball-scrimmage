@@ -16,6 +16,7 @@ import {
   classifyLoadFailure,
   sessionIdAfterRevision,
   splitAcrossRoster,
+  capacityRaiseWarning,
   announcementNotice,
   sessionInputsFor,
 } from '../../lib/adminConsole';
@@ -317,7 +318,14 @@ export default function AdminPage() {
                   size="sm"
                   variant="secondary"
                   disabled={busy}
-                  onClick={() => updateSession({ capacity: Number(capacityInput) })}
+                  onClick={() => {
+                    // The one save on this page that emails players: a raise
+                    // promotes off the waitlist and tells each of them they
+                    // are in. Never one stray click away.
+                    const warning = capacityRaiseWarning(scrimmage.capacity, Number(capacityInput), roster);
+                    if (warning && !window.confirm(warning)) return;
+                    updateSession({ capacity: Number(capacityInput) });
+                  }}
                 >
                   {busy ? 'Processing...' : 'Save'}
                 </Button>

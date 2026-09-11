@@ -1,5 +1,6 @@
 import { ApiRequest, asJson } from './apiRequest';
 import { countConfirmedSpots } from './payments';
+import { countSpots } from './pair';
 import { AdminRosterEntry, AdminSessionView } from './views';
 import { zonedTimeToUtc } from './time';
 
@@ -217,6 +218,36 @@ export function localInputToIso(local: string, timeZone: string = 'America/New_Y
   const [datePart, timePart] = local.split('T');
   if (!datePart || !timePart) return '';
   return zonedTimeToUtc(datePart, timePart, timeZone).toISOString();
+}
+
+/**
+ * The warning to show before saving a capacity raise, or null when the save
+ * emails nobody.
+ *
+ * Raising capacity is the one control on the dashboard that mails players
+ * without saying so: `reviseSession` calls `fillOpenSpots`, which promotes
+ * everyone the new room allows and emails each of them. Typing 30 where 20 was
+ * meant, or a stray click on Save, therefore tells people they are in — and an
+ * email cannot be taken back.
+ *
+ * Counted in spots rather than people, the way capacity is, so a pair waiting
+ * on one shared spot is one promotion and not two.
+ */
+export function capacityRaiseWarning(
+  currentCapacity: number,
+  nextCapacity: number,
+  roster: AdminRosterEntry[] | null
+): string | null {
+  if (!roster || !Number.isFinite(nextCapacity) || nextCapacity <= currentCapacity) return null;
+
+  const confirmed = countConfirmedSpots(roster);
+  const waitingSpots = countSpots(roster.filter((s) => s.status === 'waitlisted'));
+  // Only the spots the new room actually reaches get promoted.
+  const willPromote = Math.max(0, Math.min(waitingSpots, nextCapacity - confirmed));
+  if (willPromote === 0) return null;
+
+  const spots = `${willPromote} waitlisted spot${willPromote === 1 ? '' : 's'}`;
+  return `Raising capacity to ${nextCapacity} will promote ${spots} and email them that they are in. This cannot be undone. Continue?`;
 }
 
 /** The session fields the console mirrors into editable inputs. */
