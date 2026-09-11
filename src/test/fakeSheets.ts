@@ -225,7 +225,9 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     locationName: '',
     locationUrl: '',
     numFields: 1,
+    rosterLockAt: '',
     teamsStatus: '' as const,
+    remindersSentAt: '',
     ...overrides,
   };
 }

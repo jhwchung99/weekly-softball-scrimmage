@@ -1,9 +1,8 @@
 import { sendEmail } from './gmail';
 import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
-import { Team, teamNote } from './teams';
 import { formatLocation } from './location';
-import { formatGameDate, formatGameDay, formatGameTime } from './time';
+import { formatGameDate, formatGameDay, formatGameTime, formatEasternClockTime, relativeGameDay } from './time';
 import { paymentOpensAt, paymentStateOf } from './payments';
 import { phaseOf, isRosterLocked } from './sessionPhase';
 
@@ -110,28 +109,6 @@ export async function sendOpenSpotsAlert(session: Session, openSpots: number): P
   await sendPush(title, message);
 }
 
-/**
- * The roster locked and a first pass at teams is waiting for review.
- *
- * Priority 4: it wants attention within the hour, but it is not the
- * five-minutes-to-fill-a-spot emergency that 5 is reserved for. The click
- * target is the dashboard the message is telling them to open.
- */
-export async function sendTeamsReadyAlert(session: Session, teams: Team[]): Promise<void> {
-  const players = teams.reduce((n, t) => n + t.members.length, 0);
-  const short = teams.filter((t) => t.deficiency > 0).map((t) => `${t.name}: ${teamNote(t)}`);
-
-  const parts = [`${players} players split into ${teams.length} teams for ${formatGameDate(session.gameDate)}.`];
-  parts.push(short.length > 0 ? short.join(' ') : 'Every team can field a full lineup.');
-  parts.push('Review and post them from the admin dashboard.');
-
-  const base = process.env.NEXTAUTH_URL;
-  await sendPush(`Teams ready for review: ${formatGameDate(session.gameDate)}`, parts.join(' '), {
-    priority: 4,
-    tags: ['busts_in_silhouette'],
-    click: base ? `${base}/admin` : undefined,
-  });
-}
 
 /**
  * How many people got in, pushed the moment registration closes.
@@ -239,11 +216,10 @@ function whenAndWhere(session: Session): string {
 function paymentLines(session: Session, amountOwed: number, now: Date): string[] {
   if (amountOwed <= 0) return [];
 
-  const opensAt = paymentOpensAt(session).toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  // Spelled the way formatGameTime spells a time — "2pm", not "2:00 PM" —
+  // because this sentence sits two lines from one that quotes the game time,
+  // and voice.md rule 11 exists to stop one email using both.
+  const opensAt = formatEasternClockTime(paymentOpensAt(session));
 
   const state = paymentStateOf({ amountOwed, paid: false, rosterLocked: isRosterLocked(phaseOf(session, now)) });
 
@@ -281,14 +257,17 @@ export async function sendGameDayReminderEmail(
   hasWaitlist: boolean,
   now: Date = new Date()
 ): Promise<void> {
-  // Sent on game-day morning by a cron that no-ops unless gameDate is today,
-  // so "today" is a fact rather than a guess. Nobody needs the year of a game
-  // they are playing in nine hours.
-  const subject = `Softball today at ${formatGameTime(session.gameTime)}`;
+  // "Today" used to be a fact rather than a guess, because a cron sent this
+  // and no-opped unless gameDate was today. The organizer sends it now, after
+  // the roster locks — which for an early game is the evening before — so the
+  // phrase is worked out from `now` instead of assumed. Subject and body share
+  // it, so they cannot drift apart.
+  const when = `${relativeGameDay(session, now)} at ${formatGameTime(session.gameTime)}`;
+  const subject = `Softball ${when}`;
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    `You're confirmed to play today at ${formatGameTime(session.gameTime)}.`,
+    `You're confirmed to play ${when}.`,
   ];
 
   // Named, not just linked. This is the email someone opens in the car, and a
@@ -301,12 +280,24 @@ export async function sendGameDayReminderEmail(
   if (location) lines.push('', `Where: ${location}`);
   if (session.locationUrl) lines.push(`Map: ${session.locationUrl}`);
 
+  // Only once the teams are actually posted: a link to a draft shows the
+  // player nothing. The guard on `base` matters because a missing
+  // NEXTAUTH_URL would otherwise email the word "undefined".
+  const base = process.env.NEXTAUTH_URL;
+  if (session.teamsStatus === 'posted' && base) {
+    lines.push('', `Suggested teams are in the app: ${base}`);
+  }
+
   if (!signup.paid) {
     lines.push(...paymentLines(session, amountOwed, now));
   }
 
   if (hasWaitlist) {
-    lines.push('', "If you can't make it, please cancel so someone on the waitlist can take your spot.");
+    // Not "so someone on the waitlist can take your spot": this email goes out
+    // after the lock, and promotion stops being automatic then (CONTEXT.md).
+    // Filling the spot is the organizer's to do by hand, so the ask is to tell
+    // them, not to expect a handover that no longer happens.
+    lines.push('', "If you can't make it, please cancel and let the organizer know, so they can try to fill your spot.");
   }
 
   await sendEmail(signup.email, subject, lines.join('\n'));

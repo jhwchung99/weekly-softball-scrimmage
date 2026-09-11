@@ -10,6 +10,9 @@ import { hasRegistrationClosed, hasGameStarted, isRosterLocked, type SessionPhas
 interface WeeklyTimelineProps {
   gameDate: string;
   gameTime: string;
+  /** This session's own roster-lock instant, '' to use the default of five
+   * hours before game time. */
+  rosterLockAt?: string;
   status: SessionStatus;
   /**
    * Where the week stands, from the server. The marks used to be decided by
@@ -94,7 +97,7 @@ function Line({ state }: { state: LineState }) {
  * the week is the one you're in. `status` only decides whether this renders
  * at all (a cancelled session shows nothing).
  */
-export function WeeklyTimeline({ gameDate, gameTime, status, phase }: WeeklyTimelineProps) {
+export function WeeklyTimeline({ gameDate, gameTime, rosterLockAt, status, phase }: WeeklyTimelineProps) {
   // Re-render once a minute so "closes in 2 days" doesn't go stale on a
   // long-open tab, without needing a literal ticking clock.
   const [, setTick] = useState(0);
@@ -108,7 +111,11 @@ export function WeeklyTimeline({ gameDate, gameTime, status, phase }: WeeklyTime
   const now = new Date();
   // The printed dates are pure arithmetic on the game date — no clock involved,
   // so they are still computed here. Only the *comparisons* moved to the server.
-  const { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart } = getWeeklyMilestones(gameDate, gameTime);
+  const { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart } = getWeeklyMilestones(
+    gameDate,
+    gameTime,
+    rosterLockAt
+  );
 
   // Which marks are filled comes from the server's phase, so every viewer sees
   // the same week whatever their device thinks the time is. It remains the

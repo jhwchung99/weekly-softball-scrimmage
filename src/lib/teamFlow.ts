@@ -3,8 +3,6 @@ import { listSignupsForSession, batchUpdateSignups } from '../sheets/signups';
 import { Session, Signup } from '../sheets/schema';
 import { ApiError } from './apiErrors';
 import { buildTeams, Team } from './teams';
-import { sendTeamsReadyAlert, deliver } from './notifications';
-import { phaseOf, isRosterLocked } from './sessionPhase';
 import { withMutationLock } from './lock';
 
 /** Teams = one per half of each booked diamond. */
@@ -19,6 +17,10 @@ function playersFor(signups: Signup[]): Signup[] {
 
 /**
  * Runs the generator and writes the result as a draft.
+ *
+ * Pressed by the organizer; there is no scheduled caller. It used to run off
+ * an hourly cron, which was dropped once GitHub Actions proved to drop most
+ * firings — and the button had always existed anyway.
  *
  * Every assignment goes out in one batched call rather than a write per
  * player, and `teamsStatus` moves to 'draft' so players still see nothing
@@ -37,34 +39,6 @@ export async function generateTeams(sessionId: string): Promise<Team[]> {
     await updateSession(sessionId, { teamsStatus: 'draft' });
 
     return teams;
-  });
-}
-
-/**
- * The cron's entry point: generate once, after the lock, then tell the
- * organizer.
- *
- * Idempotent on `teamsStatus`, which is what lets this run hourly without
- * caring about DST duplicate firings the way the fixed-time crons have to.
- */
-export async function generateTeamsIfDue(
-  sessionId: string,
-  now: Date = new Date()
-): Promise<{ generated: boolean; reason?: string }> {
-  return withMutationLock(async () => {
-    const session = await getSession(sessionId);
-    if (!session) return { generated: false, reason: 'No session for this week.' };
-    if (session.status === 'cancelled') return { generated: false, reason: 'Session is cancelled.' };
-    if (session.teamsStatus !== '') return { generated: false, reason: `Teams already ${session.teamsStatus}.` };
-
-    if (!isRosterLocked(phaseOf(session, now))) return { generated: false, reason: 'Roster has not locked yet.' };
-
-    const teams = await generateTeams(sessionId);
-
-    // Awaited but swallowed, like every other organizer alert: the teams are
-    // already saved, and a failed push shouldn't undo that.
-    await deliver(`teams-ready alert for session ${sessionId}`, () => sendTeamsReadyAlert(session, teams));
-    return { generated: true };
   });
 }
 

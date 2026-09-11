@@ -221,6 +221,7 @@ describe('sessionView', () => {
       'locationName',
       'locationUrl',
       'teamsStatus',
+      'rosterLockAt',
     ];
     expect(Object.keys(view).sort()).toEqual([...allowed].sort());
     for (const field of SESSION_HEADERS.filter((h) => !allowed.includes(h))) {

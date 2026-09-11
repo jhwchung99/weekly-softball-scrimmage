@@ -34,10 +34,17 @@ export interface Session {
   locationUrl: string; // optional map link for locationName; '' if none.
   numFields: number; // how many diamonds are booked. Teams = numFields * 2, so
   // a second field means four teams. 0/1 both read as one field.
+  rosterLockAt: string; // ISO datetime, optional. When this session's roster
+  // locks, overriding the default of five hours before game time. Set for an
+  // early game so the lock, the teams and the one email all land the evening
+  // before instead of at dawn. '' = use the default.
   teamsStatus: TeamsStatus; // '' none yet, 'draft' generated and editable by
   // the admin, 'posted' visible to players. Three states rather than two
-  // booleans because the generate cron's idempotency check is `=== ''` and the
-  // Post button is the draft -> posted transition.
+  // booleans because the Post button is the draft -> posted transition and
+  // "not generated yet" is a real third state the dashboard shows.
+  remindersSentAt: string; // ISO datetime the game-day email went out, '' if
+  // it has not. Durable, unlike the announcement cooldown: the dashboard has
+  // to still know at kickoff that the send happened hours earlier.
 }
 
 export interface Signup {
@@ -101,6 +108,12 @@ export const SESSION_HEADERS = [
   'locationUrl',
   'numFields',
   'teamsStatus',
+  // Appended, not slotted in beside the fields they read best next to:
+  // getRowObjects maps columns by POSITION, so inserting a column mid-row
+  // would shift every field after it in every existing row. New fields go on
+  // the end, and the Session interface above is where the grouping lives.
+  'rosterLockAt',
+  'remindersSentAt',
 ] as const satisfies readonly (keyof Session)[];
 
 export const SIGNUP_HEADERS = [
@@ -188,6 +201,8 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     // A blank cell means one field, the way it has always worked.
     numFields: Number(row.numFields) || 1,
     teamsStatus: (row.teamsStatus || '') as TeamsStatus,
+    rosterLockAt: row.rosterLockAt || '',
+    remindersSentAt: row.remindersSentAt || '',
   };
 }
 

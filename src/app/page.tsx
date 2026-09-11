@@ -257,6 +257,7 @@ export default function Home() {
               <WeeklyTimeline
                 gameDate={scrimmage.gameDate}
                 gameTime={scrimmage.gameTime}
+                rosterLockAt={scrimmage.rosterLockAt}
                 status={scrimmage.status}
                 phase={phase}
               />

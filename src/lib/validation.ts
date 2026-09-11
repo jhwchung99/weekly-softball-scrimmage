@@ -280,6 +280,7 @@ export interface ValidatedSessionEdit {
     locationUrl?: string;
     status?: 'open' | 'closed' | 'cancelled';
     cost?: number;
+    rosterLockAt?: string;
   };
   /** Present only when the organizer is moving the game. */
   gameDate?: string;
@@ -291,6 +292,7 @@ const SESSION_STATUSES = ['open', 'closed', 'cancelled'] as const;
 const EDITABLE_FIELDS = [
   'gameDate',
   'gameTime',
+  'rosterLockAt',
   'capacity',
   'numFields',
   'status',
@@ -309,6 +311,30 @@ const EDITABLE_FIELDS = [
  * object happened to come out empty — which is the same answer by accident, and
  * stops being so the moment a field is added that does not write an update.
  */
+/**
+ * When this session's roster locks, if not the default five hours before the
+ * game. Empty clears it and returns the session to the default.
+ *
+ * Checks that it is a readable date and nothing else. It cannot check more:
+ * whether a lock is sensible depends on the game it belongs to, and this
+ * function is handed the value alone. A lock two days early, or one after the
+ * first pitch, is accepted here.
+ *
+ * That is a real gap, not a decision. A lock set after the game starts means
+ * `phaseOf` never reaches 'locked', so payment never opens and the game-day
+ * email refuses to send all day. If it is worth closing, the check belongs in
+ * `adminFlow.reviseSession`, which has the session in hand.
+ */
+export function validateRosterLockAt(value: unknown): string {
+  if (typeof value !== 'string') throw new ApiError(400, 'rosterLockAt must be a string.');
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+
+  const at = new Date(trimmed);
+  if (Number.isNaN(at.getTime())) throw new ApiError(400, 'rosterLockAt must be a date and time.');
+  return at.toISOString();
+}
+
 export function validateSessionEdit(body: unknown): ValidatedSessionEdit {
   const input = (body ?? {}) as Record<string, unknown>;
 
@@ -327,6 +353,7 @@ export function validateSessionEdit(body: unknown): ValidatedSessionEdit {
   if (input.locationName !== undefined) updates.locationName = validateLocationName(input.locationName);
   if (input.locationUrl !== undefined) updates.locationUrl = validateLocationUrl(input.locationUrl);
   if (input.cost !== undefined) updates.cost = validateCost(input.cost);
+  if (input.rosterLockAt !== undefined) updates.rosterLockAt = validateRosterLockAt(input.rosterLockAt);
 
   if (input.status !== undefined) {
     const status = SESSION_STATUSES.find((s) => s === input.status);

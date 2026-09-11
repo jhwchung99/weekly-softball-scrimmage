@@ -37,7 +37,7 @@ export default function GuidelinesPage() {
         </li>
         <li>If you are waitlisted, the homepage shows where you are in line</li>
         <li>You can see who else is playing once you&apos;re signed up for that week</li>
-        <li>Confirmed players get a reminder email on game-day morning, and can add the game to their calendar</li>
+        <li>Confirmed players get an email once the roster locks, with the teams and what they owe, and can add the game to their calendar</li>
       </Section>
 
       <Section title="Bringing a guest">
@@ -54,12 +54,12 @@ export default function GuidelinesPage() {
       <Section title="Cancelling">
         <li>Cancel any time, right up to game day, from the homepage</li>
         <li>
-          <strong>More than 5 hours before game time:</strong> the next person (or pair) on the waitlist is
-          automatically confirmed and emailed. Nothing is owed yet at this point, so there&apos;s no money to sort out
+          <strong>Before the roster locks:</strong> the next person (or pair) on the waitlist is automatically
+          confirmed and emailed. Nothing is owed yet at this point, so there&apos;s no money to sort out
         </li>
         <li>
-          <strong>Within 5 hours of game time:</strong> no automatic replacement. Cancelling this late{' '}
-          <strong>doesn&apos;t clear what you owe</strong>, so send it anyway
+          <strong>After the roster locks:</strong> no automatic replacement, so please tell the organizer.
+          Cancelling this late <strong>doesn&apos;t clear what you owe</strong>, so send it anyway
         </li>
       </Section>
 
@@ -85,8 +85,8 @@ export default function GuidelinesPage() {
         <li>A fixed price per spot, shown before you sign up. It doesn&apos;t change with headcount</li>
         <li>If you are sharing a spot with someone, you each pay half</li>
         <li>
-          <strong>Payment opens 5 hours before game time</strong>, when the roster locks. Pay any time between then
-          and the start of the game. Please be prompt with your e-transfer
+          <strong>Payment opens when the roster locks</strong>, usually 5 hours before the game. The homepage shows
+          the exact time. Pay any time between then and the start of the game. Please be prompt with your e-transfer
         </li>
         <li>
           Nothing to pay before that. Cancel earlier and someone from the waitlist simply takes your spot, with no
@@ -100,7 +100,7 @@ export default function GuidelinesPage() {
       </Section>
 
       <Section title="Teams">
-        <li>Teams are drawn up after the roster locks, 5 hours before game time</li>
+        <li>Teams are drawn up after the roster locks</li>
         <li>They show up on the homepage once the organizer posts them</li>
         <li>Teams are balanced on positions first, then size, then the mix of players</li>
         <li>Two people sharing a spot are always on the same team</li>

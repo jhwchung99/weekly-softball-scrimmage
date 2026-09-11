@@ -10,7 +10,7 @@ vi.mock('../../sheets/players', () => fakePlayersModule(store));
 vi.mock('../../lib/gmail', () => ({ sendEmail: vi.fn() }));
 vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
-const { adminAddSignup, adminCreateSession, adminRescheduleSession } = await import('../adminFlow');
+const { adminAddSignup, adminCreateSession, adminRescheduleSession, reviseSession } = await import('../adminFlow');
 const { signUpForSession } = await import('../signupFlow');
 
 beforeEach(() => {
@@ -210,5 +210,54 @@ describe('a newly created session does not accept signups until it is opened', (
     expect(created.pricePerSpot).toBe(12);
     expect(created.locationArea).toBe('Mississauga');
     expect(created.locationName).toBe(''); // field itself not booked yet
+  });
+});
+
+describe('reviseSession — the roster lock', () => {
+  const GAME = '2026-07-11'; // Saturday
+  const revise = (updates: Record<string, unknown>, over: Record<string, unknown> = {}) => {
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '10:00', ...over });
+    store.sessions.set(GAME, session);
+    return reviseSession(GAME, session, { updates } as Parameters<typeof reviseSession>[2]);
+  };
+
+  it('accepts a lock the evening before, which is the point of the field', async () => {
+    // 8pm ET Friday, for a 10am Saturday game.
+    const { session } = await revise({ rosterLockAt: '2026-07-11T00:00:00.000Z' });
+
+    expect(session.rosterLockAt).toBe('2026-07-11T00:00:00.000Z');
+  });
+
+  it('refuses a lock at or after the first pitch, which would stop payment ever opening', async () => {
+    // Noon on game day, two hours after a 10am game starts. Without this the
+    // session never reaches 'locked': payment would stay shut and the game-day
+    // email would refuse to send all day, with nothing saying why.
+    await expect(revise({ rosterLockAt: '2026-07-11T16:00:00.000Z' })).rejects.toThrow(/not before the game starts/i);
+  });
+
+  it('catches a reschedule that moves the game to before its own lock', async () => {
+    // The lock is untouched and already valid; it is the new game time that
+    // makes the pair incoherent, so the check has to run against the week as
+    // it will be, not as it was.
+    const session = makeSession({
+      sessionId: GAME,
+      gameDate: GAME,
+      gameTime: '10:00',
+      rosterLockAt: '2026-07-11T00:00:00.000Z', // 8pm Friday
+    });
+    store.sessions.set(GAME, session);
+
+    // Moved back to the Friday, 10am — which is now earlier in the day than
+    // the 8pm Friday lock it still carries.
+    await expect(
+      reviseSession(GAME, session, { updates: {}, gameDate: '2026-07-10', gameTime: '10:00' } as Parameters<typeof reviseSession>[2])
+    ).rejects.toThrow(/not before the game starts/i);
+  });
+
+  it('leaves a session with no lock of its own alone', async () => {
+    const { session } = await revise({ capacity: 12 });
+
+    expect(session.rosterLockAt).toBe('');
+    expect(session.capacity).toBe(12);
   });
 });

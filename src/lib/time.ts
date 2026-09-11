@@ -55,7 +55,8 @@ export interface WeeklyMilestones {
   registrationClosesAt: Date;
   /** The game's actual start instant. */
   gameStart: Date;
-  /** 5 hours before gameStart — see isWithinPromotionCutoff. */
+  /** When the roster locks: the session's own `rosterLockAt` if it has one,
+   * otherwise 5 hours before gameStart. */
   cutoffStart: Date;
 }
 
@@ -78,7 +79,11 @@ export interface WeeklyMilestones {
  * following Tuesday at midnight of that same calendar week, regardless
  * of which of the three days the game itself falls on.
  */
-export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyMilestones {
+export function getWeeklyMilestones(
+  gameDate: string,
+  gameTime: string,
+  rosterLockAt: string = ''
+): WeeklyMilestones {
   const [year, month, day] = gameDate.split('-').map(Number);
   // Anchored at noon UTC so subtracting whole days never crosses a
   // local-date boundary before the zone conversion happens below.
@@ -96,7 +101,16 @@ export function getWeeklyMilestones(gameDate: string, gameTime: string): WeeklyM
   const registrationOpensAt = zonedTimeToUtc(toDateStr(mondayNoonUtc), '09:00');
   const registrationClosesAt = zonedTimeToUtc(toDateStr(tuesdayNoonUtc), '00:00');
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
-  const cutoffStart = new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
+  // Five hours before the game is the default, not the rule. A session may
+  // carry its own lock instant, which is what lets an early game lock the
+  // night before instead of at 5am (see docs/adr/0006). An unparseable value
+  // falls back rather than throwing: a hand-edited cell should not be able to
+  // take the week's whole schedule out.
+  const override = rosterLockAt ? new Date(rosterLockAt) : null;
+  const cutoffStart =
+    override && !Number.isNaN(override.getTime())
+      ? override
+      : new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
 
   return { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart };
 }
@@ -218,6 +232,53 @@ export function formatGameTime(gameTime: string): string {
   const twelve = hour % 12 === 0 ? 12 : hour % 12;
 
   return minute === 0 ? `${twelve}${suffix}` : `${twelve}:${String(minute).padStart(2, '0')}${suffix}`;
+}
+
+/**
+ * A clock time in league time, spelled the way `formatGameTime` spells one:
+ * "2pm", not "2:00 PM".
+ *
+ * Exists because the payment sentence quotes the roster lock two lines from a
+ * sentence quoting the game time, and a raw toLocaleString put both spellings
+ * in one email (voice.md rule 11).
+ */
+export function formatEasternClockTime(at: Date, timeZone: string = LEAGUE_TIME_ZONE): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return formatGameTime(`${get('hour')}:${get('minute')}`);
+}
+
+/**
+ * "today" or "tomorrow", for an email that may be sent on either day.
+ *
+ * The game-day email used to be able to assume "today", because a cron sent it
+ * and refused to run on any other date. The organizer sends it now, and a
+ * session that locks the night before is sent the night before — so the phrase
+ * has to be worked out rather than assumed. Anything further out than tomorrow
+ * gets the full date, which should not happen (the send is gated on the lock)
+ * but is the right thing to say if it ever does.
+ */
+export function relativeGameDay(
+  session: { gameDate: string; gameTime: string },
+  now: Date = new Date(),
+  timeZone: string = LEAGUE_TIME_ZONE
+): string {
+  const today = todayEastern(now, timeZone);
+  if (session.gameDate === today) return 'today';
+
+  const [y, m, d] = today.split('-').map(Number);
+  const tomorrowNoonUtc = Date.UTC(y, m - 1, d, 12) + 24 * 60 * 60 * 1000;
+  const t = new Date(tomorrowNoonUtc);
+  const tomorrow = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+  if (session.gameDate === tomorrow) return 'tomorrow';
+
+  return formatGameDate(session.gameDate);
 }
 
 /** "Friday, July 10 at 6pm" — how every player-facing mention of a game reads. */

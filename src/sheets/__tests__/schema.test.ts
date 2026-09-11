@@ -37,7 +37,9 @@ describe('Session row round-trip', () => {
       locationName: 'Iceland Park Diamond 3',
       locationUrl: 'https://maps.example.com/iceland',
       numFields: 2,
+      rosterLockAt: '2026-07-09T23:00:00.000Z',
       teamsStatus: 'posted',
+      remindersSentAt: '2026-07-10T18:00:00.000Z',
     };
     expect(parseSessionRow(serializeSessionRow(session))).toEqual(session);
   });
@@ -57,7 +59,9 @@ describe('Session row round-trip', () => {
       locationName: '',
       locationUrl: '',
       numFields: '',
+      rosterLockAt: '',
       teamsStatus: '',
+      remindersSentAt: '',
     });
     // Closed, not open: a blank cell is the absence of a decision, and for
     // "are signups accepted" the safe reading of silence is no.
@@ -68,6 +72,33 @@ describe('Session row round-trip', () => {
     // rather than zero, which would ask the generator for no teams at all.
     expect(parsed.numFields).toBe(1);
     expect(parsed.teamsStatus).toBe('');
+  });
+
+  it('defaults an absent lock and an unsent email to empty', () => {
+    // Both are "not set" rather than a value: a blank lock means the default
+    // five hours before the game, and a blank remindersSentAt means the
+    // game-day email has not gone out.
+    const parsed = parseSessionRow({
+      sessionId: 'x',
+      gameDate: 'x',
+      gameTime: 'x',
+      registrationOpensAt: '',
+      registrationClosesAt: '',
+      capacity: '',
+      status: '',
+      cost: '',
+      pricePerSpot: '',
+      locationArea: '',
+      locationName: '',
+      locationUrl: '',
+      numFields: '',
+      rosterLockAt: '',
+      teamsStatus: '',
+      remindersSentAt: '',
+    });
+
+    expect(parsed.rosterLockAt).toBe('');
+    expect(parsed.remindersSentAt).toBe('');
   });
 });
 

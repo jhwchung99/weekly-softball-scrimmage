@@ -1,7 +1,7 @@
 name: CI
 
 # The first workflow in this repository that runs the code rather than poking a
-# deployed endpoint. The other five are cron jobs that `curl` /api/cron/*; none
+# deployed endpoint. The other three are cron jobs that `curl` /api/cron/*; none
 # of them has ever run vitest, eslint or tsc, so 700-odd tests, a lint config
 # and a type checker existed and executed only when someone remembered to run
 # them locally. Two written decisions (docs/adr/0001, docs/adr/0002) rest on

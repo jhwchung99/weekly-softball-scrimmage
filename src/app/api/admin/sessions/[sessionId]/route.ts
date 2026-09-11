@@ -5,6 +5,7 @@ import { reviseSession } from '../../../../../lib/adminFlow';
 import { ApiError, handleApiError } from '../../../../../lib/apiErrors';
 import { validateSessionEdit } from '../../../../../lib/validation';
 import { adminSessionView } from '../../../../../lib/views';
+import { phaseOf } from '../../../../../lib/sessionPhase';
 
 type Params = { params: Promise<{ sessionId: string }> };
 
@@ -16,7 +17,10 @@ export async function GET(request: Request, { params }: Params) {
     const { sessionId } = await params;
     const session = await getSession(sessionId);
     if (!session) throw new ApiError(404, 'No such session.');
-    return NextResponse.json({ session: adminSessionView(session) });
+    // Phase travels with the session for the same reason it does on the
+    // player side (ADR-0003): the dashboard decides whether the roster has
+    // locked, and that must not depend on the organizer's device clock.
+    return NextResponse.json({ session: adminSessionView(session), phase: phaseOf(session) });
   } catch (err) {
     return handleApiError(err);
   }

@@ -34,9 +34,10 @@ Derived from the game date and time, never from the viewer's clock.
 _Avoid_: state, stage
 
 **Roster lock**:
-The moment five hours before game time when the waitlist stops promoting
-automatically and payment opens. After it, a freed spot is the organizer's to
-fill by hand.
+The moment the waitlist stops promoting automatically and payment opens. Five
+hours before game time by default; a session may set its own, which is how an
+early game locks the evening before rather than at dawn (ADR-0006). After the
+lock, a freed spot is the organizer's to fill by hand.
 _Avoid_: cutoff, deadline
 
 ## The roster

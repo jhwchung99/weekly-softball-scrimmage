@@ -1,8 +1,9 @@
-import { getSessionByAnyId, createSession, updateSession } from '../sheets/sessions';
+import { getSession, getSessionByAnyId, createSession, updateSession } from '../sheets/sessions';
 import { listSignupsForSession } from '../sheets/signups';
-import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, todayEastern } from './time';
-import { phaseOf, hasRegistrationClosed } from './sessionPhase';
-import { countConfirmedSpots, computeCostShare } from './payments';
+import { currentWeekGameDayCandidates, getWeeklyMilestones, isNearEasternTime, formatEasternMoment } from './time';
+import { phaseOf, hasRegistrationClosed, isRosterLocked, hasGameStarted } from './sessionPhase';
+import { countConfirmedSpots, computeCostShare, paymentOpensAt } from './payments';
+import { ApiError } from './apiErrors';
 import { sendOpenSpotsAlert, sendGameDayReminderEmail, sendHeadcountAlert, deliver } from './notifications';
 import { withMutationLock } from './lock';
 
@@ -60,7 +61,9 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
         locationName: '',
         locationUrl: '',
         numFields: 1,
+        rosterLockAt: '',
         teamsStatus: '',
+        remindersSentAt: '',
         status: 'open',
       });
       return { sessionId: defaultSessionId, skipped: false };
@@ -184,56 +187,70 @@ export interface ReminderResult {
   failed?: number;
 }
 
-export async function sendGameDayReminders(now: Date = new Date()): Promise<ReminderResult> {
-  const candidates = currentWeekGameDayCandidates(now);
-
-  // Without this, the seasonal DST duplicate firing would pass the game-day
-  // date check just as happily as the real one and everybody would get the
-  // reminder twice.
-  if (!isNearEasternTime(9, 0, CRON_TOLERANCE_MINUTES, now)) {
-    return { sessionId: candidates[0], skipped: true, reason: 'Not currently ~9am ET — likely the DST-offset duplicate cron firing.' };
-  }
-
-  const session = await getSessionByAnyId(candidates);
-  if (!session) {
-    return { sessionId: candidates[0], skipped: true, reason: 'No session exists for this week.' };
-  }
-  if (session.status === 'cancelled') {
-    return { sessionId: session.sessionId, skipped: true, reason: 'Session is cancelled — no reminder sent.' };
-  }
-  // The cron fires every Fri/Sat/Sun because game day can be any of them; only
-  // the one that IS game day should actually send.
-  if (session.gameDate !== todayEastern(now)) {
-    return { sessionId: session.sessionId, skipped: true, reason: `Game is ${session.gameDate}, not today.` };
-  }
-
-  const signups = await listSignupsForSession(session.sessionId);
-  const confirmed = signups.filter((s) => s.status === 'confirmed');
-  if (confirmed.length === 0) {
-    return { sessionId: session.sessionId, skipped: true, reason: 'Nobody is confirmed.' };
-  }
-
-  const owed = computeCostShare(session, signups);
-  // Decides whether the reminder closes with the nudge to cancel: that line
-  // only makes sense while somebody is actually waiting for a spot.
-  const hasWaitlist = signups.some((s) => s.status === 'waitlisted');
-
-  let sent = 0;
-  let failed = 0;
-  for (const signup of confirmed) {
-    // `now` is threaded through so the email's "payment opens at …" wording is
-    // decided by the same clock the job is running against, not wall time.
-    if (
-      await deliver(`game-day reminder to ${signup.email}`, () =>
-        sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now)
-      )
-    ) {
-      sent += 1;
-    } else {
-      failed += 1;
+/**
+ * The game-day email, sent by the organizer from the dashboard.
+ *
+ * Gated on the roster lock rather than on a clock time. That is not a
+ * convenience: until the lock, a cancellation can still change who is playing,
+ * so the cost share is not final and the email cannot state what someone owes
+ * without hedging. Once the lock has passed it can, whatever the hour — which
+ * is what lets an early game lock the evening before and send then (ADR-0006).
+ *
+ * Deliberately NOT gated on the game being today, which is what the cron
+ * version checked. A session that locks the night before is sent the night
+ * before, and `sendGameDayReminderEmail` words itself relative to `now`.
+ */
+export async function sendRemindersForSession(sessionId: string, now: Date = new Date()): Promise<ReminderResult> {
+  return withMutationLock(async () => {
+    const session = await getSession(sessionId);
+    if (!session) throw new ApiError(404, 'No such session.');
+    if (session.status === 'cancelled') {
+      throw new ApiError(409, 'This game is cancelled, so there is nothing to remind anyone about.');
     }
-    await new Promise((resolve) => setTimeout(resolve, SEND_GAP_MS));
-  }
 
-  return { sessionId: session.sessionId, skipped: false, sent, failed };
+    const phase = phaseOf(session, now);
+    if (!isRosterLocked(phase)) {
+      throw new ApiError(
+        409,
+        `The roster has not locked yet. It locks ${formatEasternMoment(paymentOpensAt(session))}, and the email says what each player owes, which is not final until then.`
+      );
+    }
+    if (hasGameStarted(phase)) {
+      throw new ApiError(409, 'The game has already started.');
+    }
+
+    const signups = await listSignupsForSession(sessionId);
+    const confirmed = signups.filter((s) => s.status === 'confirmed');
+    if (confirmed.length === 0) {
+      return { sessionId, skipped: true, reason: 'Nobody is confirmed.' };
+    }
+
+    const owed = computeCostShare(session, signups);
+    // Decides whether the email closes with the nudge to cancel: that line
+    // only makes sense while somebody is actually waiting for a spot.
+    const hasWaitlist = signups.some((s) => s.status === 'waitlisted');
+
+    let sent = 0;
+    let failed = 0;
+    for (const signup of confirmed) {
+      // `now` is threaded through so "today" versus "tomorrow" is decided by
+      // the same clock the send is running against, not wall time.
+      if (
+        await deliver(`game-day email to ${signup.email}`, () =>
+          sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now)
+        )
+      ) {
+        sent += 1;
+      } else {
+        failed += 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, SEND_GAP_MS));
+    }
+
+    // Only on a send that reached somebody. A run that failed for all of them
+    // should leave the dashboard saying the email still has to go out.
+    if (sent > 0) await updateSession(sessionId, { remindersSentAt: now.toISOString() });
+
+    return { sessionId, skipped: false, sent, failed };
+  });
 }

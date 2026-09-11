@@ -35,7 +35,9 @@ const SESSION = {
   locationName: 'Iceland Park Diamond 3',
   locationUrl: '',
   numFields: 1,
+  rosterLockAt: '',
   teamsStatus: '' as const,
+  remindersSentAt: '',
 };
 
 const PLAYER = {
@@ -185,17 +187,6 @@ describe('what the messages say', () => {
     const { to, text } = lastEmail();
     expect(to).toBe('kevin@dummy.test');
     expect(text).toMatch(/Guest Gil/);
-  });
-
-  it('tells the organizer teams are ready, with each team’s shortfall', async () => {
-    await notifications.sendTeamsReadyAlert(SESSION, [
-      { name: 'Team 1', members: [], deficiency: 1, missing: ['Catcher'] },
-      { name: 'Team 2', members: [], deficiency: 0, missing: [] },
-    ]);
-
-    const { title, message } = lastPush();
-    expect(title).toMatch(/Teams ready/);
-    expect(message).toMatch(/Catcher/);
   });
 
   it('addresses a session update to the player and carries the organizer’s note', async () => {

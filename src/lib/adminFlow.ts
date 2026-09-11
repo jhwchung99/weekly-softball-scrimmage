@@ -10,6 +10,7 @@ import { DEFAULT_GAME_TIME, DEFAULT_CAPACITY, DEFAULT_PRICE_PER_SPOT } from './s
 import { ApiError } from './apiErrors';
 import { validatePlayerProfile, validateInvitedByName, validateSessionCreate, validateReschedule } from './validation';
 import { withMutationLock } from './lock';
+import { getWeeklyMilestones, formatEasternMoment } from './time';
 
 export interface AdminAddSignupInput {
   sessionId: string;
@@ -128,7 +129,9 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
       locationName: '',
       locationUrl: '',
       numFields: 1,
+      rosterLockAt: '',
       teamsStatus: '',
+      remindersSentAt: '',
       status: input.openImmediately ? 'open' : 'closed',
     });
   });
@@ -291,6 +294,36 @@ export interface SessionRevision {
 }
 
 /**
+ * Refuses a roster lock that falls at or after the first pitch.
+ *
+ * `validateRosterLockAt` can only check that the value is a readable date: it
+ * is handed the timestamp alone, and whether a lock is sensible depends on the
+ * game it belongs to. This is the layer that has both.
+ *
+ * Only the late end is policed. Locking early is the entire point of the field
+ * — an early game locks the evening before — and how early is the organizer's
+ * judgement. Locking *after* the game starts has no reading at all: `phaseOf`
+ * would never reach 'locked', so payment would never open and the game-day
+ * email would refuse to send all day, with nothing on the dashboard saying
+ * why. That is the failure this exists to make impossible.
+ *
+ * Checked against the game the session will have *after* this revision, so
+ * rescheduling a game to before its own lock is caught too.
+ */
+function assertLockBeforeGame(gameDate: string, gameTime: string, rosterLockAt: string): void {
+  if (!rosterLockAt) return;
+
+  const { gameStart } = getWeeklyMilestones(gameDate, gameTime, rosterLockAt);
+  const lock = new Date(rosterLockAt);
+  if (lock.getTime() < gameStart.getTime()) return;
+
+  throw new ApiError(
+    400,
+    `The roster would lock ${formatEasternMoment(lock)}, which is not before the game starts ${formatEasternMoment(gameStart)}. Payment opens at the lock, so a lock this late would mean it never opens.`
+  );
+}
+
+/**
  * Applies one organizer edit to a session: a reschedule, field updates, and
  * the waitlist promotion that a raised capacity has to trigger.
  *
@@ -318,6 +351,15 @@ export async function reviseSession(
   return withMutationLock(async () => {
     let session = existing;
     let currentSessionId = sessionId;
+
+    // Against the week as it will be once this revision lands: the lock, the
+    // date and the time can all move in one request, and it is the resulting
+    // combination that has to make sense.
+    assertLockBeforeGame(
+      revision.gameDate ?? existing.gameDate,
+      revision.gameTime ?? existing.gameTime,
+      revision.updates.rosterLockAt ?? existing.rosterLockAt
+    );
 
     if (revision.gameDate !== undefined || revision.gameTime !== undefined) {
       session = await adminRescheduleSession(
