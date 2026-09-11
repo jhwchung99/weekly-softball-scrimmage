@@ -29,7 +29,7 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     const { signup, sessionSignups } = await getSignupWithSessionSignups(signupId);
     if (!signup) throw new ApiError(404, 'No such signup.');
     if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail)) {
-      throw new ApiError(403, 'You can only request a sub for your own signup.');
+      throw new ApiError(403, 'You can only ask to share a spot from your own signup.');
     }
     if (signup.status !== 'waitlisted') throw new ApiError(409, 'Only someone on the waitlist can ask to share a spot.');
     const selfSharing = alreadySharingReason(signup);
@@ -39,12 +39,12 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     // 'pending' does. cancelSubRequest is the deliberate way out if the
     // target never responds.
     if (signup.subRequestStatus === 'pending') {
-      throw new ApiError(409, 'You already have a pending sub request. Cancel it before requesting someone else.');
+      throw new ApiError(409, 'You already have a pending request to share. Cancel it before asking someone else.');
     }
 
     const normalizedTarget = normalizeEmail(targetEmail);
     if (normalizedTarget === normalizeEmail(requesterEmail)) {
-      throw new ApiError(400, "You can't request to sub with yourself.");
+      throw new ApiError(400, "You can't ask to share a spot with yourself.");
     }
 
     const target = sessionSignups.find((s) => normalizeEmail(s.email) === normalizedTarget && s.status !== 'cancelled');
@@ -81,9 +81,9 @@ export async function cancelSubRequest(signupId: string, requesterEmail: string)
     const signup = await getSignup(signupId);
     if (!signup) throw new ApiError(404, 'No such signup.');
     if (normalizeEmail(signup.email) !== normalizeEmail(requesterEmail)) {
-      throw new ApiError(403, 'You can only cancel your own sub request.');
+      throw new ApiError(403, 'You can only cancel your own request to share.');
     }
-    if (signup.subRequestStatus !== 'pending') throw new ApiError(409, 'No pending sub request to cancel.');
+    if (signup.subRequestStatus !== 'pending') throw new ApiError(409, 'No pending request to share to cancel.');
 
     return updateSignup(signupId, { ...NO_REQUEST });
   });

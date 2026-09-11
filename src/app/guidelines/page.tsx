@@ -41,14 +41,36 @@ export default function GuidelinesPage() {
       </Section>
 
       <Section title="Bringing a guest">
-        <li>Guests answer two extra questions: who invited them, and whether they&apos;re willing to share a spot with that member</li>
+        <li>Guests say who invited them when they sign up</li>
         <li>
-          Sharing is a <strong>request, not automatic</strong>. If the guest is waitlisted, the member they named gets
-          asked, and nothing is shared unless that member accepts. Naming someone never takes their spot or changes
-          what they owe
+          They are also asked whether they are willing to share that member&apos;s spot. If not, a guest simply gets
+          their own spot, in signup order like anyone else
         </li>
-        <li>Sharing only happens if the named member also signs up that week and isn&apos;t already sharing with someone else</li>
-        <li>Otherwise the guest just gets their own separate spot, in signup order like anyone else</li>
+        <li>Sharing is never automatic. See below for how it works</li>
+      </Section>
+
+      {/* One section, not two. A guest naming their inviter and a waitlisted
+          player asking someone directly are the same thing reached two ways,
+          and they used to be described in two places in two vocabularies. */}
+      <Section title="Sharing a spot">
+        <li>Two people, one spot. You take turns, so only one of you plays at a time</li>
+        <li>You count as one on the roster, get promoted off the waitlist together, and each pay half</li>
+        <li>
+          It only ever happens by <strong>asking</strong>, and nothing is shared unless the other person accepts
+        </li>
+        <li>
+          Two ways to ask: a guest names the member who invited them when they sign up, or anyone waitlisted asks a
+          player directly from the homepage
+        </li>
+        <li>
+          A guest&apos;s request only reaches the member if that member also signs up that week and isn&apos;t already
+          sharing with someone else
+        </li>
+        <li>Naming someone never takes their spot or changes what they owe. Declining changes nothing either</li>
+        <li>
+          <strong>Please reach out to them outside the app first</strong>, as a courtesy
+        </li>
+        <li>One outstanding request at a time. Cancel it to ask someone else instead</li>
       </Section>
 
       <Section title="Cancelling">
@@ -61,18 +83,6 @@ export default function GuidelinesPage() {
           <strong>After the roster locks:</strong> no automatic replacement, so please tell the organizer.
           Cancelling this late <strong>doesn&apos;t clear what you owe</strong>, so send it anyway
         </li>
-      </Section>
-
-      <Section title="Requesting a sub">
-        <li>
-          If you are waitlisted, ask someone confirmed (or also waitlisted) to share their spot with you, from the
-          homepage
-        </li>
-        <li>
-          <strong>Please reach out to them outside the app first</strong>, as a courtesy
-        </li>
-        <li>Only one outstanding request at a time. Cancel it to try someone else instead</li>
-        <li>If they accept, you both share their spot going forward (same as a member/guest pairing)</li>
       </Section>
 
       <Section title="Where we play">

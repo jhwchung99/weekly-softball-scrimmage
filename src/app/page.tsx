@@ -29,7 +29,7 @@ export interface IncomingSubRequest {
   fromSignupId: string;
   fromFullName: string;
   /** A guest who named this player as their inviter, as opposed to a
-   * waitlisted player asking to sub in. */
+   * waitlisted player asking to share a spot. */
   fromGuestInvite: boolean;
 }
 
@@ -292,7 +292,7 @@ export default function Home() {
 
       {authStatus === 'authenticated' && incomingSubRequests.length > 0 && (
         <Card className="mt-4 border-amber-300 bg-amber-50">
-          <h2 className="font-semibold text-slate-900">Sub requests for you</h2>
+          <h2 className="font-semibold text-slate-900">Requests to share your spot</h2>
           {busy && <p className="mt-1 text-xs text-slate-500">Processing...</p>}
           <ul className="mt-2 space-y-2">
             {incomingSubRequests.map((r) => (
@@ -300,7 +300,7 @@ export default function Home() {
                 <span>
                   {r.fromGuestInvite
                     ? `${r.fromFullName} signed up as your guest and would like to share your spot.`
-                    : `${r.fromFullName} would like to sub with you.`}
+                    : `${r.fromFullName} would like to share your spot.`}
                 </span>
                 <span className="flex gap-2">
                   <Button
@@ -462,9 +462,9 @@ function LockedCancelNotice({ amount }: { amount: number }) {
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <span>
         <strong>The roster is locked.</strong> If you have not sent payment, please still send your $
-        {amount.toFixed(2)}. If you have sent the payment, please try and get someone to sub in as nobody is added in
-        your place automatically. If someone does end up filling in for you, sorting that money out is between the two
-        of you.
+        {amount.toFixed(2)}. If you have sent the payment, nobody is added in your place automatically this late, so
+        please let the organizer know if you find someone to take your place. Sorting that money out is between the
+        two of you.
       </span>
     </p>
   );
@@ -658,7 +658,7 @@ export function SubRequestPanel(props: {
           className="flex-1 rounded border border-slate-300 px-2 py-1"
         />
         <Button type="submit" size="sm" disabled={busy}>
-          {busy ? 'Processing...' : 'Request to sub'}
+          {busy ? 'Processing...' : 'Ask to share'}
         </Button>
       </form>
     </div>

@@ -18,7 +18,7 @@ describe('SubRequestPanel', () => {
       />
     );
     expect(screen.getByText(/reach out outside the app first/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /request to sub/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ask to share/i })).toBeInTheDocument();
   });
 
   it('shows the waiting state and a Cancel request button when pending, hiding the form', () => {
@@ -35,7 +35,7 @@ describe('SubRequestPanel', () => {
     );
     expect(screen.getByText(/waiting on target@dummy.test/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel request/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /request to sub/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ask to share/i })).not.toBeInTheDocument();
   });
 
   it('shows the declined message and re-shows the form when declined', () => {
@@ -51,7 +51,7 @@ describe('SubRequestPanel', () => {
       />
     );
     expect(screen.getByText(/target@dummy.test declined/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /request to sub/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ask to share/i })).toBeInTheDocument();
   });
 
   it('calls onRequestSub with the trimmed email on submit', async () => {
@@ -68,7 +68,7 @@ describe('SubRequestPanel', () => {
       />
     );
     await userEvent.type(screen.getByLabelText(/their email/i), '  target@dummy.test  ');
-    await userEvent.click(screen.getByRole('button', { name: /request to sub/i }));
+    await userEvent.click(screen.getByRole('button', { name: /ask to share/i }));
     expect(onRequestSub).toHaveBeenCalledWith('target@dummy.test');
   });
 

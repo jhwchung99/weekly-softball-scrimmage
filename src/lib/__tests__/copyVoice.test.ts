@@ -113,6 +113,19 @@ describe.each(COPY_FILES)('%s', (file) => {
     expect(offenders, 'use formatGameDate / formatGameTime / formatGameDay').toEqual([]);
   });
 
+  it('says players "share" a spot, never that they "sub"', () => {
+    // Nobody is substituted or replaced: two people hold one spot and take
+    // turns. The emails always said "share"; the homepage and the request
+    // errors said "sub" for the same thing, one sentence apart in places.
+    // CONTEXT.md keeps "Sub request" as the code's name for the record —
+    // ADR-0005 is why the reader's word may differ from the glossary's.
+    // Standalone only. "sub-request" is the code's compound name for the
+    // record, and it legitimately appears in the deliver() log labels, which
+    // no player reads.
+    const offenders = strings.filter((s) => /(?<![-\w])subs?(?![-\w])/i.test(prose(s)));
+    expect(offenders, 'players share a spot').toEqual([]);
+  });
+
   it('uses none of the banned sign-offs and softeners', () => {
     const banned = [/See you on the field/i, /\bThanks!/, /A quick reminder/i, /Feel free to/i, /\bJust a\b/i];
     const offenders = strings.filter((s) => banned.some((b) => b.test(prose(s))));

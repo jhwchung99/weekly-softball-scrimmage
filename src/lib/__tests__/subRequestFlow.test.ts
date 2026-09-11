@@ -78,7 +78,7 @@ describe('requestSub', () => {
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
 
     await expect(requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test')).rejects.toThrow(
-      /already have a pending sub request/
+      /already have a pending request to share/
     );
   });
 
@@ -111,7 +111,7 @@ describe('cancelSubRequest', () => {
 
   it('rejects cancelling when there is no pending request', async () => {
     const { waitlisted } = await setUpConfirmedAndWaitlisted();
-    await expect(cancelSubRequest(waitlisted.signupId, 'waitlisted@dummy.test')).rejects.toThrow(/No pending sub request/);
+    await expect(cancelSubRequest(waitlisted.signupId, 'waitlisted@dummy.test')).rejects.toThrow(/No pending request to share/);
   });
 
   it('lets a resolved (declined) request be replaced by a new one', async () => {
