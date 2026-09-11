@@ -181,6 +181,33 @@ describe('sendGameDayReminders', () => {
     expect(sendEmail).toHaveBeenCalledWith('a@dummy.test', expect.stringContaining('today at'), expect.stringContaining('$10.00'));
   });
 
+  it('names the field, not just links it', async () => {
+    // This is the email someone opens in the car, and a bare URL is no use to
+    // a passenger reading it aloud. The rewrite dropped the location once
+    // already, which is how this test came to exist.
+    store.sessions.set(
+      '2026-07-10',
+      makeSession({
+        sessionId: '2026-07-10',
+        gameDate: '2026-07-10',
+        gameTime: '18:00',
+        capacity: 5,
+        status: 'open',
+        locationName: 'Iceland Diamond 3',
+        locationArea: 'Mississauga',
+        locationUrl: 'https://maps.example.test/x',
+      })
+    );
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    await signUpForSession('2026-07-10', 'a@dummy.test', true);
+
+    await sendGameDayReminders(GAME_DAY_9AM);
+
+    const body = sendEmail.mock.calls[0][2] as string;
+    expect(body).toContain('Iceland Diamond 3, Mississauga');
+    expect(body).toContain('https://maps.example.test/x');
+  });
+
   it('tells players when payment opens rather than asking for it early', async () => {
     // The reminder goes out at 9am; for an 18:00 game the roster doesn't lock
     // until 1pm, and nothing is payable before that.

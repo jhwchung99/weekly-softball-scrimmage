@@ -55,10 +55,11 @@ export async function sendPromotionEmail(signup: Signup, session: Session): Prom
     '',
     "A spot opened up, so you're confirmed to play.",
     '',
-    // When and where on their own lines: this is the email someone reopens on
-    // the day to check where to go, and a date buried mid-sentence is the
-    // wrong shape for that.
-    whenAndWhere(session),
+    // Labelled and on their own lines: this is the email someone reopens on
+    // the day to check where to go, and a bare string of date and place reads
+    // as an afterthought rather than the thing they came back for.
+    `When: ${formatGameDay(session.gameDate, session.gameTime)}`,
+    `Where: ${formatLocation({ area: session.locationArea, name: session.locationName, url: session.locationUrl }) || 'still to be confirmed'}`,
   ].join('\n');
 
   await sendEmail(signup.email, subject, text);
@@ -183,7 +184,7 @@ export async function sendGuestPairRequestEmail(member: Signup, guest: Signup, s
     // Kept, not trimmed: this is the sentence standing between a member and a
     // stranger farming invitations, and it only works if declining is
     // explicitly safe.
-    "They stay on the waitlist until you answer. Declining changes nothing about your spot, so if you don't know this person, decline.",
+    "They stay on the waitlist until you answer. If you don't know this person, decline. That changes nothing about your own spot.",
     '',
     'Open the app to accept or decline.',
   ].join('\n');
@@ -202,7 +203,7 @@ export async function sendSubRequestAcceptedEmail(a: Signup, b: Signup, session:
       `You and ${other.fullName} are now sharing a spot for ${formatGameDay(session.gameDate, session.gameTime)}.`,
       '',
       // The one email whose reader may not know what sharing means on the day.
-      'You take turns playing. Only one of you is on the field at a time.',
+      'You take turns, so only one of you is on the field at a time.',
     ].join('\n');
 
   await sendEmail(a.email, subject, build(a, b));
@@ -250,7 +251,11 @@ function paymentLines(session: Session, amountOwed: number, now: Date): string[]
     '',
     state === 'not-yet-open'
       ? `Your spot costs $${amountOwed.toFixed(2)}. Payment opens at ${opensAt}. Send it any time between then and the game.`
-      : `You still owe $${amountOwed.toFixed(2)} for your spot. Please send it before the game.`,
+      // Not "you still owe": that implies an earlier ask, and this is often
+      // the first one. A morning game locks its roster before the 9am reminder
+      // cron fires, so that email takes this branch — and anyone promoted off
+      // the waitlist after it went out never saw the other one either.
+      : `Your spot costs $${amountOwed.toFixed(2)}. Please send it before the game.`,
   ];
 
   const instructions = process.env.PAYMENT_INSTRUCTIONS;
@@ -286,9 +291,15 @@ export async function sendGameDayReminderEmail(
     `You're confirmed to play today at ${formatGameTime(session.gameTime)}.`,
   ];
 
-  if (session.locationUrl) {
-    lines.push('', `Field: ${session.locationUrl}`);
-  }
+  // Named, not just linked. This is the email someone opens in the car, and a
+  // bare URL is no use to a passenger reading it aloud.
+  const location = formatLocation({
+    area: session.locationArea,
+    name: session.locationName,
+    url: session.locationUrl,
+  });
+  if (location) lines.push('', `Where: ${location}`);
+  if (session.locationUrl) lines.push(`Map: ${session.locationUrl}`);
 
   if (!signup.paid) {
     lines.push(...paymentLines(session, amountOwed, now));
@@ -327,14 +338,20 @@ export async function sendSessionUpdateEmail(signup: Signup, session: Session, n
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    "The details for this week's game:",
-    '',
-    `When: ${formatGameDay(session.gameDate, session.gameTime)}`,
-    `Where: ${location || 'still to be confirmed'}`,
   ];
 
-  if (session.locationUrl) lines.push(`Field: ${session.locationUrl}`);
-  if (note) lines.push('', note);
+  // The organizer's note first: it is why this email arrived, and burying it
+  // under a block of details the reader may already know makes them hunt for
+  // the one thing that changed.
+  if (note) lines.push(note, '');
+
+  lines.push(
+    "Here's where the game stands:",
+    '',
+    `When: ${formatGameDay(session.gameDate, session.gameTime)}`,
+    `Where: ${location || 'still to be confirmed'}`
+  );
+  if (session.locationUrl) lines.push(`Map: ${session.locationUrl}`);
 
   lines.push(
     '',
@@ -389,7 +406,7 @@ export async function sendPaymentNudgeEmail(
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    `Your spot for ${whenAndWhere(session)}.`,
+    `You're confirmed to play ${whenAndWhere(session)}.`,
     ...paymentLines(session, amountOwed, now),
   ];
 

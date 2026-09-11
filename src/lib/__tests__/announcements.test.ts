@@ -162,7 +162,20 @@ describe('nudgeUnpaidPlayers', () => {
 
     await drain(nudgeUnpaidPlayers(SESSION_ID, AFTER_LOCK));
 
-    expect(bodyFor('owes@dummy.test')).toMatch(/still owe \$10\.00/);
+    expect(bodyFor('owes@dummy.test')).toMatch(/costs \$10\.00/);
+    expect(bodyFor('owes@dummy.test')).toMatch(/send it before the game/i);
+  });
+
+  it('does not say "still owe", which assumes an earlier ask that may not have happened', async () => {
+    // A morning game locks its roster before the 9am reminder cron fires, so
+    // that email takes this branch too — and anyone promoted off the waitlist
+    // after it went out never saw the other one either. For both of them this
+    // is the first time the app has mentioned money.
+    seed({ pricePerSpot: 10 }, [unpaid()]);
+
+    await drain(nudgeUnpaidPlayers(SESSION_ID, AFTER_LOCK));
+
+    expect(bodyFor('owes@dummy.test')).not.toMatch(/still/i);
   });
 
   it('says when payment opens rather than asking for it early', async () => {
