@@ -376,7 +376,11 @@ export async function sendSessionCancelledEmail(signup: Signup, session: Session
     `The game on ${formatGameDate(session.gameDate)} has been cancelled. Don't head to the field.`,
   ];
 
-  if (note) lines.push('', note);
+  // Labelled, because an unlabelled sentence between two paragraphs reads as
+  // a stray thought rather than the organizer explaining themselves. Omitted
+  // entirely when they wrote nothing — "Reason:" with nothing after it is
+  // worse than no line at all.
+  if (note) lines.push('', `Reason: ${note}`);
 
   // Cancelling a session deliberately leaves its signups alone (see the PATCH
   // route), so this is a description of what actually happens to their row,
