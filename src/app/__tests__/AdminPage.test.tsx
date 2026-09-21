@@ -193,8 +193,8 @@ describe('AdminPage', () => {
      * identically-labelled pair. */
     function capacityControls() {
       const input = document.getElementById('admin-capacity') as HTMLInputElement;
-      // The capacity Save and the fields Save share a row; capacity's comes
-      // first, immediately after its input.
+      // Capacity's input and its Save share a Field wrapper, so the closest
+      // div holds that one Save and no other.
       const save = within(input.closest('div') as HTMLElement).getAllByRole('button', { name: /Save|Processing/ })[0];
       return { input, save };
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import { BookOpen } from 'lucide-react';
@@ -25,6 +26,7 @@ import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/admi
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { Field, controlClass } from '../../components/Field';
 
 import type { SignupStatus } from '../../sheets/schema';
 import type { AdminRosterEntry, AdminSessionView } from '../../lib/views';
@@ -39,6 +41,19 @@ type AdminSignup = AdminRosterEntry;
 
 /** The week as the projection module sends it to an organizer. */
 type SessionInfo = AdminSessionView;
+
+/** One titled band of the session card. The card holds five unrelated groups
+ * of settings and used to run them together with only a hairline rule
+ * between, so a heading is what tells the organizer where pricing stops and
+ * location starts. */
+function AdminSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="mt-4 border-t border-slate-100 pt-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <div className="mt-2">{children}</div>
+    </section>
+  );
+}
 
 class HttpError extends Error {
   status: number;
@@ -271,124 +286,14 @@ export default function AdminPage() {
 
           {scrimmage && (
             <Card className="mt-4">
-              <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-                {scrimmage.gameDate} at {scrimmage.gameTime}
-                <Badge status={scrimmage.status}>{scrimmage.status}</Badge>
-              </h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label htmlFor="admin-game-date" className="text-sm text-slate-700">Date</label>
-                <input
-                  id="admin-game-date"
-                  type="date"
-                  value={gameDateInput}
-                  onChange={(e) => setGameDateInput(e.target.value)}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
-                />
-                <label htmlFor="admin-game-time" className="text-sm text-slate-700">Time</label>
-                <input
-                  id="admin-game-time"
-                  type="time"
-                  value={gameTimeInput}
-                  onChange={(e) => setGameTimeInput(e.target.value)}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => updateSession({ gameDate: gameDateInput, gameTime: gameTimeInput })}
-                >
-                  {busy ? 'Processing...' : 'Reschedule'}
-                </Button>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Game day must be a Friday, Saturday, or Sunday. Moving it, even to a different week, keeps every existing signup.
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label htmlFor="admin-capacity" className="text-sm text-slate-700">Capacity</label>
-                <input
-                  id="admin-capacity"
-                  type="number"
-                  min={0}
-                  value={capacityInput}
-                  onChange={(e) => setCapacityInput(e.target.value)}
-                  className="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    // The one save on this page that emails players: a raise
-                    // promotes off the waitlist and tells each of them they
-                    // are in. Never one stray click away.
-                    const warning = capacityRaiseWarning(scrimmage.capacity, Number(capacityInput), roster);
-                    if (warning && !window.confirm(warning)) return;
-                    updateSession({ capacity: Number(capacityInput) });
-                  }}
-                >
-                  {busy ? 'Processing...' : 'Save'}
-                </Button>
-                <label htmlFor="admin-fields" className="ml-3 text-sm text-slate-700">Fields</label>
-                <select
-                  id="admin-fields"
-                  value={scrimmage.numFields}
-                  disabled={busy}
-                  onChange={(e) => updateSession({ numFields: Number(e.target.value) })}
-                  className="rounded border border-slate-300 px-2 py-1 text-sm"
-                >
-                  <option value={1}>1 (two teams)</option>
-                  <option value={2}>2 (four teams)</option>
-                </select>
-                <label htmlFor="admin-cost" className="ml-3 text-sm text-slate-700">Cost ($)</label>
-                <input
-                  id="admin-cost"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={costInput}
-                  onChange={(e) => setCostInput(e.target.value)}
-                  className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => updateSession({ cost: Number(costInput) })}
-                >
-                  {busy ? 'Processing...' : 'Save'}
-                </Button>
-                <label htmlFor="admin-price" className="ml-3 text-sm text-slate-700">Price/spot ($)</label>
-                <input
-                  id="admin-price"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={priceInput}
-                  onChange={(e) => setPriceInput(e.target.value)}
-                  className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => updateSession({ pricePerSpot: Number(priceInput) })}
-                >
-                  {busy ? 'Processing...' : 'Save'}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy || !split.canSplit}
-                  onClick={() => setPriceInput(String(split.each))}
-                >
-                  Split across roster
-                </Button>
-                {split.canSplit && (
-                  <span className="ml-2 text-xs text-slate-500">
-                    ${split.total.toFixed(2)} / {split.spots} confirmed = ${split.each.toFixed(2)} each
-                  </span>
-                )}
+              {/* The rainout button belongs to the whole session, not to
+                  pricing: it used to sit at the end of the settings row, where
+                  ml-auto parked it beside "Split across roster". */}
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+                  {scrimmage.gameDate} at {scrimmage.gameTime}
+                  <Badge status={scrimmage.status}>{scrimmage.status}</Badge>
+                </h2>
                 {scrimmage.status !== 'cancelled' && (
                   <Button
                     size="sm"
@@ -399,103 +304,229 @@ export default function AdminPage() {
                         updateSession({ status: 'cancelled' });
                       }
                     }}
-                    className="ml-auto"
                   >
                     Cancel session (rainout)
                   </Button>
                 )}
               </div>
 
+              <AdminSection title="Schedule">
+                <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label="Date" htmlFor="admin-game-date">
+                    <input
+                      id="admin-game-date"
+                      type="date"
+                      value={gameDateInput}
+                      onChange={(e) => setGameDateInput(e.target.value)}
+                      className={`${controlClass} w-full`}
+                    />
+                  </Field>
+                  <Field label="Time" htmlFor="admin-game-time">
+                    <input
+                      id="admin-game-time"
+                      type="time"
+                      value={gameTimeInput}
+                      onChange={(e) => setGameTimeInput(e.target.value)}
+                      className={`${controlClass} w-full`}
+                    />
+                  </Field>
+                  <div className="flex items-end">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => updateSession({ gameDate: gameDateInput, gameTime: gameTimeInput })}
+                    >
+                      {busy ? 'Processing...' : 'Reschedule'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-slate-500 sm:col-span-2 lg:col-span-3">
+                    Game day must be a Friday, Saturday, or Sunday. Moving it, even to a different week, keeps every existing signup.
+                  </p>
+
+                  {/* The roster lock. Blank means the default, five hours before
+                      the game. Set for an early game, so the lock, the teams and
+                      the one email all land the evening before rather than at
+                      dawn. */}
+                  <Field
+                    label="Roster locks"
+                    htmlFor="admin-lock"
+                    hint="Blank uses the usual 5 hours before the game. Payment, teams and the game-day email all follow this."
+                    className="sm:col-span-2 lg:col-span-3"
+                  >
+                    <input
+                      id="admin-lock"
+                      type="datetime-local"
+                      value={lockInput}
+                      onChange={(e) => setLockInput(e.target.value)}
+                      className={`${controlClass} w-full sm:w-auto`}
+                    />
+                    <Button size="sm" disabled={busy} onClick={() => updateSession({ rosterLockAt: localInputToIso(lockInput) })}>
+                      Save lock
+                    </Button>
+                  </Field>
+                </div>
+              </AdminSection>
+
+              <AdminSection title="Capacity and cost">
+                <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label="Capacity" htmlFor="admin-capacity">
+                    <input
+                      id="admin-capacity"
+                      type="number"
+                      min={0}
+                      value={capacityInput}
+                      onChange={(e) => setCapacityInput(e.target.value)}
+                      className={`${controlClass} w-20`}
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        // The one save on this page that emails players: a raise
+                        // promotes off the waitlist and tells each of them they
+                        // are in. Never one stray click away.
+                        const warning = capacityRaiseWarning(scrimmage.capacity, Number(capacityInput), roster);
+                        if (warning && !window.confirm(warning)) return;
+                        updateSession({ capacity: Number(capacityInput) });
+                      }}
+                    >
+                      {busy ? 'Processing...' : 'Save'}
+                    </Button>
+                  </Field>
+                  <Field label="Fields" htmlFor="admin-fields">
+                    <select
+                      id="admin-fields"
+                      value={scrimmage.numFields}
+                      disabled={busy}
+                      onChange={(e) => updateSession({ numFields: Number(e.target.value) })}
+                      className={`${controlClass} w-full`}
+                    >
+                      <option value={1}>1 (two teams)</option>
+                      <option value={2}>2 (four teams)</option>
+                    </select>
+                  </Field>
+                  <Field label="Cost ($)" htmlFor="admin-cost">
+                    <input
+                      id="admin-cost"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={costInput}
+                      onChange={(e) => setCostInput(e.target.value)}
+                      className={`${controlClass} w-24`}
+                    />
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => updateSession({ cost: Number(costInput) })}>
+                      {busy ? 'Processing...' : 'Save'}
+                    </Button>
+                  </Field>
+                  <Field
+                    label="Price/spot ($)"
+                    htmlFor="admin-price"
+                    hint={
+                      split.canSplit
+                        ? `$${split.total.toFixed(2)} / ${split.spots} confirmed = $${split.each.toFixed(2)} each`
+                        : undefined
+                    }
+                    className="sm:col-span-2"
+                  >
+                    <input
+                      id="admin-price"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={priceInput}
+                      onChange={(e) => setPriceInput(e.target.value)}
+                      className={`${controlClass} w-24`}
+                    />
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => updateSession({ pricePerSpot: Number(priceInput) })}>
+                      {busy ? 'Processing...' : 'Save'}
+                    </Button>
+                    {/* Fills the box above from the permit cost, so it sits with
+                        the field it writes to rather than at the end of the row. */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy || !split.canSplit}
+                      onClick={() => setPriceInput(String(split.each))}
+                    >
+                      Split across roster
+                    </Button>
+                  </Field>
+                </div>
+              </AdminSection>
+
               {/* Registration open/close. Sessions are created closed so nobody
                   can sign up for a future week early; this is how one gets
                   opened outside the Monday 9am cron. */}
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-                <span className="text-sm text-slate-700">Registration</span>
-                <Button
-                  size="sm"
-                  variant={scrimmage.status === 'open' ? 'secondary' : 'success'}
-                  disabled={busy || scrimmage.status === 'open'}
-                  onClick={() => updateSession({ status: 'open' })}
-                >
-                  Open
-                </Button>
-                <Button
-                  size="sm"
-                  variant={scrimmage.status === 'closed' ? 'secondary' : 'danger'}
-                  disabled={busy || scrimmage.status === 'closed'}
-                  onClick={() => updateSession({ status: 'closed' })}
-                >
-                  Close
-                </Button>
-              </div>
-
-              {/* The roster lock. Blank means the default, five hours before the
-                  game. Set for an early game, so the lock, the teams and the
-                  one email all land the evening before rather than at dawn. */}
-              <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2">
-                <div>
-                  <label htmlFor="admin-lock" className="block text-sm text-slate-700">Roster locks</label>
-                  <input
-                    id="admin-lock"
-                    type="datetime-local"
-                    value={lockInput}
-                    onChange={(e) => setLockInput(e.target.value)}
-                    className="mt-1 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
+              <AdminSection title="Registration">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={scrimmage.status === 'open' ? 'secondary' : 'success'}
+                    disabled={busy || scrimmage.status === 'open'}
+                    onClick={() => updateSession({ status: 'open' })}
+                  >
+                    Open
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={scrimmage.status === 'closed' ? 'secondary' : 'danger'}
+                    disabled={busy || scrimmage.status === 'closed'}
+                    onClick={() => updateSession({ status: 'closed' })}
+                  >
+                    Close
+                  </Button>
                 </div>
-                <Button size="sm" disabled={busy} onClick={() => updateSession({ rosterLockAt: localInputToIso(lockInput) })}>
-                  Save lock
-                </Button>
-                <span className="text-xs text-slate-500">
-                  Blank uses the usual 5 hours before the game. Payment, teams and the game-day email all follow this.
-                </span>
-              </div>
+              </AdminSection>
 
               {/* Location arrives in two stages: the area up front, the actual
                   field once the permit is booked. */}
-              <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2">
-                <div>
-                  <label htmlFor="admin-area" className="block text-sm text-slate-700">Area</label>
-                  <input
-                    id="admin-area"
-                    placeholder="Mississauga"
-                    value={areaInput}
-                    onChange={(e) => setAreaInput(e.target.value)}
-                    className="mt-1 w-36 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
+              <AdminSection title="Location">
+                <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label="Area" htmlFor="admin-area">
+                    <input
+                      id="admin-area"
+                      placeholder="Mississauga"
+                      value={areaInput}
+                      onChange={(e) => setAreaInput(e.target.value)}
+                      className={`${controlClass} w-full`}
+                    />
+                  </Field>
+                  <Field label="Field (once booked)" htmlFor="admin-field">
+                    <input
+                      id="admin-field"
+                      placeholder="Iceland Park Diamond 3"
+                      value={fieldNameInput}
+                      onChange={(e) => setFieldNameInput(e.target.value)}
+                      className={`${controlClass} w-full`}
+                    />
+                  </Field>
+                  <Field label="Map link" htmlFor="admin-field-url">
+                    <input
+                      id="admin-field-url"
+                      type="url"
+                      placeholder="https://maps.app.goo.gl/..."
+                      value={fieldUrlInput}
+                      onChange={(e) => setFieldUrlInput(e.target.value)}
+                      className={`${controlClass} w-full`}
+                    />
+                  </Field>
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        updateSession({ locationArea: areaInput, locationName: fieldNameInput, locationUrl: fieldUrlInput })
+                      }
+                    >
+                      {busy ? 'Processing...' : 'Save location'}
+                    </Button>
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="admin-field" className="block text-sm text-slate-700">Field (once booked)</label>
-                  <input
-                    id="admin-field"
-                    placeholder="Iceland Park Diamond 3"
-                    value={fieldNameInput}
-                    onChange={(e) => setFieldNameInput(e.target.value)}
-                    className="mt-1 w-52 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="admin-field-url" className="block text-sm text-slate-700">Map link</label>
-                  <input
-                    id="admin-field-url"
-                    type="url"
-                    placeholder="https://maps.app.goo.gl/..."
-                    value={fieldUrlInput}
-                    onChange={(e) => setFieldUrlInput(e.target.value)}
-                    className="mt-1 w-52 rounded border border-slate-300 px-2 py-1 text-sm"
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    updateSession({ locationArea: areaInput, locationName: fieldNameInput, locationUrl: fieldUrlInput })
-                  }
-                >
-                  {busy ? 'Processing...' : 'Save location'}
-                </Button>
-              </div>
+              </AdminSection>
 
               <NotifyPlayersPanel
                 session={scrimmage}
@@ -929,31 +960,28 @@ export function CreateSessionForm(props: {
           Game day must be a Friday, Saturday, or Sunday. Created with registration <strong>closed</strong>. The
           Monday 9am job opens whichever session belongs to that week, so nobody can sign up early.
         </p>
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label htmlFor="create-session-date" className="block text-sm text-slate-700">Date</label>
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Date" htmlFor="create-session-date">
             <input
               id="create-session-date"
               required
               type="date"
               value={gameDate}
               onChange={(e) => setGameDate(e.target.value)}
-              className="mt-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className={`${controlClass} w-full`}
             />
-          </div>
-          <div>
-            <label htmlFor="create-session-time" className="block text-sm text-slate-700">Time</label>
+          </Field>
+          <Field label="Time" htmlFor="create-session-time">
             <input
               id="create-session-time"
               required
               type="time"
               value={gameTime}
               onChange={(e) => setGameTime(e.target.value)}
-              className="mt-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className={`${controlClass} w-full`}
             />
-          </div>
-          <div>
-            <label htmlFor="create-session-capacity" className="block text-sm text-slate-700">Capacity</label>
+          </Field>
+          <Field label="Capacity" htmlFor="create-session-capacity">
             <input
               id="create-session-capacity"
               required
@@ -961,11 +989,10 @@ export function CreateSessionForm(props: {
               min={0}
               value={capacity}
               onChange={(e) => setCapacity(e.target.value)}
-              className="mt-1 w-20 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className={`${controlClass} w-full`}
             />
-          </div>
-          <div>
-            <label htmlFor="create-session-cost" className="block text-sm text-slate-700">Permit cost ($)</label>
+          </Field>
+          <Field label="Permit cost ($)" htmlFor="create-session-cost">
             <input
               id="create-session-cost"
               type="number"
@@ -973,11 +1000,10 @@ export function CreateSessionForm(props: {
               step="0.01"
               value={cost}
               onChange={(e) => setCost(e.target.value)}
-              className="mt-1 w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className={`${controlClass} w-full`}
             />
-          </div>
-          <div>
-            <label htmlFor="create-session-price" className="block text-sm text-slate-700">Price/spot ($)</label>
+          </Field>
+          <Field label="Price/spot ($)" htmlFor="create-session-price">
             <input
               id="create-session-price"
               type="number"
@@ -985,22 +1011,23 @@ export function CreateSessionForm(props: {
               step="0.01"
               value={pricePerSpot}
               onChange={(e) => setPricePerSpot(e.target.value)}
-              className="mt-1 w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className={`${controlClass} w-full`}
             />
-          </div>
-          <div>
-            <label htmlFor="create-session-area" className="block text-sm text-slate-700">Area</label>
+          </Field>
+          <Field label="Area" htmlFor="create-session-area">
             <input
               id="create-session-area"
               placeholder="Mississauga"
               value={area}
               onChange={(e) => setArea(e.target.value)}
-              className="mt-1 w-36 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className={`${controlClass} w-full`}
             />
+          </Field>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Button type="submit" size="sm" disabled={busy}>
+              {busy ? 'Creating...' : 'Create'}
+            </Button>
           </div>
-          <Button type="submit" size="sm" disabled={busy}>
-            {busy ? 'Creating...' : 'Create'}
-          </Button>
         </div>
       </form>
     </Card>
