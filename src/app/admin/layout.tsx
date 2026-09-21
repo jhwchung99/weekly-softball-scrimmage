@@ -7,6 +7,9 @@ import type { ReactNode } from 'react';
 // player-facing ones.
 export const metadata: Metadata = {
   title: 'Weekly Softball Scrimmage Admin',
+  // Overrides the root manifest, whose start_url would send an admin
+  // home-screen shortcut to the player homepage.
+  manifest: '/admin/manifest.webmanifest',
   appleWebApp: {
     capable: false,
     title: 'NHF Admin',
