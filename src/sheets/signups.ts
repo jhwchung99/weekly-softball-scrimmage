@@ -115,7 +115,7 @@ export async function createSignup(signup: Omit<Signup, 'signupId'>): Promise<Si
     signupId: generateSignupId(),
   };
   const row = serializeSignupRow(full);
-  await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(SIGNUP_HEADERS.length)}`, [SIGNUP_HEADERS.map((h) => row[h])]);
+  await appendValues(SPREADSHEET_ID, TAB, [SIGNUP_HEADERS.map((h) => row[h])]);
   return full;
 }
 

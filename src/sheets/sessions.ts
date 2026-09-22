@@ -1,4 +1,4 @@
-import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow, columnLetter } from './client';
+import { SPREADSHEET_ID, getRowObjects, appendValues, updateRow } from './client';
 import { Session, SessionStatus, SESSION_HEADERS, parseSessionRow, serializeSessionRow } from './schema';
 
 const TAB = 'Sessions';
@@ -42,7 +42,7 @@ export async function createSession(session: Session): Promise<Session> {
     throw new Error(`A session with id "${session.sessionId}" already exists.`);
   }
   const row = serializeSessionRow(session);
-  await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(SESSION_HEADERS.length)}`, [SESSION_HEADERS.map((h) => row[h])]);
+  await appendValues(SPREADSHEET_ID, TAB, [SESSION_HEADERS.map((h) => row[h])]);
   return session;
 }
 
