@@ -240,6 +240,36 @@ describe('AdminPage', () => {
       expect(fetchMock.mock.calls.length).toBe(before);
     });
 
+    it('asks before sending a free-typed message, and sends nothing when refused', async () => {
+      // The one send whose whole body is organizer text, so a misclick mails
+      // a half-written draft rather than a wrong-but-coherent template.
+      const confirmMock = vi.fn(() => false);
+      vi.stubGlobal('confirm', confirmMock);
+      render(<AdminPage />);
+      await screen.findByText('Kevin Kim');
+
+      fireEvent.change(document.getElementById('admin-message-subject') as HTMLInputElement, {
+        target: { value: 'Bring a bat' },
+      });
+      fireEvent.change(document.getElementById('admin-message-body') as HTMLTextAreaElement, {
+        target: { value: 'We are short on bats.' },
+      });
+
+      const send = await screen.findByRole('button', { name: /Send to \d+ player/ });
+      const before = fetchMock.mock.calls.length;
+      fireEvent.click(send);
+
+      expect(confirmMock).toHaveBeenCalled();
+      expect(fetchMock.mock.calls.length).toBe(before);
+    });
+
+    it('will not offer to send an empty message', async () => {
+      render(<AdminPage />);
+      await screen.findByText('Kevin Kim');
+
+      expect(await screen.findByRole('button', { name: /Send to \d+ player/ })).toBeDisabled();
+    });
+
     it('does not ask when a capacity change emails nobody', async () => {
       // Nobody waiting: the save is ordinary admin, and a pointless dialog
       // teaches the organizer to click through dialogs.

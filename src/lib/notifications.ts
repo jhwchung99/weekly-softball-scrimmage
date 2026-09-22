@@ -382,6 +382,25 @@ export async function sendSessionCancelledEmail(signup: Signup, session: Session
 }
 
 /**
+ * The organizer's own words, and nothing else.
+ *
+ * Every other email in this file is generated: it knows the date, the field,
+ * what someone owes, and says so. This one deliberately knows none of that.
+ * It exists because the organizer needed to say something the app has no
+ * template for, and the session-update email could not be it — appending
+ * "Here's where the game stands" under a message about carpooling buries the
+ * only part the reader was sent.
+ *
+ * The greeting stays, per docs/voice.md rule 5. It is also the one line the
+ * organizer could not have written themselves, being different per recipient.
+ * Nothing follows the message: no details, no sign-off, no instructions about
+ * cancelling.
+ */
+export async function sendPlainMessageEmail(signup: Signup, subject: string, message: string): Promise<void> {
+  await sendEmail(signup.email, subject, [`Hi ${signup.fullName},`, '', message].join('\n'));
+}
+
+/**
  * The admin dashboard's "Remind unpaid" button: one player, one nudge about
  * one week's spot.
  *

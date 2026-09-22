@@ -21,7 +21,7 @@ import {
   announcementNotice,
   sessionInputsFor,
 } from '../../lib/adminConsole';
-import { sessionChangeAudience, unpaidAudience } from '../../lib/audiences';
+import { sessionChangeAudience, unpaidAudience, messageAudience } from '../../lib/audiences';
 import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/adminRoster';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
@@ -90,6 +90,11 @@ export default function AdminPage() {
   const [noteInput, setNoteInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [capacityInput, setCapacityInput] = useState('');
+  // The free-typed message, kept apart from noteInput: that one is a gloss on
+  // a generated email, this one is the whole email.
+  const [subjectInput, setSubjectInput] = useState('');
+  const [messageInput, setMessageInput] = useState('');
+  const [messageWaitlisted, setMessageWaitlisted] = useState(false);
   const [costInput, setCostInput] = useState('');
   const [gameDateInput, setGameDateInput] = useState('');
   const [gameTimeInput, setGameTimeInput] = useState('');
@@ -536,6 +541,18 @@ export default function AdminPage() {
                 busy={busy}
                 onSend={(confirmMessage, body) => sendAnnouncement('notify', confirmMessage, body)}
               />
+
+              <MessagePlayersPanel
+                roster={roster ?? []}
+                subject={subjectInput}
+                setSubject={setSubjectInput}
+                message={messageInput}
+                setMessage={setMessageInput}
+                includeWaitlisted={messageWaitlisted}
+                setIncludeWaitlisted={setMessageWaitlisted}
+                busy={busy}
+                onSend={(confirmMessage, body) => sendAnnouncement('message', confirmMessage, body)}
+              />
             </Card>
           )}
 
@@ -811,6 +828,90 @@ export function NotifyPlayersPanel(props: {
             ? 'Tells everyone still signed up that the game is off, waitlist included.'
             : 'Emails the current date, time and field. Waitlisted players get the details with their promotion instead.'}
         </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Send a message" — a subject and body the organizer writes in full.
+ *
+ * Deliberately not a mode of the panel above. That one's email is generated
+ * from the session and its text box is a note attached to it, so its trailing
+ * line explains what will be appended. Here nothing is appended, which is the
+ * entire point: an organizer who wants to say "we need two more for Friday"
+ * has no template to fight with.
+ *
+ * Send stays disabled until both fields have something in them. The server
+ * rejects blanks too, but a button that offers to mail an empty subject to
+ * twenty people and then fails is a worse way to learn that.
+ */
+export function MessagePlayersPanel(props: {
+  roster: AdminSignup[];
+  subject: string;
+  setSubject: (subject: string) => void;
+  message: string;
+  setMessage: (message: string) => void;
+  includeWaitlisted: boolean;
+  setIncludeWaitlisted: (include: boolean) => void;
+  busy: boolean;
+  onSend: (confirmMessage: string, body: Record<string, unknown>) => void;
+}) {
+  const { roster, subject, setSubject, message, setMessage, includeWaitlisted, setIncludeWaitlisted, busy, onSend } =
+    props;
+  // The same rule the server sends by, so the count on the button is the
+  // number of emails that actually go out.
+  const audience = messageAudience(roster, includeWaitlisted);
+  const people = `${audience.length} player${audience.length === 1 ? '' : 's'}`;
+  const ready = subject.trim().length > 0 && message.trim().length > 0;
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Send a message</h3>
+      <div className="mt-2 grid gap-x-4 gap-y-3">
+        <Field label="Subject" htmlFor="admin-message-subject">
+          <input
+            id="admin-message-subject"
+            maxLength={150}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Bring a bat if you have one"
+            className={`${controlClass} w-full`}
+          />
+        </Field>
+        <Field label="Message" htmlFor="admin-message-body">
+          <textarea
+            id="admin-message-body"
+            rows={4}
+            maxLength={2000}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Sent exactly as written. Nothing about the date, field or payment is added."
+            className={`${controlClass} w-full`}
+          />
+        </Field>
+        <label htmlFor="admin-message-waitlist" className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            id="admin-message-waitlist"
+            type="checkbox"
+            checked={includeWaitlisted}
+            onChange={(e) => setIncludeWaitlisted(e.target.checked)}
+          />
+          Include waitlisted players
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy || !ready || audience.length === 0}
+            onClick={() => onSend(`Email ${people} the message "${subject.trim()}"?`, { subject, message, includeWaitlisted })}
+          >
+            {busy ? 'Sending...' : `Send to ${people}`}
+          </Button>
+          <span className="text-xs text-slate-500">
+            Goes out as written, under your subject line. Nothing is added to it.
+          </span>
+        </div>
       </div>
     </div>
   );
