@@ -97,7 +97,7 @@ describe('Home', () => {
 
     // A human date, not the ISO id: voice.md rule 2, and it matters more now
     // that a player may be choosing between two days.
-    await screen.findByText(/Friday, July 10 at 6pm/);
+    await screen.findByRole('button', { name: /Fri, Jul 10 · 6pm/ });
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/home']);
   });
 
@@ -114,15 +114,88 @@ describe('Home', () => {
 
     render(<Home />);
 
-    expect(await screen.findByRole('heading', { name: /Friday, July 10 at 6pm/ })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: /Sunday, July 12 at 2pm/ })).toBeInTheDocument();
+    const fridayRow = await screen.findByRole('button', { name: /Fri, Jul 10 · 6pm/ });
+    const sundayRow = await screen.findByRole('button', { name: /Sun, Jul 12 · 2pm/ });
+
+    // Only the soonest opens. The page shows every upcoming game, so leaving
+    // them all expanded is most of a phone screen of scrolling before a player
+    // reaches anything they can act on.
+    expect(fridayRow).toHaveAttribute('aria-expanded', 'true');
+    expect(sundayRow).toHaveAttribute('aria-expanded', 'false');
+
     // Still one request for the whole page, however many games it holds.
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/home']);
   });
 
+  it('opens a collapsed game when its row is tapped', async () => {
+    const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '14:00' };
+    const base = home();
+    respondWith({ ...base, sessions: [base.sessions[0], { ...base.sessions[0], session: sunday }] });
+
+    render(<Home />);
+    const row = await screen.findByRole('button', { name: /Sun, Jul 12 · 2pm/ });
+
+    await userEvent.click(row);
+
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    // Expanding reads what the page already has; it does not re-fetch.
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/home']);
+  });
+
+  it('surfaces what a collapsed game still wants from you', async () => {
+    // Collapsing is a change of layout, not of what reaches someone. The poll,
+    // the payment prompt and a request to share a spot all live inside the
+    // card, and a closed card would hide them behind a tap nobody knows to
+    // take.
+    const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '14:00', practicePollStatus: 'open' };
+    const base = home();
+    respondWith({
+      ...base,
+      sessions: [
+        base.sessions[0],
+        {
+          ...base.sessions[0],
+          session: sunday,
+          signup: { signupId: 's2', status: 'confirmed', memberStatus: 'member', paid: false, subRequestStatus: '', subRequestTargetEmail: '', practicePollAnswer: '' },
+          incomingSubRequests: [{ fromSignupId: 'x1', fromFullName: 'Sam Lee', fromGuestInvite: false }],
+        },
+      ],
+    });
+
+    render(<Home />);
+    const row = await screen.findByRole('button', { name: /Sun, Jul 12 · 2pm/ });
+
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    expect(row).toHaveTextContent('1 request');
+    expect(row).toHaveTextContent('poll');
+  });
+
+  it('stays quiet on a collapsed game that wants nothing', async () => {
+    const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '14:00' };
+    const base = home();
+    respondWith({ ...base, sessions: [base.sessions[0], { ...base.sessions[0], session: sunday }] });
+
+    render(<Home />);
+    const row = await screen.findByRole('button', { name: /Sun, Jul 12 · 2pm/ });
+
+    expect(row).not.toHaveTextContent('request');
+    expect(row).not.toHaveTextContent('poll');
+    expect(row).not.toHaveTextContent('payment due');
+  });
+
+  it('states the schedule as a sentence rather than a timeline', async () => {
+    render(<Home />);
+    await screen.findByRole('button', { name: /Fri, Jul 10 · 6pm/ });
+
+    // Replaced a card of three dots. "midnight", not "12am": the close is
+    // Tuesday 00:00 ET, which every player calls Monday night.
+    expect(screen.getByText(/Sign-ups close Monday, July 6 at midnight/)).toBeInTheDocument();
+    expect(screen.queryByText(/12am/)).not.toBeInTheDocument();
+  });
+
   it('labels the groups only when there is more than one game', async () => {
     render(<Home />);
-    await screen.findByRole('heading', { name: /Friday, July 10 at 6pm/ });
+    await screen.findByRole('button', { name: /Fri, Jul 10 · 6pm/ });
 
     // A single game needs no "This week" heading above it.
     expect(screen.queryByText(/^This week$/)).not.toBeInTheDocument();
