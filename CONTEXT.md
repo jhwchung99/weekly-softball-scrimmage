@@ -1,32 +1,50 @@
 # Weekly Softball Scrimmage
 
-The signup app for a church's weekly pickup softball game: one game a week,
-a fixed number of spots, first-come first-served with an automatic waitlist,
-and one person running it.
+The signup app for a church's pickup softball games: a fixed number of spots,
+first-come first-served with an automatic waitlist, and one person running it.
+Usually one game a week, but a week may hold several — a Friday game and a
+Sunday one, each with its own roster, schedule and price.
 
 This is the glossary. Where two words are in use for one thing, the preferred
 one is here and the others are listed under _Avoid_.
 
-It governs the **code**, not what players read. A player has one game a week
-and no risk of confusing it with anything, so copy addressed to them says
-"the game" where this file says **Session**. The precision here exists to stop
-*us* conflating a Session with a Signup; imposing it on a player is precision
-with no reader. See `docs/voice.md` for how player-facing copy is written, and
-ADR-0005 for why the two diverge.
+It governs the **code**, not what players read. Copy addressed to a player
+says "the game" where this file says **Session**. The precision here exists to
+stop *us* conflating a Session with a Signup; imposing it on a player is
+precision with no reader. See `docs/voice.md` for how player-facing copy is
+written, and ADR-0005 for why the two diverge.
+
+That divergence narrowed on 2026-09-22. ADR-0005 rested on a player having one
+game a week and no risk of confusing it with anything; where a week holds two,
+copy has to name the day it means — "You're already signed up for Friday",
+not "for this week". "The game" is still right wherever only one is in view.
 
 ## The week
 
 **Session**:
-One week's game — the date, the time, the field, and how many spots it has.
+One scheduled game — the date, the time, the field, and how many spots it has.
+Its own roster, schedule, price and format; two sessions in one week share
+nothing but the people who sign up for both. The id **is** the game date, so
+there is at most one session per date.
 _Avoid_: scrimmage, week, game (as a name for the record itself)
 
 **Game day**:
-The day a session is played. Friday, Saturday or Sunday.
+The day a session is played. Any day of the week. It was Friday, Saturday or
+Sunday until 2026-09-22, enforced by `validateGameDate` — a restriction that
+was standing in for a rule it could not express (see **Registration window**).
 
 **Registration window**:
-The stretch when signups are accepted: Monday 9am until Tuesday midnight,
-Eastern. Deliberately short, so the organizer can book a permit sized to the
-actual headcount.
+The stretch when signups are accepted. Monday 9am until Tuesday midnight,
+Eastern, **by default**; a session may set either end itself, the way it may
+set its own roster lock (ADR-0008). Deliberately short, so the organizer can
+book a permit sized to the actual headcount.
+
+The default is derived from the game date, so it is coherent for every game
+day except Monday, where it would close after the game had been played. A
+Monday game therefore has to carry its own window, and the app refuses to save
+one that does not. That check — the milestones coming in order — is what
+replaced the old Friday/Saturday/Sunday restriction on **Game day**.
+_Avoid_: registration period, signup window
 
 **Phase**:
 Where a session stands right now: before, open, closed, locked, or played.

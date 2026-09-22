@@ -13,7 +13,7 @@ import {
 import { getPlayer } from '../sheets/players';
 import { Signup, Session } from '../sheets/schema';
 import { ApiError } from './apiErrors';
-import { getWeeklyMilestones, formatEasternMoment } from './time';
+import { getWeeklyMilestones, formatEasternMoment, formatGameDate } from './time';
 import { phaseOf, isRegistrationOpen, isRosterLocked } from './sessionPhase';
 import { isPaired } from './pair';
 import { nextInLine } from './waitlist';
@@ -65,7 +65,10 @@ async function requireOpenSessionAndProfile(sessionId: string, email: string, op
   const session = await getSession(sessionId);
   if (!session) throw new ApiError(404, 'No such session.');
   if (session.status !== 'open') {
-    throw new ApiError(409, "Signups aren't open for this week.");
+    // Names the day. A week can hold more than one game, so "this week" no
+    // longer picks one out — and a player refused for Sunday while Friday is
+    // open has to be told which is which (voice.md, ADR-0005).
+    throw new ApiError(409, `Signups aren't open for ${formatGameDate(session.gameDate)}.`);
   }
 
   // `status` alone used to be the entire gate, which made it a single point
@@ -96,8 +99,11 @@ async function requireOpenSessionAndProfile(sessionId: string, email: string, op
 
   const existingActive = await findActiveSignup(sessionId, email);
   if (existingActive) {
-    // Exact wording from PROJECT_GUIDELINES.md Section 4.
-    throw new ApiError(409, "You're already signed up for this week.");
+    // Was "You're already signed up for this week", the exact wording from
+    // PROJECT_GUIDELINES.md Section 4. That wording assumed the week held one
+    // game; signing up for Friday and Sunday is now two separate claims, so
+    // the refusal has to say which one is the duplicate.
+    throw new ApiError(409, `You're already signed up for ${formatGameDate(session.gameDate)}.`);
   }
 
   return { session, player };

@@ -113,8 +113,29 @@ describe('adminCreateSession', () => {
     });
   });
 
-  it('rejects a date that is not Friday/Saturday/Sunday', async () => {
-    await expect(adminCreateSession({ gameDate: '2026-07-06' })).rejects.toThrow(/Friday, Saturday, or Sunday/);
+  // Any weekday is allowed now. What replaced the allowlist is the ordering
+  // rule: a Monday game's *derived* window closes after the game has been
+  // played, so it has to bring its own.
+  it('accepts a midweek game, which the old weekday allowlist refused', async () => {
+    const session = await adminCreateSession({ gameDate: '2026-07-08' }); // Wednesday
+
+    expect(session.gameDate).toBe('2026-07-08');
+  });
+
+  it('refuses a Monday game with no registration window of its own', async () => {
+    await expect(adminCreateSession({ gameDate: '2026-07-06' })).rejects.toThrow(/needs its own registration times/);
+  });
+
+  it('accepts a Monday game that brings its own window', async () => {
+    const session = await adminCreateSession({
+      gameDate: '2026-07-06',
+      gameTime: '18:00',
+      registrationOpensAt: '2026-06-29T13:00:00.000Z', // the Monday before, 9am ET
+      registrationClosesAt: '2026-07-04T04:00:00.000Z', // Saturday midnight ET
+    });
+
+    expect(session.gameDate).toBe('2026-07-06');
+    expect(session.registrationClosesAt).toBe('2026-07-04T04:00:00.000Z');
   });
 
   it('rejects creating a session that already exists', async () => {
@@ -152,9 +173,16 @@ describe('adminRescheduleSession', () => {
     await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '18:00')).rejects.toThrow(/already exists/);
   });
 
-  it('rejects a date that is not Friday/Saturday/Sunday', async () => {
+  // The ordering rule deliberately lives in reviseSession, not here: this
+  // function sees only the new date and time, while a move to a Monday is
+  // legitimate in the same request that supplies the window to go with it.
+  // reviseSession is the layer holding both. See the ordering tests below.
+  it('accepts any weekday, leaving the schedule rule to reviseSession', async () => {
     store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10' }));
-    await expect(adminRescheduleSession('2026-07-10', '2026-07-06', '18:00')).rejects.toThrow(/Friday, Saturday, or Sunday/);
+
+    const moved = await adminRescheduleSession('2026-07-10', '2026-07-08', '18:00'); // Wednesday
+
+    expect(moved.gameDate).toBe('2026-07-08');
   });
 
   it('rejects rescheduling a session that does not exist', async () => {
@@ -210,6 +238,69 @@ describe('a newly created session does not accept signups until it is opened', (
     expect(created.pricePerSpot).toBe(12);
     expect(created.locationArea).toBe('Mississauga');
     expect(created.locationName).toBe(''); // field itself not booked yet
+  });
+});
+
+describe('reviseSession — the schedule must come in order', () => {
+  const GAME = '2026-07-11'; // Saturday
+  const reviseFrom = (over: Record<string, unknown>, updates: Record<string, unknown>) => {
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00', ...over });
+    store.sessions.set(GAME, session);
+    return reviseSession(GAME, session, { updates } as Parameters<typeof reviseSession>[2]);
+  };
+
+  it('refuses a close that is not after the open', async () => {
+    await expect(
+      reviseFrom(
+        { registrationOpensAt: '2026-07-07T13:00:00.000Z' },
+        { registrationClosesAt: '2026-07-06T13:00:00.000Z' }
+      )
+    ).rejects.toThrow(/which is not after it opens/);
+  });
+
+  it('refuses a lock that falls before registration closes', async () => {
+    // The lock is what stops the roster moving, so it cannot come first.
+    await expect(
+      reviseFrom(
+        { registrationClosesAt: '2026-07-10T04:00:00.000Z' },
+        { rosterLockAt: '2026-07-09T04:00:00.000Z' }
+      )
+    ).rejects.toThrow(/before registration closes/);
+  });
+
+  it('refuses moving a game to a Monday without giving it a window', async () => {
+    // gameDate is a top-level field of the revision, not one of `updates` —
+    // it can rekey the row, so reviseSession handles it separately.
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00' });
+    store.sessions.set(GAME, session);
+
+    await expect(
+      reviseSession(GAME, session, { gameDate: '2026-07-06', gameTime: '18:00', updates: {} } as Parameters<
+        typeof reviseSession
+      >[2])
+    ).rejects.toThrow(/needs its own registration times/);
+  });
+
+  it('accepts a window and a move to Monday supplied together', async () => {
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00' });
+    store.sessions.set(GAME, session);
+
+    const { session: revised } = await reviseSession(GAME, session, {
+      gameDate: '2026-07-06',
+      gameTime: '18:00',
+      updates: {
+        registrationOpensAt: '2026-06-29T13:00:00.000Z',
+        registrationClosesAt: '2026-07-04T04:00:00.000Z',
+      },
+    } as Parameters<typeof reviseSession>[2]);
+
+    expect(revised.gameDate).toBe('2026-07-06');
+  });
+
+  it('leaves an ordinary weekend session alone', async () => {
+    const { session } = await reviseFrom({}, { capacity: 18 });
+
+    expect(session.capacity).toBe(18);
   });
 });
 

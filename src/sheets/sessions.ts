@@ -14,18 +14,20 @@ export async function getSession(sessionId: string): Promise<Session | null> {
 }
 
 /**
- * Whichever of the given ids has a session row, checked in order, from a
- * single tab read — for "does this week's game exist under any of
- * Friday/Saturday/Sunday" (see time.ts's currentWeekGameDayCandidates)
- * without paying for a separate read per candidate.
+ * Every session among the given ids, in the order the ids were given, from a
+ * single tab read — for "which of this week's days have a game" without paying
+ * for a read per candidate.
+ *
+ * This replaced `getSessionByAnyId`, which returned the **first** match and was
+ * the reason a week could only have one session. The candidates were always
+ * `[Friday, Saturday, Sunday]`, so a Sunday game created alongside a Friday one
+ * was invisible to the homepage, the calendar and the dashboard: Friday won
+ * every lookup. Returning all of them is the whole fix, and the function that
+ * could hide one no longer exists to be called by accident.
  */
-export async function getSessionByAnyId(sessionIds: string[]): Promise<Session | null> {
+export async function getSessionsByIds(sessionIds: string[]): Promise<Session[]> {
   const sessions = await listSessions();
-  for (const id of sessionIds) {
-    const match = sessions.find((s) => s.sessionId === id);
-    if (match) return match;
-  }
-  return null;
+  return sessionIds.map((id) => sessions.find((s) => s.sessionId === id)).filter((s): s is Session => s !== undefined);
 }
 
 /**

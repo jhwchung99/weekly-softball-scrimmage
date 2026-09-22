@@ -23,6 +23,29 @@ export async function listSignupsForSession(sessionId: string): Promise<Signup[]
   return all.filter((r) => r.data.sessionId === sessionId).map((r) => parseSignupRow(r.data));
 }
 
+/**
+ * Several sessions' signups, grouped by session id, from a **single** tab read.
+ *
+ * The homepage shows every upcoming session, and calling
+ * `listSignupsForSession` once per session would turn one page load into one
+ * whole-tab read per session. The app's entire quota is 60 reads a minute
+ * across all users, so that is the difference between a page that survives
+ * registration opening and one that does not.
+ *
+ * Every id asked for gets an entry, empty when nothing references it, so a
+ * caller never has to distinguish "no signups" from "not asked about".
+ */
+export async function listSignupsForSessions(sessionIds: string[]): Promise<Map<string, Signup[]>> {
+  const all = await rows();
+  const grouped = new Map<string, Signup[]>(sessionIds.map((id) => [id, []]));
+
+  for (const row of all) {
+    const bucket = grouped.get(row.data.sessionId);
+    if (bucket) bucket.push(parseSignupRow(row.data));
+  }
+  return grouped;
+}
+
 export async function getSignup(signupId: string): Promise<Signup | null> {
   const all = await rows();
   const match = all.find((r) => r.data.signupId === signupId);

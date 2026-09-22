@@ -34,10 +34,11 @@ import {
 import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/adminRoster';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
+import { agendaForAll } from '../../lib/adminAgenda';
 import { Button } from '../../components/Button';
 import { Field, controlClass } from '../../components/Field';
 
-import type { SignupStatus } from '../../sheets/schema';
+import type { SignupStatus, Session } from '../../sheets/schema';
 import type { AdminRosterEntry, AdminSessionView } from '../../lib/views';
 import type { SessionPhase } from '../../lib/sessionPhase';
 import { isRosterLocked, hasGameStarted } from '../../lib/sessionPhase';
@@ -85,6 +86,7 @@ export default function AdminPage() {
   const { data: authSession, status: authStatus } = useSession();
 
   const [sessionId, setSessionId] = useState('');
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [scrimmage, setScrimmage] = useState<SessionInfo | null>(null);
   // From the server, not computed here: whether the roster has locked decides
   // whether the game-day email can go out, and that must not hang on the
@@ -115,10 +117,30 @@ export default function AdminPage() {
   const [fieldNameInput, setFieldNameInput] = useState('');
   const [fieldUrlInput, setFieldUrlInput] = useState('');
   const [lockInput, setLockInput] = useState('');
+  const [opensInput, setOpensInput] = useState('');
+  const [closesInput, setClosesInput] = useState('');
 
-  async function loadCurrentSessionId() {
-    const { session } = await fetchJson<{ session: SessionInfo | null }>('/api/sessions/current');
-    if (session) setSessionId(session.sessionId);
+  /**
+   * Which sessions exist, and which one the console is editing.
+   *
+   * This took the single session `/api/sessions/current` used to return. That
+   * route took the first of Friday/Saturday/Sunday that had a row, so a Sunday
+   * game created beside a Friday one could not be opened here at all — the
+   * console had no way to name it. The list is what makes every session
+   * reachable; `sessionId` is still the one being edited.
+   */
+  async function loadSessions() {
+    const { sessions } = await fetchJson<{ sessions: SessionInfo[] }>('/api/sessions/current');
+    setSessions(sessions);
+    // Picks a session only when nothing is selected yet, i.e. the first load.
+    //
+    // Deliberately NOT "re-pick if the selection is missing from the list".
+    // That list is served from a 30-second cache, so straight after a
+    // reschedule it still holds the old id — and re-picking would throw the
+    // organizer back to the session they had just renamed, undoing the follow
+    // that sessionIdAfterRevision exists to perform. A selection that really
+    // has gone shows the 404 screen, which says so plainly.
+    setSessionId((current) => current || sessions[0]?.sessionId || '');
   }
 
   async function loadRoster(id: string) {
@@ -145,6 +167,8 @@ export default function AdminPage() {
       setFieldNameInput(inputs.fieldName);
       setFieldUrlInput(inputs.fieldUrl);
       setLockInput(inputs.rosterLock);
+      setOpensInput(inputs.registrationOpens);
+      setClosesInput(inputs.registrationCloses);
       setRoster(rosterRes.signups);
     } catch (err) {
       const failure = classifyLoadFailure(
@@ -159,7 +183,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (authStatus === 'authenticated') {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- shared with manual reloads below; setState only runs after an await
-      loadCurrentSessionId();
+      loadSessions();
     }
   }, [authStatus]);
 
@@ -199,7 +223,11 @@ export default function AdminPage() {
       // to the new id rather than re-fetching the now-stale old one.
       const newSessionId = sessionIdAfterRevision(sessionId, data?.session as { sessionId?: string });
       setSessionId(newSessionId);
-      await loadRoster(newSessionId);
+      // The picker shows each session's id and status, and this is the one
+      // action that can change either — a reschedule rekeys the row, and
+      // opening, closing or cancelling moves the status. Without this the
+      // picker keeps showing what the week looked like before the edit.
+      await Promise.all([loadRoster(newSessionId), loadSessions()]);
     });
   }
 
@@ -341,7 +369,56 @@ export default function AdminPage() {
             </p>
           )}
 
-          <CreateSessionForm busy={busy} setBusy={setBusy} setError={setError} onCreated={(id) => setSessionId(id)} />
+          {/* The week: which sessions exist, and what still needs doing
+              across all of them. The list appears only when there is a choice
+              to make; the agenda whenever it has anything to say. */}
+          {sessions.length > 1 && (
+            <Card className="mt-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Session</h2>
+              <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Which session">
+                {sessions.map((s) => {
+                  const chosen = s.sessionId === sessionId;
+                  return (
+                    <button
+                      key={s.sessionId}
+                      type="button"
+                      aria-pressed={chosen}
+                      disabled={busy}
+                      onClick={() => setSessionId(s.sessionId)}
+                      className={`rounded-full border px-3 py-1 text-sm ${
+                        chosen
+                          ? 'border-blue-600 bg-blue-50 font-medium text-blue-800'
+                          : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {/* ISO here, not a human date: on this page the date *is*
+                          the session's id, and the organizer matches it against
+                          the spreadsheet (voice.md rule 2). */}
+                      {s.sessionId} · {s.status}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          <NeedsYou
+            sessions={sessions}
+            selectedId={sessionId}
+            roster={roster}
+            busy={busy}
+            onSelect={setSessionId}
+          />
+
+          <CreateSessionForm
+            busy={busy}
+            setBusy={setBusy}
+            setError={setError}
+            onCreated={async (id) => {
+              setSessionId(id);
+              await loadSessions();
+            }}
+          />
 
           {scrimmage && (
             <Card className="mt-4">
@@ -369,7 +446,58 @@ export default function AdminPage() {
                 )}
               </div>
 
-              <AdminSection title="Schedule">
+              {/* Registration open/close. Sessions are created closed so nobody
+                  can sign up for a future week early; this is how one gets
+                  opened outside the Monday 9am cron. */}
+              <AdminSection title="Registration">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={scrimmage.status === 'open' ? 'secondary' : 'success'}
+                    disabled={busy || scrimmage.status === 'open'}
+                    onClick={() => updateSession({ status: 'open' })}
+                  >
+                    Open
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={scrimmage.status === 'closed' ? 'secondary' : 'danger'}
+                    disabled={busy || scrimmage.status === 'closed'}
+                    onClick={() => updateSession({ status: 'closed' })}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </AdminSection>
+
+<PracticePollSection
+                session={scrimmage}
+                roster={roster ?? []}
+                thresholdInput={thresholdInput}
+                setThresholdInput={setThresholdInput}
+                closesAt={pollClosesAt}
+                setClosesAt={setPollClosesAt}
+                notify={pollNotify}
+                setNotify={setPollNotify}
+                busy={busy}
+                onSetPoll={setPoll}
+                onSetFormat={(format) => setFormat(format, scrimmage)}
+                onSaveThreshold={() => updateSession({ practicePollThreshold: Number(thresholdInput) || 0 })}
+              />
+
+              {/* Setup: the things set once when a session is made and then
+                  left alone — the schedule, what it costs, where it is. They
+                  used to sit between the actions, so "Open registration" was
+                  two panels away from "Send the game-day email" despite being
+                  next in the same sequence. Closed by default; the actions
+                  above and the roster below are what the organizer is here
+                  for. */}
+              <details className="mt-4 border-t border-slate-100 pt-3">
+                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Setup — schedule, capacity, cost, location
+                </summary>
+                <div className="mt-2">
+<AdminSection title="Schedule">
                 <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="Date" htmlFor="admin-game-date">
                     <input
@@ -400,7 +528,8 @@ export default function AdminPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-slate-500 sm:col-span-2 lg:col-span-3">
-                    Game day must be a Friday, Saturday, or Sunday. Moving it, even to a different week, keeps every existing signup.
+                    Game day can be any day. Moving it, even to a different week, keeps every existing signup. A Monday game
+                    needs its own registration times below — the usual window would close after it had been played.
                   </p>
 
                   {/* The roster lock. Blank means the default, five hours before
@@ -424,10 +553,56 @@ export default function AdminPage() {
                       Save lock
                     </Button>
                   </Field>
+
+                  {/* The registration window. Blank on both means the usual
+                      Monday 9am to Tuesday midnight, derived from the game
+                      date — which is what almost every week uses. Set them for
+                      a midweek game, or to run a second session on its own
+                      schedule. */}
+                  <Field
+                    label="Registration opens"
+                    htmlFor="admin-opens"
+                    hint="Blank uses the usual Monday 9am before the game."
+                    className="sm:col-span-2 lg:col-span-3"
+                  >
+                    <input
+                      id="admin-opens"
+                      type="datetime-local"
+                      value={opensInput}
+                      onChange={(e) => setOpensInput(e.target.value)}
+                      className={`${controlClass} w-full sm:w-auto`}
+                    />
+                  </Field>
+                  <Field
+                    label="Registration closes"
+                    htmlFor="admin-closes"
+                    hint="Blank uses the usual Tuesday midnight. Must come before the roster lock."
+                    className="sm:col-span-2 lg:col-span-3"
+                  >
+                    <input
+                      id="admin-closes"
+                      type="datetime-local"
+                      value={closesInput}
+                      onChange={(e) => setClosesInput(e.target.value)}
+                      className={`${controlClass} w-full sm:w-auto`}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        updateSession({
+                          registrationOpensAt: localInputToIso(opensInput),
+                          registrationClosesAt: localInputToIso(closesInput),
+                        })
+                      }
+                    >
+                      Save window
+                    </Button>
+                  </Field>
                 </div>
               </AdminSection>
 
-              <AdminSection title="Capacity and cost">
+<AdminSection title="Capacity and cost">
                 <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label="Capacity" htmlFor="admin-capacity">
                     <input
@@ -516,46 +691,7 @@ export default function AdminPage() {
                 </div>
               </AdminSection>
 
-              {/* Registration open/close. Sessions are created closed so nobody
-                  can sign up for a future week early; this is how one gets
-                  opened outside the Monday 9am cron. */}
-              <AdminSection title="Registration">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={scrimmage.status === 'open' ? 'secondary' : 'success'}
-                    disabled={busy || scrimmage.status === 'open'}
-                    onClick={() => updateSession({ status: 'open' })}
-                  >
-                    Open
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={scrimmage.status === 'closed' ? 'secondary' : 'danger'}
-                    disabled={busy || scrimmage.status === 'closed'}
-                    onClick={() => updateSession({ status: 'closed' })}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </AdminSection>
-
-              <PracticePollSection
-                session={scrimmage}
-                roster={roster ?? []}
-                thresholdInput={thresholdInput}
-                setThresholdInput={setThresholdInput}
-                closesAt={pollClosesAt}
-                setClosesAt={setPollClosesAt}
-                notify={pollNotify}
-                setNotify={setPollNotify}
-                busy={busy}
-                onSetPoll={setPoll}
-                onSetFormat={(format) => setFormat(format, scrimmage)}
-                onSaveThreshold={() => updateSession({ practicePollThreshold: Number(thresholdInput) || 0 })}
-              />
-
-              {/* Location arrives in two stages: the area up front, the actual
+{/* Location arrives in two stages: the area up front, the actual
                   field once the permit is booked. */}
               <AdminSection title="Location">
                 <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -601,6 +737,8 @@ export default function AdminPage() {
                   </div>
                 </div>
               </AdminSection>
+                </div>
+              </details>
 
               <NotifyPlayersPanel
                 session={scrimmage}
@@ -719,6 +857,65 @@ export default function AdminPage() {
  * people, which is how a stale row from a re-signup ends up looking like a
  * duplicate. Grouping is the fix; lib/adminRoster.ts holds the rules.
  */
+/**
+ * What still needs doing, across every session at once.
+ *
+ * The reason the dashboard needed reorganizing. Editing a session was never
+ * the hard part; *noticing* which of several needs something is, and that
+ * knowledge used to be spread across the components that render each control —
+ * each deciding internally whether its moment had arrived — plus whatever the
+ * organizer held in their head. One session a week made that survivable.
+ *
+ * Flat across sessions on purpose: one list to read, not three dashboards to
+ * open. Each line selects the session it names, so noticing and acting are the
+ * same click.
+ *
+ * The roster is only available for the session being edited, so the items that
+ * count people appear for that one and are skipped for the rest rather than
+ * guessed at. That is `agendaFor`'s null-roster path, and it is why this needs
+ * no extra fetch per session.
+ */
+export function NeedsYou(props: {
+  sessions: SessionInfo[];
+  selectedId: string;
+  roster: AdminSignup[] | null;
+  busy: boolean;
+  onSelect: (sessionId: string) => void;
+}) {
+  const { sessions, selectedId, roster, busy, onSelect } = props;
+
+  const items = agendaForAll(
+    sessions.map((session) => ({
+      // The view carries everything agendaFor reads; the cast is to the sheet
+      // row type it is declared against.
+      session: session as unknown as Session,
+      roster: session.sessionId === selectedId ? roster : null,
+    }))
+  );
+
+  if (items.length === 0) return null;
+
+  return (
+    <Card className="mt-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Needs you</h2>
+      <ul className="mt-2 space-y-1">
+        {items.map((item) => (
+          <li key={`${item.sessionId}:${item.message}`} className="text-sm text-slate-700">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onSelect(item.sessionId)}
+              className="text-left hover:underline disabled:no-underline"
+            >
+              {item.message}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 export function RosterTable(props: {
   roster: AdminSignup[];
   busy: boolean;
@@ -1252,6 +1449,8 @@ export function CreateSessionForm(props: {
   const [cost, setCost] = useState('0');
   const [pricePerSpot, setPricePerSpot] = useState('10');
   const [area, setArea] = useState('');
+  const [opens, setOpens] = useState('');
+  const [closes, setCloses] = useState('');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -1267,10 +1466,17 @@ export function CreateSessionForm(props: {
           cost: Number(cost),
           pricePerSpot: Number(pricePerSpot),
           locationArea: area,
+          // '' on both means the usual Monday-to-Tuesday window, derived from
+          // the game date. A midweek game has to fill them in, and the server
+          // refuses to create one that does not.
+          registrationOpensAt: localInputToIso(opens),
+          registrationClosesAt: localInputToIso(closes),
         }),
         fallbackError: 'Create failed',
       });
       setGameDate('');
+      setOpens('');
+      setCloses('');
       onCreated((data.session as { sessionId: string }).sessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1284,8 +1490,10 @@ export function CreateSessionForm(props: {
       <form onSubmit={handleSubmit} className="space-y-2">
         <h2 className="font-semibold text-slate-900">Create a new session</h2>
         <p className="text-xs text-slate-500">
-          Game day must be a Friday, Saturday, or Sunday. Created with registration <strong>closed</strong>. The
-          Monday 9am job opens whichever session belongs to that week, so nobody can sign up early.
+          Game day can be any day. Created with registration <strong>closed</strong>. The Monday 9am job opens
+          whichever session belongs to that week, so nobody can sign up early. Leave the registration times blank for
+          the usual Monday 9am to Tuesday midnight — a Monday game needs its own, because the usual window would close
+          after it had been played.
         </p>
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Date" htmlFor="create-session-date">
@@ -1347,6 +1555,24 @@ export function CreateSessionForm(props: {
               placeholder="Mississauga"
               value={area}
               onChange={(e) => setArea(e.target.value)}
+              className={`${controlClass} w-full`}
+            />
+          </Field>
+          <Field label="Registration opens" htmlFor="create-session-opens" hint="Blank = the usual Monday 9am.">
+            <input
+              id="create-session-opens"
+              type="datetime-local"
+              value={opens}
+              onChange={(e) => setOpens(e.target.value)}
+              className={`${controlClass} w-full`}
+            />
+          </Field>
+          <Field label="Registration closes" htmlFor="create-session-closes" hint="Blank = the usual Tuesday midnight.">
+            <input
+              id="create-session-closes"
+              type="datetime-local"
+              value={closes}
+              onChange={(e) => setCloses(e.target.value)}
               className={`${controlClass} w-full`}
             />
           </Field>

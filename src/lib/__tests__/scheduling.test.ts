@@ -38,12 +38,27 @@ const MONDAY_9AM = new Date('2026-07-06T13:00:00.000Z');
 // as the Tuesday-close case in time.test.ts.
 const TUESDAY_MIDNIGHT = new Date('2026-07-07T04:00:00.000Z');
 
+/**
+ * Both jobs act on every session the week holds, so they report a list. Most
+ * cases below concern one session, and this asserts that and unwraps it —
+ * failing loudly if a case that meant one session quietly touched several.
+ */
+function only(run: { results: { sessionId: string; skipped: boolean; reason?: string }[] }) {
+  expect(run.results).toHaveLength(1);
+  return run.results[0];
+}
+
 describe('openRegistrationForUpcomingSession', () => {
-  it('creates a default Friday session when nothing exists yet for the week', async () => {
+  it('invents nothing when the week is empty, leaving that to the watchdog', async () => {
+    // It used to create a default Friday session here. Now that every session
+    // is made by hand, on any day, with its own schedule, a row the app
+    // invented would show on every player's homepage as a real game. The
+    // organizer is told instead — see weekWatchdog's `nothing-scheduled`.
     const result = await openRegistrationForUpcomingSession(MONDAY_9AM);
 
-    expect(result).toEqual({ sessionId: '2026-07-10', skipped: false });
-    expect(store.sessions.get('2026-07-10')).toMatchObject({ gameDate: '2026-07-10', status: 'open' });
+    expect(only(result).skipped).toBe(true);
+    expect(only(result).reason).toMatch(/no session exists/i);
+    expect(store.sessions.size).toBe(0);
   });
 
   it('opens the already-scheduled Saturday session instead of creating a duplicate Friday one', async () => {
@@ -51,16 +66,56 @@ describe('openRegistrationForUpcomingSession', () => {
 
     const result = await openRegistrationForUpcomingSession(MONDAY_9AM);
 
-    expect(result).toEqual({ sessionId: '2026-07-11', skipped: false });
+    expect(only(result)).toEqual({ sessionId: '2026-07-11', skipped: false });
     expect(store.sessions.get('2026-07-11')?.status).toBe('open');
     expect(store.sessions.has('2026-07-10')).toBe(false); // no default Friday row created alongside it
   });
 
-  it('skips without touching the sheet when not near 9am ET (DST-offset duplicate firing)', async () => {
-    const result = await openRegistrationForUpcomingSession(new Date('2026-07-06T14:00:00.000Z'));
+  it('opens every session the week holds, not just the first', async () => {
+    // The bug this whole change exists to fix: the lookup returned the first
+    // of Friday/Saturday/Sunday, so a Sunday game beside a Friday one never
+    // opened and was invisible everywhere else too.
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
+    store.sessions.set('2026-07-12', makeSession({ sessionId: '2026-07-12', gameDate: '2026-07-12', status: 'closed' }));
 
-    expect(result.skipped).toBe(true);
-    expect(store.sessions.size).toBe(0);
+    const result = await openRegistrationForUpcomingSession(MONDAY_9AM);
+
+    expect(result.changed).toBe(2);
+    expect(store.sessions.get('2026-07-10')?.status).toBe('open');
+    expect(store.sessions.get('2026-07-12')?.status).toBe('open');
+  });
+
+  it('still opens when GitHub Actions fires hours late', async () => {
+    // The bug this replaced. The job gated on being within 59 minutes of 9am
+    // ET, and GitHub has been firing it around five hours late every week —
+    // so every firing was read as the seasonal duplicate and skipped, while
+    // the workflow went green. 2pm ET, five hours past the intended open.
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
+
+    const result = await openRegistrationForUpcomingSession(new Date('2026-07-06T18:00:00.000Z'));
+
+    expect(only(result)).toEqual({ sessionId: '2026-07-10', skipped: false });
+    expect(store.sessions.get('2026-07-10')?.status).toBe('open');
+  });
+
+  it('discards a duplicate firing because the session is already open', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'open' }));
+
+    const result = await openRegistrationForUpcomingSession(MONDAY_9AM);
+
+    expect(only(result).skipped).toBe(true);
+    expect(only(result).reason).toMatch(/already open/i);
+  });
+
+  it("does not open early when the session's window has not arrived", async () => {
+    // Sunday of the *following* week, whose registration opens a week later.
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
+
+    const result = await openRegistrationForUpcomingSession(new Date('2026-07-05T13:00:00.000Z'));
+
+    expect(only(result).skipped).toBe(true);
+    expect(only(result).reason).toMatch(/does not open until/i);
+    expect(store.sessions.get('2026-07-10')?.status).toBe('closed');
   });
 });
 
@@ -70,13 +125,13 @@ describe('closeRegistrationForCurrentSession', () => {
 
     const result = await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
 
-    expect(result).toEqual({ sessionId: '2026-07-12', skipped: false });
+    expect(only(result)).toEqual({ sessionId: '2026-07-12', skipped: false });
     expect(store.sessions.get('2026-07-12')?.status).toBe('closed');
   });
 
   it('skips when no session exists for the week under any of the three candidates', async () => {
     const result = await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
-    expect(result).toEqual({ sessionId: '2026-07-10', skipped: true, reason: expect.stringMatching(/no session exists/i) });
+    expect(only(result)).toEqual({ sessionId: '2026-07-10', skipped: true, reason: expect.stringMatching(/no session exists/i) });
   });
 
   it('discards the DST-offset duplicate firing because the session is no longer open', async () => {
@@ -87,8 +142,8 @@ describe('closeRegistrationForCurrentSession', () => {
 
     const result = await closeRegistrationForCurrentSession(new Date('2026-07-07T05:00:00.000Z'));
 
-    expect(result.skipped).toBe(true);
-    expect(result.reason).toMatch(/already closed/i);
+    expect(only(result).skipped).toBe(true);
+    expect(only(result).reason).toMatch(/already closed/i);
     expect(sendPush).not.toHaveBeenCalled();
   });
 
@@ -100,7 +155,7 @@ describe('closeRegistrationForCurrentSession', () => {
     // never closed; delays this long are routine on GitHub's scheduler.
     const result = await closeRegistrationForCurrentSession(new Date('2026-07-07T09:00:00.000Z'));
 
-    expect(result).toEqual({ sessionId: '2026-07-10', skipped: false });
+    expect(only(result)).toEqual({ sessionId: '2026-07-10', skipped: false });
     expect(store.sessions.get('2026-07-10')?.status).toBe('closed');
     expect(sendPush).toHaveBeenCalled();
   });
@@ -110,8 +165,8 @@ describe('closeRegistrationForCurrentSession', () => {
 
     const result = await closeRegistrationForCurrentSession(MONDAY_9AM);
 
-    expect(result.skipped).toBe(true);
-    expect(result.reason).toMatch(/does not close until/i);
+    expect(only(result).skipped).toBe(true);
+    expect(only(result).reason).toMatch(/does not close until/i);
     expect(store.sessions.get('2026-07-10')?.status).toBe('open');
     expect(sendPush).not.toHaveBeenCalled();
   });
@@ -154,8 +209,19 @@ describe('closeRegistrationForCurrentSession', () => {
 
     const result = await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
 
-    expect(result).toEqual({ sessionId: '2026-07-10', skipped: false });
+    expect(only(result)).toEqual({ sessionId: '2026-07-10', skipped: false });
     expect(store.sessions.get('2026-07-10')?.status).toBe('closed');
+  });
+
+  it('closes every session the week holds, alerting for each', async () => {
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'open' }));
+    store.sessions.set('2026-07-12', makeSession({ sessionId: '2026-07-12', gameDate: '2026-07-12', status: 'open' }));
+
+    const result = await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
+
+    expect(result.changed).toBe(2);
+    expect(store.sessions.get('2026-07-10')?.status).toBe('closed');
+    expect(store.sessions.get('2026-07-12')?.status).toBe('closed');
   });
 });
 

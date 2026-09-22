@@ -136,9 +136,13 @@ describe('game dates and times, via validateReschedule', () => {
     expect(on('2026-07-12')).toBe('2026-07-12'); // Sunday
   });
 
-  it('rejects a Monday-through-Thursday date', () => {
-    expect(() => on('2026-07-06')).toThrow(/Friday, Saturday, or Sunday/); // Monday
-    expect(() => on('2026-07-09')).toThrow(/Friday, Saturday, or Sunday/); // Thursday
+  // The weekday allowlist is gone. What it was standing in for — the
+  // milestones coming in order — is checked by assertScheduleOrdering, which
+  // has the whole session rather than one field. See adminFlow's tests.
+  it('accepts any other weekday too', () => {
+    expect(on('2026-07-06')).toBe('2026-07-06'); // Monday
+    expect(on('2026-07-08')).toBe('2026-07-08'); // Wednesday
+    expect(on('2026-07-09')).toBe('2026-07-09'); // Thursday
   });
 
   it('rejects a malformed date string', () => {
@@ -277,6 +281,9 @@ describe('validateSessionCreate', () => {
       cost: 0,
       pricePerSpot: 10,
       locationArea: '',
+      rosterLockAt: '',
+      registrationOpensAt: '',
+      registrationClosesAt: '',
     });
   });
 
@@ -289,9 +296,33 @@ describe('validateSessionCreate', () => {
     expect(created).toMatchObject({ gameTime: '19:30', capacity: 20, locationArea: 'Mississauga' });
   });
 
-  it('still requires a valid game date', () => {
-    expect(() => validateSessionCreate({ gameDate: '2026-07-06' }, CREATE_DEFAULTS)).toThrow(/Friday/);
+  it('still requires a real, well-formed game date', () => {
     expect(() => validateSessionCreate({}, CREATE_DEFAULTS)).toThrow(/ISO date/);
+    expect(() => validateSessionCreate({ gameDate: '2026-02-30' }, CREATE_DEFAULTS)).toThrow(/real calendar date/);
+  });
+
+  it('carries a supplied schedule through', () => {
+    const created = validateSessionCreate(
+      {
+        gameDate: '2026-07-10',
+        registrationOpensAt: '2026-07-06T13:00:00.000Z',
+        registrationClosesAt: '2026-07-07T04:00:00.000Z',
+        rosterLockAt: '2026-07-10T17:00:00.000Z',
+      },
+      CREATE_DEFAULTS
+    );
+
+    expect(created).toMatchObject({
+      registrationOpensAt: '2026-07-06T13:00:00.000Z',
+      registrationClosesAt: '2026-07-07T04:00:00.000Z',
+      rosterLockAt: '2026-07-10T17:00:00.000Z',
+    });
+  });
+
+  it('rejects a schedule field that is not a date', () => {
+    expect(() => validateSessionCreate({ gameDate: '2026-07-10', registrationOpensAt: 'soon' }, CREATE_DEFAULTS)).toThrow(
+      /registrationOpensAt must be a date and time/
+    );
   });
 });
 

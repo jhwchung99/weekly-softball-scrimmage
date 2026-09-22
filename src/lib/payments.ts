@@ -134,5 +134,5 @@ export function paymentStateOf(input: { amountOwed: number; paid: boolean; roste
 export function paymentOpensAt(
   session: Pick<Session, 'gameDate' | 'gameTime'> & Partial<Pick<Session, 'rosterLockAt'>>
 ): Date {
-  return getWeeklyMilestones(session.gameDate, session.gameTime, session.rosterLockAt).cutoffStart;
+  return getWeeklyMilestones(session.gameDate, session.gameTime, session).cutoffStart;
 }

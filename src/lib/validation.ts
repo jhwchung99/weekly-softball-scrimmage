@@ -104,10 +104,13 @@ function validateGameDate(value: unknown): string {
   if (!isReal) {
     throw new ApiError(400, 'gameDate must be a real calendar date.');
   }
-  const weekday = date.getUTCDay(); // 0 = Sunday, 5 = Friday, 6 = Saturday
-  if (weekday !== 5 && weekday !== 6 && weekday !== 0) {
-    throw new ApiError(400, 'gameDate must fall on a Friday, Saturday, or Sunday.');
-  }
+  // Any weekday. This used to allow only Friday, Saturday and Sunday, which
+  // was standing in for a rule it could not express: what actually has to hold
+  // is that the session's milestones come in order. A Monday game breaks that
+  // on the *derived* window (it would close after the game had been played),
+  // but a hand-typed window on any day can break it too, and the weekday check
+  // caught none of those. `assertScheduleOrdering` in adminFlow is the real
+  // rule now, and it has the whole session in hand rather than one field.
   return trimmed;
 }
 
@@ -352,6 +355,8 @@ export interface ValidatedSessionEdit {
     status?: 'open' | 'closed' | 'cancelled';
     cost?: number;
     rosterLockAt?: string;
+    registrationOpensAt?: string;
+    registrationClosesAt?: string;
     format?: 'game' | 'practice';
     practicePollThreshold?: number;
   };
@@ -367,6 +372,8 @@ const EDITABLE_FIELDS = [
   'gameDate',
   'gameTime',
   'rosterLockAt',
+  'registrationOpensAt',
+  'registrationClosesAt',
   'capacity',
   'numFields',
   'status',
@@ -405,14 +412,34 @@ const EDITABLE_FIELDS = [
  * email refuses to send all day. If it is worth closing, the check belongs in
  * `adminFlow.reviseSession`, which has the session in hand.
  */
-export function validateRosterLockAt(value: unknown): string {
-  if (typeof value !== 'string') throw new ApiError(400, 'rosterLockAt must be a string.');
+function validateInstant(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string') throw new ApiError(400, `${fieldName} must be a string.`);
   const trimmed = value.trim();
   if (trimmed === '') return '';
 
   const at = new Date(trimmed);
-  if (Number.isNaN(at.getTime())) throw new ApiError(400, 'rosterLockAt must be a date and time.');
+  if (Number.isNaN(at.getTime())) throw new ApiError(400, `${fieldName} must be a date and time.`);
   return at.toISOString();
+}
+
+export function validateRosterLockAt(value: unknown): string {
+  return validateInstant(value, 'rosterLockAt');
+}
+
+/**
+ * When registration should open and close, overriding the derived default.
+ *
+ * Same shape and same gap as `validateRosterLockAt`: readable-date checks
+ * only, because whether a window is *sensible* depends on the game it belongs
+ * to and these are handed the value alone. `assertScheduleOrdering` is the
+ * layer with both.
+ */
+export function validateRegistrationOpensAt(value: unknown): string {
+  return validateInstant(value, 'registrationOpensAt');
+}
+
+export function validateRegistrationClosesAt(value: unknown): string {
+  return validateInstant(value, 'registrationClosesAt');
 }
 
 export function validateSessionEdit(body: unknown): ValidatedSessionEdit {
@@ -434,6 +461,10 @@ export function validateSessionEdit(body: unknown): ValidatedSessionEdit {
   if (input.locationUrl !== undefined) updates.locationUrl = validateLocationUrl(input.locationUrl);
   if (input.cost !== undefined) updates.cost = validateCost(input.cost);
   if (input.rosterLockAt !== undefined) updates.rosterLockAt = validateRosterLockAt(input.rosterLockAt);
+  if (input.registrationOpensAt !== undefined)
+    updates.registrationOpensAt = validateRegistrationOpensAt(input.registrationOpensAt);
+  if (input.registrationClosesAt !== undefined)
+    updates.registrationClosesAt = validateRegistrationClosesAt(input.registrationClosesAt);
 
   if (input.status !== undefined) {
     const status = SESSION_STATUSES.find((s) => s === input.status);
@@ -471,6 +502,12 @@ export interface ValidatedSessionCreate {
   cost: number;
   pricePerSpot: number;
   locationArea: string;
+  /** The session's own schedule. '' on any of them means the derived default,
+   * which is what almost every session uses — the create form prefills them so
+   * the organizer can adjust before saving, but sending nothing is legal. */
+  rosterLockAt: string;
+  registrationOpensAt: string;
+  registrationClosesAt: string;
 }
 
 /**
@@ -479,7 +516,17 @@ export interface ValidatedSessionCreate {
  * which the caller passes in so the schedule's constants stay in one place.
  */
 export function validateSessionCreate(
-  input: { gameDate?: unknown; gameTime?: unknown; capacity?: unknown; cost?: unknown; pricePerSpot?: unknown; locationArea?: unknown },
+  input: {
+    gameDate?: unknown;
+    gameTime?: unknown;
+    capacity?: unknown;
+    cost?: unknown;
+    pricePerSpot?: unknown;
+    locationArea?: unknown;
+    rosterLockAt?: unknown;
+    registrationOpensAt?: unknown;
+    registrationClosesAt?: unknown;
+  },
   defaults: { gameTime: string; capacity: number; pricePerSpot: number }
 ): ValidatedSessionCreate {
   return {
@@ -489,6 +536,11 @@ export function validateSessionCreate(
     cost: input.cost !== undefined ? validateCost(input.cost) : 0,
     pricePerSpot: input.pricePerSpot !== undefined ? validateCost(input.pricePerSpot) : defaults.pricePerSpot,
     locationArea: input.locationArea !== undefined ? validateLocationArea(input.locationArea) : '',
+    rosterLockAt: input.rosterLockAt !== undefined ? validateRosterLockAt(input.rosterLockAt) : '',
+    registrationOpensAt:
+      input.registrationOpensAt !== undefined ? validateRegistrationOpensAt(input.registrationOpensAt) : '',
+    registrationClosesAt:
+      input.registrationClosesAt !== undefined ? validateRegistrationClosesAt(input.registrationClosesAt) : '',
   };
 }
 

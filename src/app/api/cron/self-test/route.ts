@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireCronSecret } from '../../../../lib/cronAuth';
-import { getSessionByAnyId } from '../../../../sheets/sessions';
+import { getSessionsByIds } from '../../../../sheets/sessions';
 import { listSignupsForSession } from '../../../../sheets/signups';
 import { currentWeekGameDayCandidates } from '../../../../lib/time';
 import { countConfirmedSpots } from '../../../../lib/payments';
@@ -52,11 +52,19 @@ export async function POST(request: Request) {
     };
 
     await run('sheets', async () => {
-      const session = await getSessionByAnyId(currentWeekGameDayCandidates(startedAt));
-      if (!session) return 'read Sessions tab; no session for this week';
-      const signups = await listSignupsForSession(session.sessionId);
-      const confirmed = countConfirmedSpots(signups);
-      return `session ${session.sessionId} (${session.status}), ${confirmed}/${session.capacity} confirmed, ${signups.length} signup rows`;
+      const sessions = await getSessionsByIds(currentWeekGameDayCandidates(startedAt));
+      if (sessions.length === 0) return 'read Sessions tab; no session for this week';
+
+      // Every session the week holds, not just the first: a Sunday game going
+      // unread is precisely the failure this check should surface.
+      const described = await Promise.all(
+        sessions.map(async (session) => {
+          const signups = await listSignupsForSession(session.sessionId);
+          const confirmed = countConfirmedSpots(signups);
+          return `${session.sessionId} (${session.status}), ${confirmed}/${session.capacity} confirmed, ${signups.length} signup rows`;
+        })
+      );
+      return described.join('; ');
     });
 
     /**

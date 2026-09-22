@@ -20,7 +20,8 @@ import type { PushOptions } from '../ntfy';
 const sendPush = vi.fn<(title: string, message: string, options?: PushOptions) => Promise<void>>(async () => undefined);
 vi.mock('../ntfy', () => ({ sendPush }));
 
-const { missedJobsFor, reportMissedJobs, forgetWatchdogReports } = await import('../weekWatchdog');
+const { missedJobsFor,
+  missedJobsForWeek, reportMissedJobs, forgetWatchdogReports } = await import('../weekWatchdog');
 
 // A Friday, so currentWeekGameDayCandidates lines up with the fixture.
 const GAME_DATE = '2026-07-10';
@@ -33,7 +34,10 @@ const past = (at: Date, hours: number) => new Date(at.getTime() + hours * HOUR);
 const week = (over: Parameters<typeof makeSession>[0] = {}) =>
   makeSession({ sessionId: GAME_DATE, gameDate: GAME_DATE, gameTime: '18:00', ...over });
 
-const jobs = (session: ReturnType<typeof makeSession> | null, now: Date) => missedJobsFor(session, now).map((m) => m.job);
+const jobs = (session: ReturnType<typeof makeSession>, now: Date) => missedJobsFor(session, now).map((m) => m.job);
+/** The week-level view, which is where "nothing is scheduled at all" lives. */
+const weekJobs = (sessions: ReturnType<typeof makeSession>[], now: Date) =>
+  missedJobsForWeek(sessions, now).map((m) => m.job);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -42,10 +46,27 @@ beforeEach(() => {
 });
 
 describe('missedJobsFor — open-registration', () => {
-  it('reports a week that never got created', () => {
-    // The worst case: Monday came, registration never opened, and the first
-    // signal without this is a player asking why they cannot sign up.
-    expect(jobs(null, past(M.registrationOpensAt, 3))).toContain('open-registration');
+  it('reports a week with nothing scheduled at all', () => {
+    // The worst case: Monday came, nothing exists, and the first signal
+    // without this is a player asking why they cannot sign up. Reported rather
+    // than fixed by inventing a session — see missedJobsForWeek.
+    expect(weekJobs([], past(M.registrationOpensAt, 3))).toContain('nothing-scheduled');
+  });
+
+  it('says nothing about an empty week before registration was due to open', () => {
+    expect(weekJobs([], new Date(M.registrationOpensAt.getTime() - HOUR))).toEqual([]);
+  });
+
+  it('checks every session the week holds, not just the first', () => {
+    // A Sunday game stuck closed beside a healthy Friday one is exactly what
+    // a single-session watchdog could not see.
+    const friday = week({ status: 'open' });
+    const sunday = week({ sessionId: '2026-07-12', gameDate: '2026-07-12', status: 'closed', teamsStatus: '' });
+
+    const reported = missedJobsForWeek([friday, sunday], past(M.registrationOpensAt, 3));
+
+    expect(reported.map((m) => m.sessionId)).toEqual(['2026-07-12']);
+    expect(reported[0].job).toBe('open-registration');
   });
 
   it('reports a session still closed inside its own registration window', () => {
@@ -53,14 +74,14 @@ describe('missedJobsFor — open-registration', () => {
   });
 
   it('says nothing before registration was due to open', () => {
-    expect(jobs(null, new Date(M.registrationOpensAt.getTime() - HOUR))).toEqual([]);
+    expect(jobs(week({ status: 'closed' }), new Date(M.registrationOpensAt.getTime() - HOUR))).toEqual([]);
   });
 
   it('allows the job to be late before calling it missed', () => {
     // GitHub's scheduled runs are routinely delayed, and open-registration
     // itself tolerates being up to 59 minutes off its hour. Alerting at one
     // minute past would make the alert meaningless.
-    expect(jobs(null, past(M.registrationOpensAt, 1))).toEqual([]);
+    expect(jobs(week({ status: 'closed' }), past(M.registrationOpensAt, 1))).toEqual([]);
   });
 
   it('says nothing about a week that opened correctly', () => {
@@ -113,37 +134,37 @@ describe('missedJobsFor — a cancelled week', () => {
 
 describe('reportMissedJobs', () => {
   it('pushes one alert per missed job', async () => {
-    await reportMissedJobs(null, past(M.registrationOpensAt, 3));
+    await reportMissedJobs([], past(M.registrationOpensAt, 3));
 
     expect(sendPush).toHaveBeenCalledTimes(1);
-    expect(sendPush.mock.calls[0][0]).toContain('open-registration');
+    expect(sendPush.mock.calls[0][0]).toContain('nothing-scheduled');
   });
 
   it('says how to fix it, since the recovery is a button someone has to press', async () => {
-    await reportMissedJobs(null, past(M.registrationOpensAt, 3));
+    await reportMissedJobs([], past(M.registrationOpensAt, 3));
 
     expect(String(sendPush.mock.calls[0][1])).toMatch(/Actions tab/);
   });
 
   it('wakes the phone when players are blocked, and does not otherwise', async () => {
-    await reportMissedJobs(null, past(M.registrationOpensAt, 3));
+    await reportMissedJobs([], past(M.registrationOpensAt, 3));
     expect(sendPush.mock.calls[0][2]).toMatchObject({ priority: 5 });
 
     sendPush.mockClear();
     forgetWatchdogReports();
-    await reportMissedJobs(week({ status: 'closed', teamsStatus: '' }), past(M.cutoffStart, 3));
+    await reportMissedJobs([week({ status: 'closed', teamsStatus: '' })], past(M.cutoffStart, 3));
     expect(sendPush.mock.calls[0][2]).toMatchObject({ priority: 4 });
   });
 
   it('sends nothing when the week is on track', async () => {
-    await reportMissedJobs(week({ status: 'open' }), past(M.registrationOpensAt, 3));
+    await reportMissedJobs([week({ status: 'open' })], past(M.registrationOpensAt, 3));
 
     expect(sendPush).not.toHaveBeenCalled();
   });
 
   it('does not push once per visitor on a busy Monday', async () => {
     const now = past(M.registrationOpensAt, 3);
-    for (let i = 0; i < 5; i++) await reportMissedJobs(null, now);
+    for (let i = 0; i < 5; i++) await reportMissedJobs([], now);
 
     expect(sendPush).toHaveBeenCalledTimes(1);
   });
@@ -155,16 +176,16 @@ describe('reportMissedJobs', () => {
     } as never);
 
     const now = past(M.registrationOpensAt, 3);
-    await reportMissedJobs(null, now);
+    await reportMissedJobs([], now);
     forgetWatchdogReports(); // a different serverless instance, with no memory
-    await reportMissedJobs(null, now);
+    await reportMissedJobs([], now);
 
     expect(sendPush).toHaveBeenCalledTimes(1);
   });
 
   it('still reports with no Redis, because silence is the failure being fixed', async () => {
     getRedis.mockReturnValue(null);
-    await reportMissedJobs(null, past(M.registrationOpensAt, 3));
+    await reportMissedJobs([], past(M.registrationOpensAt, 3));
 
     expect(sendPush).toHaveBeenCalled();
   });
@@ -172,7 +193,7 @@ describe('reportMissedJobs', () => {
   it('swallows a push failure rather than failing the page load it runs off', async () => {
     sendPush.mockRejectedValue(new Error('ntfy down'));
 
-    await expect(reportMissedJobs(null, past(M.registrationOpensAt, 3))).resolves.toBeUndefined();
+    await expect(reportMissedJobs([], past(M.registrationOpensAt, 3))).resolves.toBeUndefined();
   });
 });
 

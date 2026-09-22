@@ -52,6 +52,8 @@ const SESSION: Session = {
   practicePollStatus: '',
   practicePollClosesAt: '',
   practicePollThreshold: 0,
+  registrationOpenedAt: '',
+  registrationClosedAt: '',
 };
 
 function signup(email: string, fullName: string, over: Partial<Signup> = {}): Signup {

@@ -8,9 +8,15 @@ any of it.
 
 ## The rules
 
-1. **Say "the game".** Not "scrimmage", not "session". A player has one game a
-   week and no risk of confusing it with anything, so the precision the code
+1. **Say "the game", and name the day when there is more than one.** Not
+   "scrimmage", not "session". Where only one game is in view — a card about
+   it, an email about it — "the game" is right, and the precision the code
    needs is precision with no reader.
+
+   A week can hold two. Where it does, "this week" stops picking one out, so
+   copy names the day instead: "You're already signed up for Friday", not "for
+   this week". Use `formatGameDate` and get "Friday, July 10", never the ISO
+   date (rule 2).
 
 2. **Human dates.** `formatGameDay` gives "Friday, July 10 at 6pm". Never
    `2026-07-10 at 18:00` in a sentence a player reads. The admin console keeps

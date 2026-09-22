@@ -59,7 +59,9 @@ type Reply = { ok: boolean; body: unknown; status?: number };
 /** Answers each URL the console asks for, so a case only names what it changes. */
 function routes(over: Record<string, () => Reply> = {}) {
   const table: Record<string, () => Reply> = {
-    '/api/sessions/current': () => ({ ok: true, body: { session: SESSION } }),
+    // A list since 2026-09-22: the console picks which session to edit, where
+    // the route used to pick for it and could only ever name one.
+    '/api/sessions/current': () => ({ ok: true, body: { sessions: [SESSION] } }),
     '/api/admin/sessions/2026-07-10': () => ({ ok: true, body: { session: SESSION } }),
     '/api/admin/sessions/2026-07-10/signups': () => ({ ok: true, body: { signups: [SIGNUP] } }),
     '/api/admin/sessions/2026-07-10/teams': () => ({ ok: true, body: { teams: [], teamsStatus: '', numFields: 1 } }),
@@ -153,6 +155,25 @@ describe('AdminPage', () => {
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lets the organizer pick between two sessions in the same week', async () => {
+    // Before this, /api/sessions/current returned the first of Fri/Sat/Sun
+    // that had a row — so a Sunday game created beside a Friday one could not
+    // be reached from the console at all.
+    const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12' };
+    routes({
+      '/api/sessions/current': () => ({ ok: true, body: { sessions: [SESSION, sunday] } }),
+      '/api/admin/sessions/2026-07-12': () => ({ ok: true, body: { session: sunday } }),
+      '/api/admin/sessions/2026-07-12/signups': () => ({ ok: true, body: { signups: [] } }),
+    });
+
+    render(<AdminPage />);
+    await screen.findByText('Kevin Kim');
+
+    await userEvent.click(screen.getByRole('button', { name: /2026-07-12/ }));
+
+    await waitFor(() => expect(screen.getByLabelText(/Session \(defaults/)).toHaveValue('2026-07-12'));
   });
 
   it('follows a rescheduled session to its new id', async () => {

@@ -16,6 +16,43 @@ const SUMMER = { gameDate: '2026-07-10', gameTime: '18:00' };
 /** Friday 2026-01-09, 18:00 ET. January is EST, so Eastern is UTC-5. */
 const WINTER = { gameDate: '2026-01-09', gameTime: '18:00' };
 
+/**
+ * A Monday game with its own window, which is the case the derived schedule
+ * cannot express: the default would close registration 12am Tuesday, after the
+ * game had been played, so phaseOf would read 'open' through game time and
+ * never reach 'locked'. assertScheduleOrdering refuses to save one without a
+ * window; this is what the window then buys.
+ */
+const MIDWEEK = {
+  gameDate: '2026-07-06', // Monday
+  gameTime: '18:00',
+  registrationOpensAt: '2026-06-29T13:00:00.000Z', // the Monday before, 9am ET
+  registrationClosesAt: '2026-07-04T04:00:00.000Z', // Saturday midnight ET
+};
+
+describe('phaseOf — a session with its own registration window', () => {
+  it("is 'before' until the session's own open time", () => {
+    expect(phaseOf(MIDWEEK, new Date('2026-06-29T12:59:00Z'))).toBe('before');
+    expect(phaseOf(MIDWEEK, new Date('2026-06-29T13:00:00Z'))).toBe('open');
+  });
+
+  it("closes at the session's own close time, not the derived Tuesday", () => {
+    expect(phaseOf(MIDWEEK, new Date('2026-07-04T03:59:00Z'))).toBe('open');
+    expect(phaseOf(MIDWEEK, new Date('2026-07-04T04:00:00Z'))).toBe('closed');
+  });
+
+  it('reaches locked and played, which the derived window never would', () => {
+    // Five hours before a 6pm Monday game = 1pm ET = 17:00Z.
+    expect(phaseOf(MIDWEEK, new Date('2026-07-06T17:00:00Z'))).toBe('locked');
+    expect(phaseOf(MIDWEEK, new Date('2026-07-06T22:00:00Z'))).toBe('played');
+
+    // Without the window, the same instant two hours before the game still
+    // reads 'open' — the failure the window exists to prevent.
+    const noWindow = { gameDate: '2026-07-06', gameTime: '18:00' };
+    expect(phaseOf(noWindow, new Date('2026-07-06T20:00:00Z'))).toBe('open');
+  });
+});
+
 describe('phaseOf', () => {
   it("is 'before' until registration opens on the Monday", () => {
     // Monday 2026-07-06 09:00 EDT = 13:00Z. One minute earlier is still before.

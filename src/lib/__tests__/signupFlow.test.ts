@@ -169,6 +169,16 @@ describe('signUpForSession', () => {
     await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/already signed up/);
   });
 
+  it('names the day it is refusing, since a week can hold more than one game', async () => {
+    // Was "You're already signed up for this week". A player holding a Friday
+    // spot and asking for Sunday has to be told which claim is the duplicate.
+    store.sessions.set('2099-01-01', makeSession({ capacity: 5 }));
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    await signUpForSession('2099-01-01', 'a@dummy.test', true);
+
+    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/Thursday, January 1/);
+  });
+
   it('requires a player profile to exist first', async () => {
     store.sessions.set('2099-01-01', makeSession());
     await expect(signUpForSession('2099-01-01', 'nobody@dummy.test', true)).rejects.toThrow(/player profile/);

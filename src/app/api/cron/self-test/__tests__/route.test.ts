@@ -12,8 +12,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const requireCronSecret = vi.fn();
 vi.mock('../../../../../lib/cronAuth', () => ({ requireCronSecret }));
 
-const getSessionByAnyId = vi.fn(async () => null);
-vi.mock('../../../../../sheets/sessions', () => ({ getSessionByAnyId }));
+const getSessionsByIds = vi.fn(async () => []);
+vi.mock('../../../../../sheets/sessions', () => ({ getSessionsByIds }));
 vi.mock('../../../../../sheets/signups', () => ({ listSignupsForSession: vi.fn(async () => []) }));
 
 const getRedis = vi.fn();
