@@ -123,6 +123,21 @@ export default function GuidelinesPage() {
         ))}
       </Section>
 
+      <Section title="When not many sign up">
+        <li>Some weeks there are not enough people for a game</li>
+        <li>
+          When that happens the organizer may ask everyone confirmed whether they would come out for{' '}
+          <strong>BP/Practice</strong> instead. You answer yes or no on the homepage
+        </li>
+        <li>You can change your answer while the question is still open</li>
+        <li>The answers do not decide it. The organizer reads them and says what is happening</li>
+        <li>
+          If you know someone who wants to play, tell the organizer and they can add them. A few more people may be
+          enough for a game
+        </li>
+        <li>On a BP/Practice week there are no teams, and the notes above about rovers and playing time do not apply</li>
+      </Section>
+
       <Section title="Something not working?">
         <li>Use the <strong>Report a bug or send feedback</strong> link at the bottom of any page</li>
         <li>It&apos;s logged for the organizer, along with your email and the page you were on, and they get a

@@ -10,6 +10,7 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
 import { paymentStateOf, paymentOpensAt } from '../lib/payments';
+import { formatEasternMoment } from '../lib/time';
 import { requestFor, type PlayerAction } from '../lib/homeConsole';
 import { sendApiRequest, asJson } from '../lib/apiRequest';
 import { SessionLocation } from '../components/SessionLocation';
@@ -281,6 +282,7 @@ export default function Home() {
                 onRefresh={loadHome}
                 onRequestSub={handleRequestSub}
                 onCancelSubRequest={handleCancelSubRequest}
+                onPollAnswered={loadHome}
               />
             )}
             {scrimmage.status !== 'cancelled' && authStatus === 'unauthenticated' && (
@@ -373,7 +375,11 @@ export default function Home() {
         </Card>
       )}
 
-      {teams && scrimmage && (
+      {/* No teams on a BP/Practice week. There are no sides to pick, and the
+          notes under the rosters are game rules: the rover at eight, the
+          3-girls rule, a team playing short. Showing them would be confident
+          advice about a game nobody is playing. */}
+      {teams && scrimmage && scrimmage.format !== 'practice' && (
         <TeamRosters teams={teams} numFields={scrimmage.numFields} highlightSignupId={mySignup?.signupId} />
       )}
     </main>
@@ -470,6 +476,110 @@ function LockedCancelNotice({ amount }: { amount: number }) {
   );
 }
 
+/**
+ * The practice poll, as one confirmed player sees it.
+ *
+ * Shows the tally to nobody. A player gets the question and their own
+ * answer; the counts are the organizer's, because an open poll reading
+ * "9 yes, 2 no" turns an honest answer into a vote on a decision that looks
+ * already settled.
+ *
+ * Stays on screen once the poll closes, read-only. That is for the player
+ * added by hand on Thursday, who would otherwise see no sign that the week
+ * was ever in question.
+ */
+export function PracticePollPanel(props: {
+  scrimmage: SessionInfo;
+  mySignup: SignupInfo;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  setError: (e: string | null) => void;
+  onAnswered: () => void;
+}) {
+  const { scrimmage, mySignup, busy, setBusy, setError, onAnswered } = props;
+
+  // Never asked: nothing to show, not even a closed panel.
+  if (scrimmage.practicePollStatus === '') return null;
+  // Only confirmed players are asked, so only they are told.
+  if (mySignup.status !== 'confirmed') return null;
+
+  const open = scrimmage.practicePollStatus === 'open';
+  const answer = mySignup.practicePollAnswer;
+
+  async function answerWith(value: 'yes' | 'no') {
+    setBusy(true);
+    setError(null);
+    try {
+      await sendApiRequest({
+        url: `/api/sessions/${encodeURIComponent(scrimmage.sessionId)}/practice-poll/answer`,
+        init: asJson({ answer: value }),
+        fallbackError: 'Could not save your answer',
+      });
+      // Reload rather than set local state: the panel then shows what the
+      // server stored, which is the same rule the rest of this page follows.
+      onAnswered();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <p className="font-semibold text-slate-900">
+        {open ? 'Not many signed up this week' : 'BP/Practice was being decided'}
+      </p>
+
+      {open ? (
+        <>
+          <p className="mt-1 text-sm text-slate-700">
+            Would you come out for BP/Practice instead of a game?
+          </p>
+          {scrimmage.practicePollClosesAt && (
+            <p className="mt-1 text-xs text-slate-600">
+              Answer by {formatEasternMoment(new Date(scrimmage.practicePollClosesAt))}.
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant={answer === 'yes' ? 'success' : 'secondary'}
+              disabled={busy}
+              onClick={() => answerWith('yes')}
+            >
+              Yes
+            </Button>
+            <Button
+              size="sm"
+              variant={answer === 'no' ? 'danger' : 'secondary'}
+              disabled={busy}
+              onClick={() => answerWith('no')}
+            >
+              No
+            </Button>
+          </div>
+          {answer && (
+            <p className="mt-2 text-xs text-slate-600">
+              You said {answer}. You can change this while the organizer is deciding.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-slate-600">
+            If you know someone who wants to play, message the organizer and they can add them. A few more
+            people may be enough for a game.
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-slate-700">
+          {answer
+            ? `You said ${answer}.`
+            : 'You did not answer. The organizer will say what is happening.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PlayerArea(props: {
   scrimmage: SessionInfo;
   /** From the server; null only before the first load resolves. */
@@ -489,6 +599,9 @@ export function PlayerArea(props: {
   onRefresh: () => void;
   onRequestSub: (targetEmail: string) => void;
   onCancelSubRequest: () => void;
+  /** Reload after a poll answer, so the panel shows what the server stored
+   * rather than what this browser hoped it stored. */
+  onPollAnswered: () => void;
 }) {
   const {
     scrimmage,
@@ -508,6 +621,7 @@ export function PlayerArea(props: {
     onRefresh,
     onRequestSub,
     onCancelSubRequest,
+    onPollAnswered,
   } = props;
 
   if (!loaded) {
@@ -528,11 +642,24 @@ export function PlayerArea(props: {
       <div className="mt-3">
         <p className="flex flex-wrap items-center gap-2 text-slate-800">
           You&apos;re <Badge status={mySignup.status === 'confirmed' ? 'confirmed' : 'waitlisted'}>
-            {mySignup.status === 'confirmed' ? 'confirmed to play' : 'on the waitlist'}
+            {mySignup.status === 'confirmed'
+              ? scrimmage.format === 'practice'
+                ? 'confirmed for BP/Practice'
+                : 'confirmed to play'
+              : 'on the waitlist'}
           </Badge>
           {mySignup.memberStatus === 'guest' ? '(as a guest)' : ''}
           {mySignup.status === 'waitlisted' && waitlistPosition !== null ? `#${waitlistPosition} in line` : ''}
         </p>
+
+        <PracticePollPanel
+          scrimmage={scrimmage}
+          mySignup={mySignup}
+          busy={busy}
+          setBusy={setBusy}
+          setError={setError}
+          onAnswered={onPollAnswered}
+        />
 
         {mySignup.status === 'confirmed' && costOwed !== null && (
           <PaymentPrompt

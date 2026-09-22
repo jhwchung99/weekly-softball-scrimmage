@@ -159,6 +159,7 @@ describe('adminRosterView', () => {
       'paid',
       'amountPaid',
       'attended',
+      'practicePollAnswer',
     ]);
   });
 
@@ -222,6 +223,9 @@ describe('sessionView', () => {
       'locationUrl',
       'teamsStatus',
       'rosterLockAt',
+      'format',
+      'practicePollStatus',
+      'practicePollClosesAt',
     ];
     expect(Object.keys(view).sort()).toEqual([...allowed].sort());
     for (const field of SESSION_HEADERS.filter((h) => !allowed.includes(h))) {
@@ -270,7 +274,21 @@ describe('mySignupView', () => {
       'paid',
       'subRequestTargetEmail',
       'subRequestStatus',
+      'practicePollAnswer',
     ]);
+  });
+
+  it('carries this player’s own poll answer and nobody else’s', () => {
+    // The privacy property the practice poll turns on. A player gets their
+    // own yes or no so the panel can show it back; the tally is the
+    // organizer's alone. An open poll showing "9 yes, 2 no" would turn an
+    // honest answer into a vote on a decision that looks already made.
+    const view = mySignupView(loaded());
+
+    expect(view).toHaveProperty('practicePollAnswer');
+    for (const leaked of ['yes', 'no', 'unanswered', 'yesNames', 'tally']) {
+      expect(view).not.toHaveProperty(leaked);
+    }
   });
 
   it('leaves the waiver, the payment record and the timestamps out', () => {

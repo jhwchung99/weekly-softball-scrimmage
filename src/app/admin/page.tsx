@@ -22,6 +22,15 @@ import {
   sessionInputsFor,
 } from '../../lib/adminConsole';
 import { sessionChangeAudience, unpaidAudience, messageAudience } from '../../lib/audiences';
+import {
+  canOpenPracticePoll,
+  tallyPracticePoll,
+  thresholdFor,
+  turnoutRecovered,
+  confirmedSpots,
+  practiceMessageSubject,
+  practiceMessageBody,
+} from '../../lib/practicePoll';
 import { groupRosterByPerson, countRoster, isActiveSignup } from '../../lib/adminRoster';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
@@ -95,6 +104,9 @@ export default function AdminPage() {
   const [subjectInput, setSubjectInput] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [messageWaitlisted, setMessageWaitlisted] = useState(false);
+  const [pollClosesAt, setPollClosesAt] = useState('');
+  const [pollNotify, setPollNotify] = useState(true);
+  const [thresholdInput, setThresholdInput] = useState('');
   const [costInput, setCostInput] = useState('');
   const [gameDateInput, setGameDateInput] = useState('');
   const [gameTimeInput, setGameTimeInput] = useState('');
@@ -124,6 +136,7 @@ export default function AdminPage() {
       setPhase(sessionRes.phase);
       const inputs = sessionInputsFor(sessionRes.session);
       setCapacityInput(inputs.capacity);
+      setThresholdInput(String(sessionRes.session.practicePollThreshold || ''));
       setCostInput(inputs.cost);
       setGameDateInput(inputs.gameDate);
       setGameTimeInput(inputs.gameTime);
@@ -204,6 +217,47 @@ export default function AdminPage() {
     return runAction({ kind: 'announce', sessionId, path, body }, (data) =>
       setNotice(announcementNotice(data as Partial<AnnouncementResult>))
     );
+  }
+
+  /**
+   * Open or close the practice poll.
+   *
+   * Confirms only when it will actually send, unlike sendAnnouncement which
+   * always does: closing a poll and opening one quietly both mail nobody, and
+   * a dialog on a harmless action teaches the organizer to click through
+   * dialogs, which defeats the point of having one (see the capacity save).
+   */
+  function setPoll(status: 'open' | 'closed') {
+    const willEmail = status === 'open' && pollNotify;
+    const confirmed = roster?.filter((r) => r.status === 'confirmed').length ?? 0;
+    if (willEmail && !window.confirm(`Email ${confirmed} confirmed player${confirmed === 1 ? '' : 's'} asking about BP/Practice?`)) {
+      return;
+    }
+    setNotice(null);
+    return runAction(
+      { kind: 'announce', sessionId, path: 'practice-poll', body: { status, closesAt: pollClosesAt, notify: pollNotify } },
+      async (data) => {
+        const announcement = (data as { announcement?: Partial<AnnouncementResult> }).announcement;
+        if (announcement) setNotice(announcementNotice(announcement));
+        await loadRoster(sessionId);
+      }
+    );
+  }
+
+  /**
+   * Mark the week as BP/Practice, or back to a game.
+   *
+   * Emails nobody. Marking practice drops a draft into the message box so the
+   * telling is one edit away rather than five, but nothing leaves until the
+   * organizer presses send.
+   */
+  function setFormat(format: 'game' | 'practice', session: SessionInfo) {
+    if (format === 'practice') {
+      setSubjectInput(practiceMessageSubject(session));
+      setMessageInput(practiceMessageBody(session));
+      setNotice('Marked as BP/Practice. Nobody has been told: a draft is waiting in Send a message below.');
+    }
+    return updateSession({ format });
   }
 
   function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
@@ -486,6 +540,21 @@ export default function AdminPage() {
                 </div>
               </AdminSection>
 
+              <PracticePollSection
+                session={scrimmage}
+                roster={roster ?? []}
+                thresholdInput={thresholdInput}
+                setThresholdInput={setThresholdInput}
+                closesAt={pollClosesAt}
+                setClosesAt={setPollClosesAt}
+                notify={pollNotify}
+                setNotify={setPollNotify}
+                busy={busy}
+                onSetPoll={setPoll}
+                onSetFormat={(format) => setFormat(format, scrimmage)}
+                onSaveThreshold={() => updateSession({ practicePollThreshold: Number(thresholdInput) || 0 })}
+              />
+
               {/* Location arrives in two stages: the area up front, the actual
                   field once the permit is booked. */}
               <AdminSection title="Location">
@@ -620,7 +689,12 @@ export default function AdminPage() {
             />
           )}
 
-          {sessionId && <TeamEditor sessionId={sessionId} onChanged={() => loadRoster(sessionId)} />}
+          {/* Same reason the player view hides the rosters: a BP/Practice
+              week has no sides, so offering to generate them is offering to
+              post advice that does not apply. */}
+          {sessionId && scrimmage?.format !== 'practice' && (
+            <TeamEditor sessionId={sessionId} onChanged={() => loadRoster(sessionId)} />
+          )}
 
           {sessionId && scrimmage && roster && (
             <GameDayEmailPanel
@@ -830,6 +904,158 @@ export function NotifyPlayersPanel(props: {
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * The practice poll, and the format it exists to inform.
+ *
+ * Renders nothing at all on a normal, healthy week: no poll, a full roster,
+ * and a game. A disabled button that can never be pressed is noise on a card
+ * that has just had its clutter cut, so the whole section stays away until
+ * there is something to decide.
+ */
+export function PracticePollSection(props: {
+  session: SessionInfo;
+  roster: AdminSignup[];
+  thresholdInput: string;
+  setThresholdInput: (v: string) => void;
+  closesAt: string;
+  setClosesAt: (v: string) => void;
+  notify: boolean;
+  setNotify: (v: boolean) => void;
+  busy: boolean;
+  onSetPoll: (status: 'open' | 'closed') => void;
+  onSetFormat: (format: 'game' | 'practice') => void;
+  onSaveThreshold: () => void;
+}) {
+  const {
+    session,
+    roster,
+    thresholdInput,
+    setThresholdInput,
+    closesAt,
+    setClosesAt,
+    notify,
+    setNotify,
+    busy,
+    onSetPoll,
+    onSetFormat,
+    onSaveThreshold,
+  } = props;
+
+  const spots = confirmedSpots(roster);
+  const threshold = thresholdFor(session);
+  const canOpen = canOpenPracticePoll(session, roster);
+  const pollOpen = session.practicePollStatus === 'open';
+  const everAsked = session.practicePollStatus !== '';
+  const practice = session.format === 'practice';
+
+  // Nothing to say: no poll has been asked for, the week is a game, and
+  // turnout is fine.
+  if (!everAsked && !practice && !canOpen) return null;
+
+  const tally = tallyPracticePoll(roster);
+  const recovered = turnoutRecovered(session, roster);
+
+  return (
+    <AdminSection title="BP/Practice">
+      <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Field
+          label="Light week below"
+          htmlFor="admin-practice-threshold"
+          hint={`${spots} confirmed spot${spots === 1 ? '' : 's'} now. Blank uses the usual ${threshold}.`}
+        >
+          <input
+            id="admin-practice-threshold"
+            type="number"
+            min={0}
+            value={thresholdInput}
+            onChange={(e) => setThresholdInput(e.target.value)}
+            className={`${controlClass} w-20`}
+          />
+          <Button size="sm" variant="secondary" disabled={busy} onClick={onSaveThreshold}>
+            {busy ? 'Processing...' : 'Save'}
+          </Button>
+        </Field>
+
+        {!pollOpen && (
+          <Field
+            label="Answer by (optional)"
+            htmlFor="admin-practice-closes"
+            hint="Shown to players. Nothing closes on its own: you close the poll when you are ready."
+            className="sm:col-span-2"
+          >
+            <input
+              id="admin-practice-closes"
+              type="datetime-local"
+              value={closesAt}
+              onChange={(e) => setClosesAt(e.target.value)}
+              className={`${controlClass} w-full sm:w-auto`}
+            />
+          </Field>
+        )}
+
+        <div className="sm:col-span-2 lg:col-span-3">
+          {pollOpen ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => onSetPoll('closed')}>
+                Close poll
+              </Button>
+              <span className="text-xs text-slate-500">
+                Yes {tally.yes}, no {tally.no}, no answer {tally.unanswered}. Closing emails nobody.
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" disabled={busy || !canOpen} onClick={() => onSetPoll('open')}>
+                {everAsked ? 'Reopen poll' : 'Open practice poll'}
+              </Button>
+              <label htmlFor="admin-practice-notify" className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  id="admin-practice-notify"
+                  type="checkbox"
+                  checked={notify}
+                  onChange={(e) => setNotify(e.target.checked)}
+                />
+                Email confirmed players that the poll is open
+              </label>
+            </div>
+          )}
+        </div>
+
+        {pollOpen && (tally.yes > 0 || tally.no > 0) && (
+          <p className="text-xs text-slate-600 sm:col-span-2 lg:col-span-3">
+            {tally.yes > 0 && <>Yes: {tally.yesNames.join(', ')}. </>}
+            {tally.no > 0 && <>No: {tally.noNames.join(', ')}. </>}
+            {tally.unanswered > 0 && <>No answer: {tally.unansweredNames.join(', ')}.</>}
+          </p>
+        )}
+
+        {recovered && (
+          <p className="text-xs text-amber-700 sm:col-span-2 lg:col-span-3">
+            {spots} confirmed spots now, at or above the {threshold} you set. The poll is still open: close it if
+            this week is a game after all.
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3">
+          <Button
+            size="sm"
+            variant={practice ? 'secondary' : 'secondary'}
+            disabled={busy}
+            onClick={() => onSetFormat(practice ? 'game' : 'practice')}
+          >
+            {practice ? 'Mark as a game' : 'Mark as BP/Practice'}
+          </Button>
+          <span className="text-xs text-slate-500">
+            {practice
+              ? 'This week is BP/Practice. No teams, and the emails say so.'
+              : 'Emails nobody. Marking it drops a draft into Send a message below.'}
+          </span>
+        </div>
+      </div>
+    </AdminSection>
   );
 }
 

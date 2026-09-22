@@ -64,6 +64,10 @@ export async function openRegistrationForUpcomingSession(now: Date = new Date())
         rosterLockAt: '',
         teamsStatus: '',
         remindersSentAt: '',
+    format: 'game',
+        practicePollStatus: '',
+        practicePollClosesAt: '',
+        practicePollThreshold: 0,
         status: 'open',
       });
       return { sessionId: defaultSessionId, skipped: false };

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PlayerArea } from '../page';
+import type { SignupInfo, SessionInfo } from '../page';
 
 const scrimmage = {
   sessionId: '2099-01-01',
@@ -16,6 +17,9 @@ const scrimmage = {
   numFields: 1,
   rosterLockAt: '',
   teamsStatus: '' as const,
+  format: 'game' as const,
+  practicePollStatus: '' as const,
+  practicePollClosesAt: '',
 };
 
 const baseProps = {
@@ -38,6 +42,7 @@ const baseProps = {
   onRefresh: vi.fn(),
   onRequestSub: vi.fn(),
   onCancelSubRequest: vi.fn(),
+  onPollAnswered: vi.fn(),
 };
 
 describe('PlayerArea', () => {
@@ -67,7 +72,7 @@ describe('PlayerArea', () => {
       <PlayerArea
         {...baseProps}
         registrationClosed={true}
-        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '', practicePollAnswer: '' }}
       />
     );
     expect(screen.getByText(/confirmed to play/i)).toBeInTheDocument();
@@ -78,7 +83,7 @@ describe('PlayerArea', () => {
     const { rerender } = render(
       <PlayerArea
         {...baseProps}
-        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '', practicePollAnswer: '' }}
       />
     );
     expect(screen.queryByRole('button', { name: /ask to share/i })).not.toBeInTheDocument();
@@ -86,7 +91,7 @@ describe('PlayerArea', () => {
     rerender(
       <PlayerArea
         {...baseProps}
-        mySignup={{ signupId: 's1', status: 'waitlisted', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'waitlisted', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '', practicePollAnswer: '' }}
       />
     );
     expect(screen.getByRole('button', { name: /ask to share/i })).toBeInTheDocument();
@@ -97,7 +102,7 @@ describe('PlayerArea', () => {
       <PlayerArea
         {...baseProps}
         costOwed={7.5}
-        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '' }}
+        mySignup={{ signupId: 's1', status: 'confirmed', memberStatus: 'member', paid: false, subRequestTargetEmail: '', subRequestStatus: '', practicePollAnswer: '' }}
       />
     );
     expect(screen.getByText(/\$7\.50/)).toBeInTheDocument();
@@ -116,13 +121,14 @@ describe('PlayerArea', () => {
 describe('PlayerArea payment timing', () => {
   afterEach(() => vi.useRealTimers());
 
-  const confirmed = {
+  const confirmed: SignupInfo = {
     signupId: 's1',
     status: 'confirmed' as const,
     memberStatus: 'member' as const,
     paid: false,
     subRequestTargetEmail: '',
     subRequestStatus: '' as const,
+    practicePollAnswer: '' as const,
   };
 
   it('does not ask for payment while the lineup can still change', () => {
@@ -162,6 +168,7 @@ describe('PlayerArea locked-cancellation notice', () => {
     paid: false,
     subRequestTargetEmail: '',
     subRequestStatus: '' as const,
+    practicePollAnswer: '' as const,
   };
 
   it('is not shown while cancelling is still free', () => {
@@ -203,5 +210,105 @@ describe('PlayerArea locked-cancellation notice', () => {
 
     screen.getByRole('button', { name: /cancel my spot/i }).click();
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The practice poll as a player meets it. The property worth guarding hardest
+ * is what is absent: no counts, no other people's answers.
+ */
+describe('the practice poll panel', () => {
+  const confirmed = {
+    signupId: 's1',
+    status: 'confirmed' as const,
+    memberStatus: 'member' as const,
+    paid: false,
+    subRequestTargetEmail: '',
+    subRequestStatus: '' as const,
+    practicePollAnswer: '' as const,
+  };
+
+  const withPoll = (pollOver: Partial<SessionInfo>, signupOver: Partial<SignupInfo> = {}) => ({
+    ...baseProps,
+    scrimmage: { ...scrimmage, ...pollOver },
+    mySignup: { ...confirmed, ...signupOver },
+  });
+
+  it('asks a confirmed player while the poll is open', () => {
+    render(<PlayerArea {...withPoll({ practicePollStatus: 'open' })} />);
+
+    expect(screen.getByText(/come out for BP\/Practice/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Yes' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'No' })).toBeEnabled();
+  });
+
+  it('never shows a player the tally', () => {
+    // The privacy property this feature turns on. An open poll reading
+    // "9 yes, 2 no" makes an honest answer into a vote on a decision that
+    // looks already settled.
+    render(<PlayerArea {...withPoll({ practicePollStatus: 'open' })} />);
+
+    expect(screen.queryByText(/\d+ yes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no answer/i)).not.toBeInTheDocument();
+  });
+
+  it('carries the recruit line and says nothing about cost', () => {
+    render(<PlayerArea {...withPoll({ practicePollStatus: 'open' })} />);
+
+    expect(screen.getByText(/message the organizer and they can add them/i)).toBeInTheDocument();
+    expect(screen.queryByText(/cheaper|lower cost|cost down/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the deadline only when one was set', () => {
+    const { unmount } = render(<PlayerArea {...withPoll({ practicePollStatus: 'open' })} />);
+    expect(screen.queryByText(/Answer by/i)).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <PlayerArea {...withPoll({ practicePollStatus: 'open', practicePollClosesAt: '2099-01-01T22:00:00.000Z' })} />
+    );
+    expect(screen.getByText(/Answer by/i)).toBeInTheDocument();
+  });
+
+  it('stays visible and read-only once the poll closes', () => {
+    // For the player added by hand on Thursday, who would otherwise see no
+    // sign the week was ever in question.
+    render(<PlayerArea {...withPoll({ practicePollStatus: 'closed' }, { practicePollAnswer: 'yes' })} />);
+
+    expect(screen.getByText(/BP\/Practice was being decided/i)).toBeInTheDocument();
+    expect(screen.getByText(/You said yes/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Yes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'No' })).not.toBeInTheDocument();
+  });
+
+  it('tells someone who never answered that the organizer will say', () => {
+    render(<PlayerArea {...withPoll({ practicePollStatus: 'closed' })} />);
+
+    expect(screen.getByText(/You did not answer/i)).toBeInTheDocument();
+  });
+
+  it('shows nothing at all when no poll was ever opened', () => {
+    render(<PlayerArea {...withPoll({})} />);
+
+    expect(screen.queryByText(/BP\/Practice/i)).not.toBeInTheDocument();
+  });
+
+  it('shows nothing to a waitlisted player, who cannot answer', () => {
+    render(<PlayerArea {...withPoll({ practicePollStatus: 'open' }, { status: 'waitlisted' })} />);
+
+    expect(screen.queryByText(/come out for BP\/Practice/i)).not.toBeInTheDocument();
+  });
+
+  it('says confirmed for BP/Practice once the week is marked', () => {
+    render(
+      <PlayerArea
+        {...baseProps}
+        scrimmage={{ ...scrimmage, format: 'practice' }}
+        mySignup={confirmed}
+      />
+    );
+
+    expect(screen.getByText(/confirmed for BP\/Practice/i)).toBeInTheDocument();
+    expect(screen.queryByText(/confirmed to play/i)).not.toBeInTheDocument();
   });
 });

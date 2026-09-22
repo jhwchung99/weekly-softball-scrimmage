@@ -32,7 +32,10 @@ export async function GET() {
     uid: `${session.gameDate}-softball@nhf-weekly-softball-scrims.com`,
     start,
     end: new Date(start.getTime() + GAME_LENGTH_HOURS * 60 * 60 * 1000),
-    summary: 'Softball Scrimmage',
+    // Named for what the week actually is. Someone who added the event on
+    // Monday keeps the entry they already have; the file is regenerated on
+    // each download, so a re-add after the format changes reads correctly.
+    summary: session.format === 'practice' ? 'Softball BP/Practice' : 'Softball Scrimmage',
     location: formatLocation({
       area: session.locationArea,
       name: session.locationName,

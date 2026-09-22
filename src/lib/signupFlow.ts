@@ -42,6 +42,8 @@ const NEW_SIGNUP_EXTRAS = {
   subRequestStatus: '' as const,
   subRequestedAt: '',
   teamName: '',
+  practicePollAnswer: '' as const,
+  practicePollAnsweredAt: '',
 };
 
 async function computeCapacityStatus(sessionId: string, capacity: number): Promise<'confirmed' | 'waitlisted'> {

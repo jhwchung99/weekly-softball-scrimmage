@@ -301,6 +301,44 @@ export function validatePlayerMessage(body: unknown): ValidatedPlayerMessage {
   return { subject, message, includeWaitlisted: input.includeWaitlisted === true };
 }
 
+/**
+ * The admin's practice-poll request: open or close, with an optional stated
+ * deadline.
+ *
+ * `closesAt` is advisory and may be blank, so it is validated for shape and
+ * not for being in the future. An organizer setting a deadline that has
+ * already passed is saying "answer now", which is a legitimate thing to mean.
+ */
+export interface ValidatedPracticePoll {
+  status: 'open' | 'closed';
+  closesAt: string;
+  notify: boolean;
+}
+
+export function validatePracticePoll(body: unknown): ValidatedPracticePoll {
+  const input = (body ?? {}) as { status?: unknown; closesAt?: unknown; notify?: unknown };
+  if (input.status !== 'open' && input.status !== 'closed') {
+    throw new ApiError(400, 'status must be open or closed.');
+  }
+
+  const raw = typeof input.closesAt === 'string' ? input.closesAt.trim() : '';
+  if (raw && Number.isNaN(new Date(raw).getTime())) {
+    throw new ApiError(400, 'closesAt must be an ISO datetime.');
+  }
+
+  return { status: input.status, closesAt: raw, notify: input.notify === true };
+}
+
+/** One player's answer. Yes or no, and nothing else: the poll deliberately
+ * has no Maybe, so an unrecognised value is a bug rather than a shrug. */
+export function validatePracticePollAnswer(body: unknown): 'yes' | 'no' {
+  const answer = (body ?? {}) as { answer?: unknown };
+  if (answer.answer !== 'yes' && answer.answer !== 'no') {
+    throw new ApiError(400, 'answer must be yes or no.');
+  }
+  return answer.answer;
+}
+
 export interface ValidatedSessionEdit {
   /** Only the fields actually supplied. A field absent from the request is
    * absent here, so a partial update can never write one that was not sent. */
@@ -314,6 +352,8 @@ export interface ValidatedSessionEdit {
     status?: 'open' | 'closed' | 'cancelled';
     cost?: number;
     rosterLockAt?: string;
+    format?: 'game' | 'practice';
+    practicePollThreshold?: number;
   };
   /** Present only when the organizer is moving the game. */
   gameDate?: string;
@@ -321,6 +361,7 @@ export interface ValidatedSessionEdit {
 }
 
 const SESSION_STATUSES = ['open', 'closed', 'cancelled'] as const;
+const SESSION_FORMATS = ['game', 'practice'] as const;
 
 const EDITABLE_FIELDS = [
   'gameDate',
@@ -334,6 +375,12 @@ const EDITABLE_FIELDS = [
   'locationArea',
   'locationName',
   'locationUrl',
+  // Whether the week is a game or BP/Practice, and the headcount below which
+  // the app offers to ask. Ordinary editable session fields, so they ride the
+  // existing PATCH rather than earning a route each. The poll's own open and
+  // close is a separate route, because that one can send email.
+  'format',
+  'practicePollThreshold',
 ] as const;
 
 /**
@@ -392,6 +439,22 @@ export function validateSessionEdit(body: unknown): ValidatedSessionEdit {
     const status = SESSION_STATUSES.find((s) => s === input.status);
     if (!status) throw new ApiError(400, `status must be one of: ${SESSION_STATUSES.join(', ')}.`);
     updates.status = status;
+  }
+
+  if (input.format !== undefined) {
+    const format = SESSION_FORMATS.find((f) => f === input.format);
+    if (!format) throw new ApiError(400, `format must be one of: ${SESSION_FORMATS.join(', ')}.`);
+    updates.format = format;
+  }
+
+  if (input.practicePollThreshold !== undefined) {
+    const threshold = Number(input.practicePollThreshold);
+    // 0 is allowed and means "use the default", the way a blank rosterLockAt
+    // does. Negative is not: it would silently disable the poll forever.
+    if (!Number.isInteger(threshold) || threshold < 0) {
+      throw new ApiError(400, 'practicePollThreshold must be a whole number, or 0 for the default.');
+    }
+    updates.practicePollThreshold = threshold;
   }
 
   return {

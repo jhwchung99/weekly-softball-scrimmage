@@ -11,6 +11,27 @@ export type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
 export type MemberStatus = 'member' | 'guest';
 export type TeamsStatus = '' | 'draft' | 'posted';
 
+/**
+ * Whether a week is played as a game or as batting practice.
+ *
+ * Its own field rather than a fourth `SessionStatus`, because status already
+ * carries two unrelated things: the registration lifecycle (open then closed,
+ * written by the Monday and Tuesday crons) and whether the week is off at all
+ * (cancelled). A fourth value would have to displace one of them, and
+ * closeRegistration skips any session whose status is not 'open' — so a week
+ * marked practice while registration was still open would never close, never
+ * record registrationClosesAt, and never fire the headcount push. See
+ * ADR-0007.
+ */
+export type SessionFormat = 'game' | 'practice';
+
+/** Whether the organizer is asking the roster about BP/Practice this week.
+ * '' is "never asked", which the dashboard shows differently from 'closed'. */
+export type PracticePollStatus = '' | 'open' | 'closed';
+
+/** One player's answer. '' until they give one. */
+export type PracticePollAnswer = '' | 'yes' | 'no';
+
 export interface Session {
   sessionId: string;
   gameDate: string; // ISO date, e.g. "2026-09-11"
@@ -45,6 +66,16 @@ export interface Session {
   remindersSentAt: string; // ISO datetime the game-day email went out, '' if
   // it has not. Durable, unlike the announcement cooldown: the dashboard has
   // to still know at kickoff that the send happened hours earlier.
+  format: SessionFormat; // game or batting practice. Blank on every row
+  // written before this existed, and parsed as 'game' rather than back-filled.
+  practicePollStatus: PracticePollStatus; // whether the roster is being asked
+  // about BP/Practice this week.
+  practicePollClosesAt: string; // ISO datetime, '' for none. ADVISORY: it is
+  // shown to players as when to answer by, and nothing in the app acts on it.
+  // The organizer closes the poll by hand, which is the whole point.
+  practicePollThreshold: number; // confirmed spots below which the poll is
+  // offered. 0 = use the default of 16, the way rosterLockAt treats ''. Per
+  // session because a two-field week needs a different number.
 }
 
 export interface Signup {
@@ -84,6 +115,10 @@ export interface Signup {
   teamName: string; // which team this player was put on; '' before teams are
   // generated. Written on the signup rather than a separate tab so reading a
   // session's teams costs no extra Sheets read.
+  practicePollAnswer: PracticePollAnswer; // this player's yes or no. On the
+  // signup for teamName's reason: reading a session's answers then costs no
+  // extra Sheets read.
+  practicePollAnsweredAt: string; // ISO datetime, '' when unanswered.
 }
 
 export interface Player {
@@ -114,6 +149,10 @@ export const SESSION_HEADERS = [
   // the end, and the Session interface above is where the grouping lives.
   'rosterLockAt',
   'remindersSentAt',
+  'format',
+  'practicePollStatus',
+  'practicePollClosesAt',
+  'practicePollThreshold',
 ] as const satisfies readonly (keyof Session)[];
 
 export const SIGNUP_HEADERS = [
@@ -139,6 +178,8 @@ export const SIGNUP_HEADERS = [
   'paidAt',
   'attended',
   'teamName',
+  'practicePollAnswer',
+  'practicePollAnsweredAt',
 ] as const satisfies readonly (keyof Signup)[];
 
 export const PLAYER_HEADERS = [
@@ -203,6 +244,12 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     teamsStatus: (row.teamsStatus || '') as TeamsStatus,
     rosterLockAt: row.rosterLockAt || '',
     remindersSentAt: row.remindersSentAt || '',
+    // Blank means a game. Every row written before the format existed is
+    // blank, so this is the whole migration.
+    format: (row.format || 'game') as SessionFormat,
+    practicePollStatus: (row.practicePollStatus || '') as PracticePollStatus,
+    practicePollClosesAt: row.practicePollClosesAt || '',
+    practicePollThreshold: Number(row.practicePollThreshold) || 0,
   };
 }
 
@@ -213,6 +260,7 @@ export function serializeSessionRow(session: Session): RawRow<Session> {
     cost: String(session.cost),
     pricePerSpot: String(session.pricePerSpot),
     numFields: String(session.numFields),
+    practicePollThreshold: String(session.practicePollThreshold),
   };
 }
 
@@ -226,6 +274,8 @@ export function parseSignupRow(row: RawRow<Signup>): Signup {
     subRequestStatus: (row.subRequestStatus || '') as Signup['subRequestStatus'],
     amountPaid: Number(row.amountPaid) || 0,
     attended: row.attended === 'TRUE' || row.attended === 'true',
+    practicePollAnswer: (row.practicePollAnswer || '') as PracticePollAnswer,
+    practicePollAnsweredAt: row.practicePollAnsweredAt || '',
   };
 }
 

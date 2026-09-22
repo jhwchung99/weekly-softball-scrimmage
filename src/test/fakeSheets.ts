@@ -228,6 +228,10 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     rosterLockAt: '',
     teamsStatus: '' as const,
     remindersSentAt: '',
+    format: 'game',
+    practicePollStatus: '',
+    practicePollClosesAt: '',
+    practicePollThreshold: 0,
     ...overrides,
   };
 }
@@ -259,6 +263,8 @@ export function makeSignup(overrides: Partial<Signup> = {}): Signup {
     subRequestStatus: '',
     subRequestedAt: '',
     teamName: '',
+    practicePollAnswer: '',
+    practicePollAnsweredAt: '',
     ...overrides,
   };
 }
