@@ -564,9 +564,11 @@ export function PracticePollPanel(props: {
               You said {answer}. You can change this while the organizer is deciding.
             </p>
           )}
+          {/* Same closing as the email, but "message" rather than "reply":
+              there is nothing to reply to from inside the app. */}
           <p className="mt-2 text-xs text-slate-600">
-            If you know someone who wants to play, message the organizer and they can add them. A few more
-            people may be enough for a game.
+            If you know someone who wants to play, message the organizer and they can manually add them. Based on
+            the votes/if we can get enough numbers for a game, the field will be booked.
           </p>
         </>
       ) : (

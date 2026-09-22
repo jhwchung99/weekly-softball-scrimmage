@@ -435,7 +435,7 @@ export async function sendPracticePollEmail(signup: Signup, session: Session): P
     // the reader the state but not the consequence, and the consequence is
     // the thing that makes answering worth their thirty seconds: the permit
     // is booked off the back of this.
-    'If you know someone who wants to play, reply and the organizer can manually add them. Based on the votes/if we can get enough numbers for a scrim, the field will be booked.'
+    'If you know someone who wants to play, reply and the organizer can manually add them. Based on the votes/if we can get enough numbers for a game, the field will be booked.'
   );
 
   await sendEmail(signup.email, subject, lines.join('\n'));
