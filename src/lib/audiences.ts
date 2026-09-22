@@ -30,6 +30,23 @@ export function sessionChangeAudience<T extends Addressable>(session: Announceab
 }
 
 /**
+ * Who gets a free-typed message from the organizer.
+ *
+ * Unlike sessionChangeAudience this does not read the session at all, because
+ * there is nothing to infer from: the organizer wrote the words, so only they
+ * know whether "bring a bat" is for the people playing or for everyone still
+ * hoping to. `includeWaitlisted` is that answer, and the default is the
+ * narrower one — a waitlisted player who gets mail meant for the roster has
+ * no way to tell it was not meant for them.
+ *
+ * Cancelled signups are never included. They withdrew.
+ */
+export function messageAudience<T extends Addressable>(signups: T[], includeWaitlisted: boolean): T[] {
+  const active = signups.filter((s) => s.status !== 'cancelled');
+  return includeWaitlisted ? active : active.filter((s) => s.status === 'confirmed');
+}
+
+/**
  * Everyone who is playing, owes something, and hasn't paid.
  *
  * Confirmed only, which leaves out one real case on purpose: someone who

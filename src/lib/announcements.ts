@@ -1,6 +1,6 @@
 import { getSession } from '../sheets/sessions';
 import { listSignupsForSession } from '../sheets/signups';
-import { sessionChangeAudience, unpaidAudience } from './audiences';
+import { sessionChangeAudience, unpaidAudience, messageAudience } from './audiences';
 import { SEND_GAP_MS } from './scheduling';
 import { Signup } from '../sheets/schema';
 import { deliver } from './notifications';
@@ -9,20 +9,25 @@ import {
   sendSessionUpdateEmail,
   sendSessionCancelledEmail,
   sendPaymentNudgeEmail,
+  sendPlainMessageEmail,
 } from './notifications';
 
 /**
- * The admin dashboard's two "tell the players something" buttons.
+ * The admin dashboard's "tell the players something" buttons.
  *
- * Both exist because the alternative is worse in the same way. Emailing on
- * every session edit means four emails while a permit gets booked; emailing
- * nobody means a rained-out game strands whoever didn't check the site. An
- * organizer pressing a button is the only party that actually knows which
- * moment is worth twenty people's attention.
+ * The generated ones exist because the alternative is worse in the same way.
+ * Emailing on every session edit means four emails while a permit gets
+ * booked; emailing nobody means a rained-out game strands whoever didn't
+ * check the site. An organizer pressing a button is the only party that
+ * actually knows which moment is worth twenty people's attention.
  *
- * So neither of these is ever called from a mutation path. They read state
- * that is already settled and send from it — which is also why they are safe
- * to press twice, beyond costing people a duplicate email.
+ * sendMessageToPlayers is the other half of that argument: the organizer also
+ * knows things the app does not hold at all, and without somewhere to put
+ * them they end up texting the roster instead.
+ *
+ * None of these is ever called from a mutation path. They read state that is
+ * already settled and send from it — which is also why they are safe to press
+ * twice, beyond costing people a duplicate email.
  */
 
 export interface AnnouncementResult {
@@ -104,6 +109,42 @@ export async function notifySessionChange(sessionId: string, note: string): Prom
       : sendSessionUpdateEmail(signup, session, note)
   );
 
+  return { sessionId, skipped: false, ...result };
+}
+
+/**
+ * "Send a message" — the organizer's text, to the players they pick.
+ *
+ * Beside notifySessionChange rather than a flag inside it, because the two
+ * answer different questions. That one broadcasts state the app already holds
+ * and treats the organizer's note as a gloss on it; this one carries no state
+ * at all. Merging them would mean a boolean deciding whether half an email
+ * body exists, which is two emails wearing one function.
+ *
+ * It still reads the session, only to tell "nobody is signed up" apart from
+ * "that week does not exist" — the same distinction the other two make.
+ */
+export async function sendMessageToPlayers(
+  sessionId: string,
+  subject: string,
+  message: string,
+  includeWaitlisted: boolean
+): Promise<AnnouncementResult> {
+  const session = await getSession(sessionId);
+  if (!session) return nothingSent(sessionId, `No session "${sessionId}" exists.`);
+
+  const signups = await listSignupsForSession(sessionId);
+  const audience = messageAudience(signups, includeWaitlisted);
+  if (audience.length === 0) {
+    return nothingSent(
+      sessionId,
+      includeWaitlisted
+        ? 'Nobody is signed up for this session yet.'
+        : 'Nobody is confirmed for this session yet.'
+    );
+  }
+
+  const result = await fanOut(audience, (signup) => sendPlainMessageEmail(signup, subject, message));
   return { sessionId, skipped: false, ...result };
 }
 

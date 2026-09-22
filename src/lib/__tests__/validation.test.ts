@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateAnnouncementNote,
+  validatePlayerMessage,
   validateInvitedByName,
   validateEmail,
   validatePlayerProfile,
@@ -358,5 +359,47 @@ describe('validateAnnouncementNote', () => {
 
   it('caps the length so it stays a note rather than a newsletter', () => {
     expect(() => validateAnnouncementNote('x'.repeat(501))).toThrow(/500 characters or fewer/);
+  });
+});
+
+describe('validatePlayerMessage', () => {
+  const OK = { subject: 'Bring a bat', message: 'We are short on bats.' };
+
+  it('keeps what the organizer wrote, trimmed', () => {
+    expect(validatePlayerMessage({ subject: '  Bring a bat  ', message: '  We are short.  ' })).toEqual({
+      subject: 'Bring a bat',
+      message: 'We are short.',
+      includeWaitlisted: false,
+    });
+  });
+
+  it('requires both fields, unlike the optional note on a generated email', () => {
+    // This message IS the email. A blank one is twenty pieces of empty mail.
+    expect(() => validatePlayerMessage({ ...OK, subject: '   ' })).toThrow(/subject is required/);
+    expect(() => validatePlayerMessage({ ...OK, message: '' })).toThrow(/message is required/);
+    expect(() => validatePlayerMessage(undefined)).toThrow(/subject is required/);
+  });
+
+  it('flattens newlines out of the subject, which becomes a header', () => {
+    // A bare CR or LF there would let the rest of the line be read as another
+    // header by whatever parses it downstream.
+    expect(validatePlayerMessage({ ...OK, subject: 'Bring a bat\nBcc: sneaky@dummy.test' }).subject).toBe(
+      'Bring a bat Bcc: sneaky@dummy.test'
+    );
+  });
+
+  it('keeps newlines in the body, which is a plain-text email', () => {
+    expect(validatePlayerMessage({ ...OK, message: 'One.\n\nTwo.' }).message).toBe('One.\n\nTwo.');
+  });
+
+  it('only includes the waitlist on an explicit true', () => {
+    expect(validatePlayerMessage(OK).includeWaitlisted).toBe(false);
+    expect(validatePlayerMessage({ ...OK, includeWaitlisted: 'yes' }).includeWaitlisted).toBe(false);
+    expect(validatePlayerMessage({ ...OK, includeWaitlisted: true }).includeWaitlisted).toBe(true);
+  });
+
+  it('caps both fields', () => {
+    expect(() => validatePlayerMessage({ ...OK, subject: 'x'.repeat(151) })).toThrow(/150 characters or fewer/);
+    expect(() => validatePlayerMessage({ ...OK, message: 'x'.repeat(2001) })).toThrow(/2000 characters or fewer/);
   });
 });

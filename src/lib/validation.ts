@@ -268,6 +268,39 @@ export function validateAnnouncementNote(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 /** A session's editable fields, as the organizer may change them. */
+const MAX_MESSAGE_SUBJECT_LENGTH = 150;
+const MAX_MESSAGE_BODY_LENGTH = 2000;
+
+export interface ValidatedPlayerMessage {
+  subject: string;
+  message: string;
+  includeWaitlisted: boolean;
+}
+
+/**
+ * A message the organizer writes in full, sent as-is.
+ *
+ * Both fields are required, unlike validateAnnouncementNote's optional
+ * sentence: that one decorates an email that already says something, and this
+ * one *is* the email. An empty subject or body would send blank mail to the
+ * roster.
+ *
+ * The body is longer than a note is allowed to be. A note is one sentence
+ * explaining an email whose substance is generated; here the organizer is
+ * writing the substance, and 500 characters is about a paragraph.
+ *
+ * No escaping, for validateAnnouncementNote's reasons: an admin wrote it and
+ * it lands in a plain-text body. The subject does go in a header, so newlines
+ * come out — a bare CR or LF there would let the rest of the line be read as
+ * another header.
+ */
+export function validatePlayerMessage(body: unknown): ValidatedPlayerMessage {
+  const input = (body ?? {}) as { subject?: unknown; message?: unknown; includeWaitlisted?: unknown };
+  const subject = requireTrimmedString(input.subject, 'subject', MAX_MESSAGE_SUBJECT_LENGTH).replace(/[\r\n]+/g, ' ');
+  const message = requireTrimmedString(input.message, 'message', MAX_MESSAGE_BODY_LENGTH);
+  return { subject, message, includeWaitlisted: input.includeWaitlisted === true };
+}
+
 export interface ValidatedSessionEdit {
   /** Only the fields actually supplied. A field absent from the request is
    * absent here, so a partial update can never write one that was not sent. */

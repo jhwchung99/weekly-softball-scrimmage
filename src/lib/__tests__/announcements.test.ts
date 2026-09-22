@@ -10,7 +10,7 @@ vi.mock('../../sheets/signups', () => fakeSignupsModule(store));
 const sendEmail = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 
-const { notifySessionChange, nudgeUnpaidPlayers } = await import('../announcements');
+const { notifySessionChange, nudgeUnpaidPlayers, sendMessageToPlayers } = await import('../announcements');
 
 // The game is 6pm ET on 2099-01-01, so the roster locks (and payment opens)
 // at 1pm ET — 18:00Z, since January is EST.
@@ -53,6 +53,67 @@ function bodyFor(email: string): string {
   const call = sendEmail.mock.calls.find((c) => c[0] === email);
   return call ? call[2] : '';
 }
+
+describe('sendMessageToPlayers', () => {
+  const CONFIRMED = () => makeSignup({ signupId: 'a', email: 'in@dummy.test', fullName: 'In Player', status: 'confirmed' });
+  const WAITING = () => makeSignup({ signupId: 'b', email: 'wait@dummy.test', fullName: 'Wait Player', status: 'waitlisted' });
+
+  /** The whole point of the feature: what the organizer typed, and nothing
+   * the app would otherwise have bolted on. */
+  it('sends the organizer text with none of the session details appended', async () => {
+    seed({ locationName: 'Iceland Diamond 3', locationArea: 'Mississauga', pricePerSpot: 10 }, [CONFIRMED()]);
+
+    await drain(sendMessageToPlayers(SESSION_ID, 'Bring a bat', 'We are short on bats this week.', false));
+
+    const [to, subject, body] = sendEmail.mock.calls[0];
+    expect(to).toBe('in@dummy.test');
+    expect(subject).toBe('Bring a bat');
+    expect(body).toBe('Hi In Player,\n\nWe are short on bats this week.');
+    // The things every other email in the app adds, and this one must not.
+    expect(body).not.toMatch(/Iceland|Mississauga|When:|Where:|confirmed to play|cancel in the app/);
+  });
+
+  it('leaves the waitlist out by default', async () => {
+    seed({}, [CONFIRMED(), WAITING()]);
+
+    await drain(sendMessageToPlayers(SESSION_ID, 'Subject', 'Body', false));
+
+    expect(sentTo()).toEqual(['in@dummy.test']);
+  });
+
+  it('includes the waitlist when asked', async () => {
+    seed({}, [CONFIRMED(), WAITING()]);
+
+    await drain(sendMessageToPlayers(SESSION_ID, 'Subject', 'Body', true));
+
+    expect(sentTo()).toEqual(['in@dummy.test', 'wait@dummy.test']);
+  });
+
+  it('never writes to someone who cancelled', async () => {
+    seed({}, [CONFIRMED(), makeSignup({ signupId: 'c', email: 'gone@dummy.test', status: 'cancelled' })]);
+
+    await drain(sendMessageToPlayers(SESSION_ID, 'Subject', 'Body', true));
+
+    expect(sentTo()).not.toContain('gone@dummy.test');
+  });
+
+  it('sends nothing, and says so, when the chosen audience is empty', async () => {
+    seed({}, [WAITING()]);
+
+    const result = await drain(sendMessageToPlayers(SESSION_ID, 'Subject', 'Body', false));
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toMatch(/Nobody is confirmed/);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('tells a missing session apart from an empty one', async () => {
+    const result = await drain(sendMessageToPlayers('2099-12-25', 'Subject', 'Body', false));
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toMatch(/No session/);
+  });
+});
 
 describe('notifySessionChange', () => {
   it('emails confirmed players the current details, and leaves the waitlist alone', async () => {
