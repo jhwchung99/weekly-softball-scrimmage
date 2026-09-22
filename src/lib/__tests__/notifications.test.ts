@@ -311,8 +311,9 @@ describe('the practice poll email', () => {
     const { subject, text } = lastEmail();
     expect(subject).toMatch(/BP\/Practice/);
     expect(text).toMatch(/Would you come out for BP\/Practice instead/);
-    expect(text).toMatch(/message the organizer|reply and the organizer can add them/i);
-    expect(text).toMatch(/Nothing is decided yet/);
+    expect(text).toMatch(/reply and the organizer can manually add them/i);
+    // Says what the answers buy: the permit is booked off the back of them.
+    expect(text).toMatch(/the field will be booked/i);
     expect(text).not.toMatch(/cheap|cost|\$/i);
   });
 
