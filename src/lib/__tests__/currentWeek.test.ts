@@ -8,21 +8,25 @@ import { makeSession } from '../../test/fakeSheets';
  * below rather than the caching.
  */
 
-const getSessionByAnyId = vi.fn();
-vi.mock('../../sheets/sessions', () => ({ getSessionByAnyId }));
+const listSessions = vi.fn();
+vi.mock('../../sheets/sessions', () => ({ listSessions }));
 
 const reportMissedJobs = vi.fn(async () => undefined);
 vi.mock('../weekWatchdog', () => ({ reportMissedJobs }));
 
-const { currentWeekSession, forgetCurrentWeek } = await import('../currentWeek');
+const { upcomingSessions, forgetCurrentWeek } = await import('../currentWeek');
 
-const SESSION = makeSession();
-const T0 = 1_000_000;
+/** Far enough out that it is upcoming whenever this suite runs. */
+const SESSION = makeSession({ sessionId: '2099-01-01', gameDate: '2099-01-01' });
+/** A real instant, not a bare epoch offset: the cache window arithmetic does
+ * not care, but the "has this game date passed" filter compares against
+ * today's date in Eastern time and would read 1970 as today. */
+const T0 = Date.parse('2026-09-22T12:00:00.000Z');
 
 /** Held open until `settle` is called, so overlapping callers can be observed. */
 function pending() {
-  let settle: (value: typeof SESSION | null) => void = () => {};
-  const promise = new Promise<typeof SESSION | null>((resolve) => {
+  let settle: (value: (typeof SESSION)[]) => void = () => {};
+  const promise = new Promise<(typeof SESSION)[]>((resolve) => {
     settle = resolve;
   });
   return { promise, settle };
@@ -31,113 +35,72 @@ function pending() {
 beforeEach(() => {
   vi.clearAllMocks();
   forgetCurrentWeek();
-  getSessionByAnyId.mockResolvedValue(SESSION);
+  listSessions.mockResolvedValue([SESSION]);
 });
 
-describe('currentWeekSession', () => {
+describe('upcomingSessions', () => {
   it('reads once and answers everyone else from the cache', async () => {
-    expect(await currentWeekSession(T0)).toEqual(SESSION);
-    expect(await currentWeekSession(T0 + 1_000)).toEqual(SESSION);
+    expect(await upcomingSessions(T0)).toEqual([SESSION]);
+    expect(await upcomingSessions(T0 + 1_000)).toEqual([SESSION]);
+    expect(await upcomingSessions(T0 + 29_000)).toEqual([SESSION]);
 
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(1);
+    expect(listSessions).toHaveBeenCalledTimes(1);
   });
 
-  it('collapses a burst onto one read, which is the Monday-9am case', async () => {
-    // Twenty people refresh while the first read is still in flight. Caching
-    // the *result* would cost twenty reads here — a third of the app's minute.
-    const first = pending();
-    getSessionByAnyId.mockReturnValueOnce(first.promise);
+  it('collapses a crowd arriving mid-read onto one read', async () => {
+    // The Monday 9am case: twenty people refresh at once, before the first
+    // read has come back. Each must join that read rather than start its own.
+    const { promise, settle } = pending();
+    listSessions.mockReturnValueOnce(promise);
 
-    const crowd = Array.from({ length: 20 }, () => currentWeekSession(T0));
-    first.settle(SESSION);
+    const waiting = Array.from({ length: 20 }, () => upcomingSessions(T0));
+    settle([SESSION]);
 
-    expect(await Promise.all(crowd)).toEqual(Array(20).fill(SESSION));
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(1);
+    expect(await Promise.all(waiting)).toEqual(Array.from({ length: 20 }, () => [SESSION]));
+    expect(listSessions).toHaveBeenCalledTimes(1);
   });
 
   it('reads again once the window has passed', async () => {
-    await currentWeekSession(T0);
-    await currentWeekSession(T0 + 30_000);
+    await upcomingSessions(T0);
+    await upcomingSessions(T0 + 31_000);
 
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(2);
+    expect(listSessions).toHaveBeenCalledTimes(2);
   });
 
-  it('holds a found session for the full window', async () => {
-    await currentWeekSession(T0);
-    await currentWeekSession(T0 + 29_999);
+  it('caches an empty list only briefly, because it is about to change', async () => {
+    // "Nothing is scheduled" is the answer players are watching for on a
+    // Monday morning, so it must not be held for the full window.
+    listSessions.mockResolvedValue([]);
 
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(1);
+    expect(await upcomingSessions(T0)).toEqual([]);
+    await upcomingSessions(T0 + 6_000);
+
+    expect(listSessions).toHaveBeenCalledTimes(2);
   });
 
-  it('caches "no game this week" only briefly, because that is what is about to change', async () => {
-    // The cron creates the week at 9am Monday and players are watching for it.
-    // Being told there is no game for half a minute after there is would be
-    // the worst thirty seconds of the week to be wrong in.
-    getSessionByAnyId.mockResolvedValue(null);
+  it('does not serve a failed read to everyone for the next thirty seconds', async () => {
+    listSessions.mockRejectedValueOnce(new Error('Sheets is down'));
 
-    expect(await currentWeekSession(T0)).toBeNull();
-    await currentWeekSession(T0 + 5_000);
+    await expect(upcomingSessions(T0)).rejects.toThrow('Sheets is down');
 
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(2);
+    listSessions.mockResolvedValue([SESSION]);
+    expect(await upcomingSessions(T0 + 100)).toEqual([SESSION]);
   });
 
-  it('still shortcuts a repeated miss inside its own window', async () => {
-    getSessionByAnyId.mockResolvedValue(null);
+  it('leaves out sessions whose game date has passed, soonest first', async () => {
+    const past = makeSession({ sessionId: '2000-01-01', gameDate: '2000-01-01' });
+    const later = makeSession({ sessionId: '2099-06-01', gameDate: '2099-06-01' });
+    listSessions.mockResolvedValue([later, past, SESSION]);
 
-    await currentWeekSession(T0);
-    await currentWeekSession(T0 + 4_999);
-
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(1);
+    expect((await upcomingSessions(T0)).map((s) => s.sessionId)).toEqual(['2099-01-01', '2099-06-01']);
   });
 
-  it('does not serve a failed read to everyone for the next half minute', async () => {
-    getSessionByAnyId.mockRejectedValueOnce(new Error('Sheets is down'));
+  it('returns every upcoming session rather than the first', async () => {
+    // A Sunday game beside a Friday one used to be invisible: the lookup took
+    // the first of Friday/Saturday/Sunday that had a row and stopped.
+    const sunday = makeSession({ sessionId: '2099-01-03', gameDate: '2099-01-03' });
+    listSessions.mockResolvedValue([SESSION, sunday]);
 
-    await expect(currentWeekSession(T0)).rejects.toThrow('Sheets is down');
-    expect(await currentWeekSession(T0 + 1)).toEqual(SESSION);
-  });
-
-  it('forgets on request, so a test or a dev server starts cold', async () => {
-    await currentWeekSession(T0);
-    forgetCurrentWeek();
-    await currentWeekSession(T0);
-
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(2);
-  });
-});
-
-/**
- * The watchdog rides on this read rather than on a schedule of its own,
- * because the jobs it watches are GitHub `schedule` triggers and a scheduled
- * watchdog would be disabled by the same rule that disabled them.
- */
-describe('the week watchdog rides on this read', () => {
-  it('is shown every week that is actually read', async () => {
-    await currentWeekSession(T0);
-
-    expect(reportMissedJobs).toHaveBeenCalledWith(SESSION, expect.any(Date));
-  });
-
-  it('is shown a missing week too, which is the case that matters most', async () => {
-    // "No session exists and registration should have opened" is the failure
-    // where players are standing at the door.
-    getSessionByAnyId.mockResolvedValue(null);
-    await currentWeekSession(T0);
-
-    expect(reportMissedJobs).toHaveBeenCalledWith(null, expect.any(Date));
-  });
-
-  it('runs once per read, not once per cached answer', async () => {
-    await currentWeekSession(T0);
-    await currentWeekSession(T0 + 1_000);
-
-    expect(reportMissedJobs).toHaveBeenCalledTimes(1);
-  });
-
-  it('cannot fail the page load it runs off', async () => {
-    // A watchdog that breaks the homepage is worse than the problem it reports.
-    reportMissedJobs.mockRejectedValue(new Error('ntfy exploded'));
-
-    await expect(currentWeekSession(T0)).resolves.toEqual(SESSION);
+    expect((await upcomingSessions(T0)).map((s) => s.sessionId)).toEqual(['2099-01-01', '2099-01-03']);
   });
 });

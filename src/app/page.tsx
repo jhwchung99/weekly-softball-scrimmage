@@ -10,7 +10,7 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { WeeklyTimeline } from '../components/WeeklyTimeline';
 import { paymentStateOf, paymentOpensAt } from '../lib/payments';
-import { formatEasternMoment } from '../lib/time';
+import { formatEasternMoment, formatGameDay, formatGameDate } from '../lib/time';
 import { requestFor, type PlayerAction } from '../lib/homeConsole';
 import { sendApiRequest, asJson } from '../lib/apiRequest';
 import { SessionLocation } from '../components/SessionLocation';
@@ -42,6 +42,25 @@ export type PlayerInfo = PlayerView;
 export type { RosterEntry };
 export type Roster = RosterView;
 
+/**
+ * One upcoming session and the caller's standing in it, as /api/home sends it.
+ *
+ * Every field here is per session, which is the point: a player can be
+ * confirmed for Friday, waitlisted for Sunday, and hold a pending sub-request
+ * on one of them. Before 2026-09-22 these were the top level of the response,
+ * because there was only ever one session to describe.
+ */
+export interface SessionEntry {
+  session: SessionInfo;
+  phase: SessionPhase | null;
+  signup: SignupInfo | null;
+  incomingSubRequests: IncomingSubRequest[];
+  costOwed: number | null;
+  waitlistPosition: number | null;
+  roster: Roster | null;
+  teams: TeamView[] | null;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || `Request to ${url} failed`);
@@ -51,22 +70,20 @@ async function fetchJson<T>(url: string): Promise<T> {
 export default function Home() {
   const { data: authSession, status: authStatus } = useSession();
 
-  const [scrimmage, setScrimmage] = useState<SessionInfo | null>(null);
+  /**
+   * One entry per upcoming session, soonest first, exactly as /api/home sends
+   * them. The page used to hold eight separate pieces of per-session state;
+   * they now live in the SessionCard rendered for each one, because with more
+   * than one game there is no single "the roster" or "my signup" to hold.
+   */
+  const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [scrimmageLoaded, setScrimmageLoaded] = useState(false);
-  const [mySignup, setMySignup] = useState<SignupInfo | null>(null);
-  const [incomingSubRequests, setIncomingSubRequests] = useState<IncomingSubRequest[]>([]);
-  const [costOwed, setCostOwed] = useState<number | null>(null);
-  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
   const [myPlayer, setMyPlayer] = useState<PlayerInfo | null>(null);
   const [waiverText, setWaiverText] = useState('');
   // How to actually pay. Comes from the server rather than the bundle so the
   // organizer's payment address isn't published to anyone who loads the page.
   const [paymentInstructions, setPaymentInstructions] = useState('');
-  const [roster, setRoster] = useState<Roster | null>(null);
-  const [teams, setTeams] = useState<TeamView[] | null>(null);
-  /** Where the week stands, as the *server* sees it. Deriving this in the
-   * browser meant the answer depended on the viewer's own clock. */
-  const [phase, setPhase] = useState<SessionPhase | null>(null);
+
   const [playerDataLoaded, setPlayerDataLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,31 +99,17 @@ export default function Home() {
     setError(null);
     try {
       const d = await fetchJson<{
-        session: SessionInfo | null;
-        phase: SessionPhase | null;
+        sessions: SessionEntry[];
         signedIn: boolean;
         player: PlayerInfo | null;
-        signup: SignupInfo | null;
-        incomingSubRequests: IncomingSubRequest[];
-        costOwed: number | null;
-        waitlistPosition: number | null;
-        roster: Roster | null;
-        teams: TeamView[] | null;
         waiverText: string;
         paymentInstructions: string;
       }>('/api/home');
 
-      setScrimmage(d.session);
-      setPhase(d.phase);
-      setTeams(d.teams);
-      setMySignup(d.signup);
-      setIncomingSubRequests(d.incomingSubRequests);
-      setCostOwed(d.costOwed);
-      setWaitlistPosition(d.waitlistPosition);
+      setEntries(d.sessions);
       setMyPlayer(d.player);
       setWaiverText(d.waiverText);
       setPaymentInstructions(d.paymentInstructions);
-      setRoster(d.roster);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -150,14 +153,6 @@ export default function Home() {
       setBusy(false);
     }
   }
-
-  const handleCancel = () => (mySignup ? runAction({ kind: 'cancel', signupId: mySignup.signupId }) : undefined);
-  const handleRequestSub = (targetEmail: string) =>
-    mySignup ? runAction({ kind: 'requestSub', signupId: mySignup.signupId, targetEmail }) : undefined;
-  const handleCancelSubRequest = () =>
-    mySignup ? runAction({ kind: 'cancelSubRequest', signupId: mySignup.signupId }) : undefined;
-  const handleRespondToSubRequest = (fromSignupId: string, accept: boolean) =>
-    runAction({ kind: 'respondToSubRequest', fromSignupId, accept });
 
 
   return (
@@ -229,72 +224,169 @@ export default function Home() {
         </p>
       )}
 
-      <Card className="mt-6">
-        {!scrimmageLoaded && (
+      {!scrimmageLoaded && (
+        <Card className="mt-6">
           <p className="flex items-center gap-2 text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading this week&apos;s scrimmage...
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading the upcoming games...
           </p>
-        )}
-        {scrimmageLoaded && !scrimmage && (
+        </Card>
+      )}
+
+      {scrimmageLoaded && entries.length === 0 && (
+        <Card className="mt-6">
           <p className="text-slate-600">No game scheduled yet. Check back Monday morning.</p>
-        )}
-        {scrimmageLoaded && scrimmage && (
-          <>
-            <h2 className="font-semibold text-slate-900">
-              Scrimmage: {scrimmage.gameDate} at {scrimmage.gameTime}
-            </h2>
-            <SessionLocation
-              className="mt-1"
-              locationArea={scrimmage.locationArea}
-              locationName={scrimmage.locationName}
-              locationUrl={scrimmage.locationUrl}
+        </Card>
+      )}
+
+      {/* One card per upcoming game, soonest first. A single game renders
+          exactly as it always did; the heading above each group only appears
+          once there is more than one, because with one game it is furniture. */}
+      {scrimmageLoaded &&
+        entries.map((e, i) => (
+          <div key={e.session.sessionId}>
+            {entries.length > 1 && groupHeadingFor(entries, i) && (
+              <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {groupHeadingFor(entries, i)}
+              </h2>
+            )}
+            <SessionCard
+              entry={e}
+              authStatus={authStatus}
+              myPlayer={myPlayer}
+              waiverText={waiverText}
+              paymentInstructions={paymentInstructions}
+              playerDataLoaded={playerDataLoaded}
+              busy={busy}
+              setBusy={setBusy}
+              setError={setError}
+              onRefresh={loadHome}
+              runAction={runAction}
             />
-            <p className="mt-1 text-sm text-slate-600">
-              {scrimmage.capacity} spots
-              {scrimmage.pricePerSpot > 0 ? ` · $${scrimmage.pricePerSpot.toFixed(2)} each` : ''}
-            </p>
-            {scrimmage.status === 'cancelled' && <p className="mt-1 text-red-700">This week&apos;s game has been cancelled.</p>}
-            {scrimmage.status !== 'cancelled' && (
-              <WeeklyTimeline
-                gameDate={scrimmage.gameDate}
-                gameTime={scrimmage.gameTime}
-                rosterLockAt={scrimmage.rosterLockAt}
-                status={scrimmage.status}
-                phase={phase}
-              />
-            )}
-            {scrimmage.status !== 'cancelled' && authStatus === 'authenticated' && (
-              <PlayerArea
-                scrimmage={scrimmage}
-                phase={phase}
-                registrationClosed={scrimmage.status === 'closed'}
-                mySignup={mySignup}
-                myPlayer={myPlayer}
-                waiverText={waiverText}
-                costOwed={costOwed}
-                waitlistPosition={waitlistPosition}
-                paymentInstructions={paymentInstructions}
-                loaded={playerDataLoaded}
-                busy={busy}
-                setBusy={setBusy}
-                setError={setError}
-                onCancel={handleCancel}
-                onRefresh={loadHome}
-                onRequestSub={handleRequestSub}
-                onCancelSubRequest={handleCancelSubRequest}
-                onPollAnswered={loadHome}
-              />
-            )}
-            {scrimmage.status !== 'cancelled' && authStatus === 'unauthenticated' && (
-              <p className="mt-2 text-slate-600">Sign in above to see your status or sign up.</p>
-            )}
-          </>
+          </div>
+        ))}
+    </main>
+  );
+}
+
+/**
+ * Which group heading, if any, belongs above the card at `index`.
+ *
+ * Returns a heading only for the first card in each group, so a run of games
+ * in the same week is labelled once. "This week" is every game before the
+ * coming Monday; everything after is "Later", which is as much precision as a
+ * list this short needs.
+ */
+export function groupHeadingFor(entries: SessionEntry[], index: number): string | null {
+  const groupOf = (entry: SessionEntry) =>
+    entry.session.gameDate < mondayAfterToday() ? 'This week' : 'Later';
+
+  const heading = groupOf(entries[index]);
+  if (index > 0 && groupOf(entries[index - 1]) === heading) return null;
+  return heading;
+}
+
+/** The coming Monday as an ISO date, which is where "this week" stops. */
+function mondayAfterToday(): string {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12));
+  // getUTCDay: 0 = Sunday. Days until the next Monday, never 0.
+  today.setUTCDate(today.getUTCDate() + ((8 - (today.getUTCDay() || 7)) % 7 || 7));
+  return today.toISOString().slice(0, 10);
+}
+
+/**
+ * One upcoming game: when and where it is, the caller's standing in it, its
+ * roster, its teams and any request to share their spot in it.
+ *
+ * Everything here is per session, which is why it is one component rendered
+ * once per game rather than a page with one session's worth of state. A player
+ * can be confirmed for Friday, waitlisted for Sunday, and hold a pending
+ * sub-request on one of them; before this the page had one slot for each of
+ * those facts and they fought over it.
+ */
+export function SessionCard(props: {
+  entry: SessionEntry;
+  authStatus: string;
+  myPlayer: PlayerInfo | null;
+  waiverText: string;
+  paymentInstructions: string;
+  playerDataLoaded: boolean;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  setError: (e: string | null) => void;
+  onRefresh: () => Promise<void> | void;
+  runAction: (action: PlayerAction) => void;
+}) {
+  const { entry, authStatus, myPlayer, waiverText, paymentInstructions, playerDataLoaded, busy, setBusy, setError, onRefresh, runAction } =
+    props;
+  const { session, phase, signup: mySignup, incomingSubRequests, costOwed, waitlistPosition, roster, teams } = entry;
+
+  // Bound to this card's signup rather than to "the" signup: with several
+  // games open at once there is no single one to act on.
+  const handleCancel = () => (mySignup ? runAction({ kind: 'cancel', signupId: mySignup.signupId }) : undefined);
+  const handleRequestSub = (targetEmail: string) =>
+    mySignup ? runAction({ kind: 'requestSub', signupId: mySignup.signupId, targetEmail }) : undefined;
+  const handleCancelSubRequest = () =>
+    mySignup ? runAction({ kind: 'cancelSubRequest', signupId: mySignup.signupId }) : undefined;
+
+  return (
+    <>
+      <Card className="mt-4">
+        <h2 className="font-semibold text-slate-900">{formatGameDay(session.gameDate, session.gameTime)}</h2>
+        <SessionLocation
+          className="mt-1"
+          locationArea={session.locationArea}
+          locationName={session.locationName}
+          locationUrl={session.locationUrl}
+        />
+        <p className="mt-1 text-sm text-slate-600">
+          {session.capacity} spots
+          {session.pricePerSpot > 0 ? ` · $${session.pricePerSpot.toFixed(2)} each` : ''}
+        </p>
+        {session.status === 'cancelled' && <p className="mt-1 text-red-700">This game has been cancelled.</p>}
+        {session.status !== 'cancelled' && (
+          <WeeklyTimeline
+            gameDate={session.gameDate}
+            gameTime={session.gameTime}
+            rosterLockAt={session.rosterLockAt}
+            registrationOpensAt={session.registrationOpensAt}
+            registrationClosesAt={session.registrationClosesAt}
+            status={session.status}
+            phase={phase}
+          />
+        )}
+        {session.status !== 'cancelled' && authStatus === 'authenticated' && (
+          <PlayerArea
+            scrimmage={session}
+            phase={phase}
+            registrationClosed={session.status === 'closed'}
+            mySignup={mySignup}
+            myPlayer={myPlayer}
+            waiverText={waiverText}
+            costOwed={costOwed}
+            waitlistPosition={waitlistPosition}
+            paymentInstructions={paymentInstructions}
+            loaded={playerDataLoaded}
+            busy={busy}
+            setBusy={setBusy}
+            setError={setError}
+            onCancel={handleCancel}
+            onRefresh={onRefresh}
+            onRequestSub={handleRequestSub}
+            onCancelSubRequest={handleCancelSubRequest}
+            onPollAnswered={onRefresh}
+          />
+        )}
+        {session.status !== 'cancelled' && authStatus === 'unauthenticated' && (
+          <p className="mt-2 text-slate-600">Sign in above to see your status or sign up.</p>
         )}
       </Card>
 
       {authStatus === 'authenticated' && incomingSubRequests.length > 0 && (
         <Card className="mt-4 border-amber-300 bg-amber-50">
-          <h2 className="font-semibold text-slate-900">Requests to share your spot</h2>
+          <h2 className="font-semibold text-slate-900">
+            Requests to share your spot on {formatGameDate(session.gameDate)}
+          </h2>
           {busy && <p className="mt-1 text-xs text-slate-500">Processing...</p>}
           <ul className="mt-2 space-y-2">
             {incomingSubRequests.map((r) => (
@@ -309,7 +401,7 @@ export default function Home() {
                     variant="success"
                     size="sm"
                     disabled={busy}
-                    onClick={() => handleRespondToSubRequest(r.fromSignupId, true)}
+                    onClick={() => runAction({ kind: 'respondToSubRequest', fromSignupId: r.fromSignupId, accept: true })}
                   >
                     Accept
                   </Button>
@@ -317,7 +409,7 @@ export default function Home() {
                     variant="secondary"
                     size="sm"
                     disabled={busy}
-                    onClick={() => handleRespondToSubRequest(r.fromSignupId, false)}
+                    onClick={() => runAction({ kind: 'respondToSubRequest', fromSignupId: r.fromSignupId, accept: false })}
                   >
                     Decline
                   </Button>
@@ -335,8 +427,7 @@ export default function Home() {
           </h2>
           <div className="mt-2">
             <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount}
-              {scrimmage ? ` of ${scrimmage.capacity}` : ''})
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount} of {session.capacity})
             </h3>
             {roster.confirmed && (
               <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
@@ -379,10 +470,10 @@ export default function Home() {
           notes under the rosters are game rules: the rover at eight, the
           3-girls rule, a team playing short. Showing them would be confident
           advice about a game nobody is playing. */}
-      {teams && scrimmage && scrimmage.format !== 'practice' && (
-        <TeamRosters teams={teams} numFields={scrimmage.numFields} highlightSignupId={mySignup?.signupId} />
+      {teams && session.format !== 'practice' && (
+        <TeamRosters teams={teams} numFields={session.numFields} highlightSignupId={mySignup?.signupId} />
       )}
-    </main>
+    </>
   );
 }
 

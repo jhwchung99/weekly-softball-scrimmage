@@ -263,6 +263,10 @@ export interface SessionInputs {
   /** The roster lock as a `datetime-local` value, '' when the session uses the
    * default of five hours before the game. */
   rosterLock: string;
+  /** The registration window as `datetime-local` values, '' on either when the
+   * session uses the derived default. */
+  registrationOpens: string;
+  registrationCloses: string;
 }
 
 /**
@@ -284,5 +288,7 @@ export function sessionInputsFor(session: AdminSessionView): SessionInputs {
     fieldName: session.locationName,
     fieldUrl: session.locationUrl,
     rosterLock: toLocalInput(session.rosterLockAt),
+    registrationOpens: toLocalInput(session.registrationOpensAt),
+    registrationCloses: toLocalInput(session.registrationClosesAt),
   };
 }

@@ -41,23 +41,40 @@ const SESSION = {
   teamsStatus: '',
 };
 
-/** What /api/home answers, with only what a case cares about overridden. */
+/**
+ * What /api/home answers, with only what a case cares about overridden.
+ *
+ * The response became a list of sessions on 2026-09-22. Cases still override
+ * the per-session fields by their own names — `session`, `phase`, `roster` —
+ * and this sorts them into the entry, so the twenty call sites below keep
+ * saying what they mean. `session: null` means nothing is scheduled, which is
+ * now an empty list rather than a null field.
+ */
 function home(over: Record<string, unknown> = {}) {
-  return {
+  const perSession = ['session', 'phase', 'signup', 'incomingSubRequests', 'costOwed', 'waitlistPosition', 'roster', 'teams'];
+  const entry: Record<string, unknown> = {
     session: SESSION,
     phase: 'open',
-    signedIn: true,
-    player: { fullName: 'Kevin Kim', gender: 'Male', savedPositions: 'SS' },
     signup: null,
     incomingSubRequests: [],
     costOwed: null,
     waitlistPosition: null,
     roster: { confirmedCount: 0, waitlistedCount: 0, confirmed: [], waitlisted: [] },
     teams: null,
+  };
+  const top: Record<string, unknown> = {
+    signedIn: true,
+    player: { fullName: 'Kevin Kim', gender: 'Male', savedPositions: 'SS' },
     waiverText: 'I accept the risks.',
     paymentInstructions: 'e-Transfer the organizer.',
-    ...over,
   };
+
+  for (const [key, value] of Object.entries(over)) {
+    if (perSession.includes(key)) entry[key] = value;
+    else top[key] = value;
+  }
+
+  return { ...top, sessions: entry.session === null ? [] : [entry] };
 }
 
 function respondWith(body: unknown, ok = true) {
@@ -78,8 +95,37 @@ describe('Home', () => {
     // registration opens and everyone arrives at once.
     render(<Home />);
 
-    await screen.findByText(/Scrimmage: 2026-07-10 at 18:00/);
+    // A human date, not the ISO id: voice.md rule 2, and it matters more now
+    // that a player may be choosing between two days.
+    await screen.findByText(/Friday, July 10 at 6pm/);
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/home']);
+  });
+
+  it('shows both games in the same week, soonest first', async () => {
+    // The whole point of the change: a Sunday game beside a Friday one used to
+    // be invisible, because the lookup took the first of Fri/Sat/Sun and
+    // stopped. Both are cards now rather than a thing to switch between.
+    const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '14:00' };
+    const base = home();
+    respondWith({
+      ...base,
+      sessions: [base.sessions[0], { ...base.sessions[0], session: sunday }],
+    });
+
+    render(<Home />);
+
+    expect(await screen.findByRole('heading', { name: /Friday, July 10 at 6pm/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Sunday, July 12 at 2pm/ })).toBeInTheDocument();
+    // Still one request for the whole page, however many games it holds.
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/home']);
+  });
+
+  it('labels the groups only when there is more than one game', async () => {
+    render(<Home />);
+    await screen.findByRole('heading', { name: /Friday, July 10 at 6pm/ });
+
+    // A single game needs no "This week" heading above it.
+    expect(screen.queryByText(/^This week$/)).not.toBeInTheDocument();
   });
 
   it('waits for the session to resolve before asking, so it only asks once', async () => {

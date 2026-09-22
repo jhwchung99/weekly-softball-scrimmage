@@ -16,6 +16,8 @@ const scrimmage = {
   locationUrl: '',
   numFields: 1,
   rosterLockAt: '',
+  registrationOpensAt: '',
+  registrationClosesAt: '',
   teamsStatus: '' as const,
   format: 'game' as const,
   practicePollStatus: '' as const,

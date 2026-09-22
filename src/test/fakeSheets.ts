@@ -40,13 +40,9 @@ export function fakeSessionsModule(store: FakeStore) {
   return {
     listSessions: vi.fn(async () => [...store.sessions.values()]),
     getSession: vi.fn(async (sessionId: string) => store.sessions.get(sessionId) ?? null),
-    getSessionByAnyId: vi.fn(async (sessionIds: string[]) => {
-      for (const id of sessionIds) {
-        const match = store.sessions.get(id);
-        if (match) return match;
-      }
-      return null;
-    }),
+    getSessionsByIds: vi.fn(async (sessionIds: string[]) =>
+      sessionIds.map((id) => store.sessions.get(id)).filter((s): s is Session => s !== undefined)
+    ),
     createSession: vi.fn(async (session: Session) => {
       if (store.sessions.has(session.sessionId)) {
         throw new Error(`A session with id "${session.sessionId}" already exists.`);
@@ -82,6 +78,9 @@ export function fakeSignupsModule(store: FakeStore) {
 
   return {
     listSignupsForSession: vi.fn(async (sessionId: string) => listForSession(sessionId)),
+    listSignupsForSessions: vi.fn(
+      async (sessionIds: string[]) => new Map(sessionIds.map((id) => [id, listForSession(id)]))
+    ),
     getSignup: vi.fn(async (signupId: string) => store.signups.get(signupId) ?? null),
     getSignupWithSessionSignups: vi.fn(async (signupId: string) => {
       const signup = store.signups.get(signupId) ?? null;
@@ -232,6 +231,8 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     practicePollStatus: '',
     practicePollClosesAt: '',
     practicePollThreshold: 0,
+    registrationOpenedAt: '',
+    registrationClosedAt: '',
     ...overrides,
   };
 }

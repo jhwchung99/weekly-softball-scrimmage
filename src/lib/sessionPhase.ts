@@ -32,8 +32,11 @@ export type SessionPhase =
   | 'played';
 
 /** The session fields a phase depends on. Deliberately narrow, so callers can
- * pass a client DTO as readily as a sheet row. */
-export type Scheduled = Pick<Session, 'gameDate' | 'gameTime'> & Partial<Pick<Session, 'rosterLockAt'>>;
+ * pass a client DTO as readily as a sheet row. The three schedule overrides are
+ * optional because a DTO may omit them and a blank one means "use the derived
+ * default" either way. */
+export type Scheduled = Pick<Session, 'gameDate' | 'gameTime'> &
+  Partial<Pick<Session, 'rosterLockAt' | 'registrationOpensAt' | 'registrationClosesAt'>>;
 
 /**
  * The phase this session is in at `now`.
@@ -48,7 +51,7 @@ export function phaseOf(session: Scheduled, now: Date = new Date()): SessionPhas
   const { registrationOpensAt, registrationClosesAt, cutoffStart, gameStart } = getWeeklyMilestones(
     session.gameDate,
     session.gameTime,
-    session.rosterLockAt
+    session
   );
 
   if (now < registrationOpensAt) return 'before';

@@ -95,6 +95,8 @@ async function main() {
     practicePollStatus: '',
     practicePollClosesAt: '',
     practicePollThreshold: 0,
+    registrationOpenedAt: '',
+    registrationClosedAt: '',
     cost: 0,
   });
 

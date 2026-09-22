@@ -1,10 +1,10 @@
-import { currentWeekSession } from '../../../lib/currentWeek';
+import { upcomingSessions } from '../../../lib/currentWeek';
 import { buildCalendarFile } from '../../../lib/icalendar';
 import { formatLocation } from '../../../lib/location';
 import { zonedTimeToUtc } from '../../../lib/time';
 
 /**
- * This week's game as a calendar file.
+ * One game as a calendar file.
  *
  * A route rather than the `data:` URL the button used to carry, because iOS
  * Safari ignores the `download` attribute on `data:` URLs and renders the
@@ -17,14 +17,21 @@ import { zonedTimeToUtc } from '../../../lib/time';
  * the same reason `/api/sessions/current` is — when and where the game is was
  * never private — and it is the cache, not an auth check, that keeps this from
  * being a way to spend the quota.
+ *
+ * Takes `?sessionId=` to say which game, since a week can hold more than one
+ * and each is its own event. Without it, the soonest upcoming game — which is
+ * what the single-session button always meant.
  */
 
 const GAME_LENGTH_HOURS = 2;
 
-export async function GET() {
-  const session = await currentWeekSession();
+export async function GET(request: Request) {
+  const sessions = await upcomingSessions();
+  const wanted = new URL(request.url).searchParams.get('sessionId');
+  const session = wanted ? sessions.find((s) => s.sessionId === wanted) : sessions[0];
+
   if (!session) {
-    return new Response('No game is scheduled this week.', { status: 404 });
+    return new Response(wanted ? 'No such game.' : 'No game is scheduled.', { status: 404 });
   }
 
   const start = zonedTimeToUtc(session.gameDate, session.gameTime);

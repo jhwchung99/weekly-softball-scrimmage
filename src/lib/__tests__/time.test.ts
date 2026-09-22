@@ -222,7 +222,7 @@ describe('a session that sets its own roster lock', () => {
   it('locks when it says, not five hours before the game', () => {
     // A 10am Saturday game would lock at 5am. Locked at 8pm the Friday
     // instead, so the teams, the cost and the one email all land that evening.
-    const milestones = getWeeklyMilestones('2026-07-11', '10:00', '2026-07-11T00:00:00.000Z');
+    const milestones = getWeeklyMilestones('2026-07-11', '10:00', { rosterLockAt: '2026-07-11T00:00:00.000Z' });
 
     expect(milestones.cutoffStart.toISOString()).toBe('2026-07-11T00:00:00.000Z');
     // Everything else is untouched by the override.
@@ -233,9 +233,60 @@ describe('a session that sets its own roster lock', () => {
   it('falls back to the default when the override is blank or unreadable', () => {
     const fiveHoursBefore = '2026-07-10T17:00:00.000Z';
 
-    expect(getWeeklyMilestones('2026-07-10', '18:00', '').cutoffStart.toISOString()).toBe(fiveHoursBefore);
+    expect(getWeeklyMilestones('2026-07-10', '18:00', { rosterLockAt: '' }).cutoffStart.toISOString()).toBe(fiveHoursBefore);
     // A hand-edited cell should not be able to take the week's schedule out.
-    expect(getWeeklyMilestones('2026-07-10', '18:00', 'not a date').cutoffStart.toISOString()).toBe(fiveHoursBefore);
+    expect(getWeeklyMilestones('2026-07-10', '18:00', { rosterLockAt: 'not a date' }).cutoffStart.toISOString()).toBe(fiveHoursBefore);
+  });
+});
+
+describe('a session that sets its own registration window', () => {
+  it('opens and closes when it says, not on the derived Monday/Tuesday', () => {
+    const milestones = getWeeklyMilestones('2026-07-10', '18:00', {
+      registrationOpensAt: '2026-07-01T13:00:00.000Z',
+      registrationClosesAt: '2026-07-08T04:00:00.000Z',
+    });
+
+    expect(milestones.registrationOpensAt.toISOString()).toBe('2026-07-01T13:00:00.000Z');
+    expect(milestones.registrationClosesAt.toISOString()).toBe('2026-07-08T04:00:00.000Z');
+    // The game and the lock are untouched by a window override.
+    expect(milestones.gameStart.toISOString()).toBe('2026-07-10T22:00:00.000Z');
+    expect(milestones.cutoffStart.toISOString()).toBe('2026-07-10T17:00:00.000Z');
+  });
+
+  it('overrides each end independently', () => {
+    const openOnly = getWeeklyMilestones('2026-07-10', '18:00', { registrationOpensAt: '2026-07-01T13:00:00.000Z' });
+
+    expect(openOnly.registrationOpensAt.toISOString()).toBe('2026-07-01T13:00:00.000Z');
+    // Still the derived Tuesday midnight.
+    expect(openOnly.registrationClosesAt.toISOString()).toBe('2026-07-07T04:00:00.000Z');
+  });
+
+  it('falls back to the derived window when blank or unreadable', () => {
+    const derivedOpen = '2026-07-06T13:00:00.000Z';
+
+    expect(
+      getWeeklyMilestones('2026-07-10', '18:00', { registrationOpensAt: '' }).registrationOpensAt.toISOString()
+    ).toBe(derivedOpen);
+    // Same rule as the lock: a hand-edited cell must not take the schedule out.
+    expect(
+      getWeeklyMilestones('2026-07-10', '18:00', { registrationOpensAt: 'whenever' }).registrationOpensAt.toISOString()
+    ).toBe(derivedOpen);
+  });
+
+  it('is what makes a midweek game work at all', () => {
+    // The derived window for a Monday game closes 12am Tuesday — after the
+    // game has been played. phaseOf would read 'open' straight through game
+    // time and never reach 'locked'. This is why assertScheduleOrdering makes
+    // a Monday game carry its own window.
+    const derived = getWeeklyMilestones('2026-07-06', '18:00');
+    expect(derived.registrationClosesAt.getTime()).toBeGreaterThan(derived.gameStart.getTime());
+
+    const withWindow = getWeeklyMilestones('2026-07-06', '18:00', {
+      registrationOpensAt: '2026-06-29T13:00:00.000Z',
+      registrationClosesAt: '2026-07-04T04:00:00.000Z',
+    });
+    expect(withWindow.registrationClosesAt.getTime()).toBeLessThan(withWindow.cutoffStart.getTime());
+    expect(withWindow.cutoffStart.getTime()).toBeLessThan(withWindow.gameStart.getTime());
   });
 });
 

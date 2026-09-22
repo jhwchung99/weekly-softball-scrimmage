@@ -43,6 +43,8 @@ const SESSION: Session = {
   practicePollStatus: '',
   practicePollClosesAt: '',
   practicePollThreshold: 0,
+  registrationOpenedAt: '',
+  registrationClosedAt: '',
 };
 
 const PLAYER: Signup = {

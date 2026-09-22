@@ -244,6 +244,13 @@ export interface SessionView {
    * the game. The timeline draws its mark from this, so a session that locks
    * the night before shows that rather than the default. */
   rosterLockAt: string;
+  /** This session's own registration window, '' on either to use the derived
+   * default. Crosses to the client for the same reason `rosterLockAt` does:
+   * the timeline draws its marks from these, and a session with its own window
+   * has to show that window rather than the usual one. It is the published
+   * schedule, so there is nothing here a player should not see. */
+  registrationOpensAt: string;
+  registrationClosesAt: string;
   capacity: number;
   numFields: number;
   status: Session['status'];
@@ -269,6 +276,8 @@ export function sessionView(session: Session): SessionView {
     gameDate: session.gameDate,
     gameTime: session.gameTime,
     rosterLockAt: session.rosterLockAt,
+    registrationOpensAt: session.registrationOpensAt,
+    registrationClosesAt: session.registrationClosesAt,
     capacity: session.capacity,
     numFields: session.numFields,
     status: session.status,

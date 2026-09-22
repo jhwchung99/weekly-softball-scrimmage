@@ -44,6 +44,8 @@ describe('Session row round-trip', () => {
       practicePollStatus: 'closed',
       practicePollClosesAt: '2026-07-09T22:00:00.000Z',
       practicePollThreshold: 14,
+      registrationOpenedAt: '',
+      registrationClosedAt: '',
     };
     expect(parseSessionRow(serializeSessionRow(session))).toEqual(session);
   });
@@ -70,6 +72,8 @@ describe('Session row round-trip', () => {
       practicePollStatus: '',
       practicePollClosesAt: '',
       practicePollThreshold: '',
+      registrationOpenedAt: '',
+      registrationClosedAt: '',
     });
     // Closed, not open: a blank cell is the absence of a decision, and for
     // "are signups accepted" the safe reading of silence is no.
@@ -107,6 +111,8 @@ describe('Session row round-trip', () => {
       practicePollStatus: '',
       practicePollClosesAt: '',
       practicePollThreshold: '',
+      registrationOpenedAt: '',
+      registrationClosedAt: '',
     });
 
     expect(parsed.rosterLockAt).toBe('');
@@ -138,6 +144,8 @@ describe('Session row round-trip', () => {
       practicePollStatus: '',
       practicePollClosesAt: '',
       practicePollThreshold: '',
+      registrationOpenedAt: '',
+      registrationClosedAt: '',
     });
 
     expect(parsed.format).toBe('game');

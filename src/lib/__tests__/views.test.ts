@@ -223,6 +223,13 @@ describe('sessionView', () => {
       'locationUrl',
       'teamsStatus',
       'rosterLockAt',
+      // The published schedule. The timeline draws its marks from these, and a
+      // session with its own window has to show that window rather than the
+      // usual one. The *stamps* of when registration actually opened and
+      // closed stay off the client — they are the organizer's reconciliation
+      // record, and the filter below asserts they never leak.
+      'registrationOpensAt',
+      'registrationClosesAt',
       'format',
       'practicePollStatus',
       'practicePollClosesAt',

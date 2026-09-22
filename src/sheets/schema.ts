@@ -36,8 +36,15 @@ export interface Session {
   sessionId: string;
   gameDate: string; // ISO date, e.g. "2026-09-11"
   gameTime: string; // e.g. "18:00"
-  registrationOpensAt: string; // ISO datetime
-  registrationClosesAt: string; // ISO datetime
+  registrationOpensAt: string; // ISO datetime, optional. When registration
+  // should open, overriding the default of 9am ET on the Monday of the game's
+  // week. '' = use the default. A SETTING, not a record of what happened —
+  // until 2026-09-22 this column held the timestamp of the cron run, which is
+  // now registrationOpenedAt below.
+  registrationClosesAt: string; // ISO datetime, optional. When registration
+  // should close, overriding the default of 12am ET that Tuesday. '' = use the
+  // default. Required, with the one above, on a Monday game: the derived
+  // window would close after the game had been played (see time.ts).
   capacity: number;
   status: SessionStatus;
   cost: number; // what the permit actually cost the organizer. Bookkeeping
@@ -76,6 +83,13 @@ export interface Session {
   practicePollThreshold: number; // confirmed spots below which the poll is
   // offered. 0 = use the default of 16, the way rosterLockAt treats ''. Per
   // session because a two-field week needs a different number.
+  registrationOpenedAt: string; // ISO datetime registration actually opened,
+  // '' if it has not. The stamp that registrationOpensAt used to hold before
+  // that column became a setting. Past tense for what happened, present for
+  // what is intended — nothing reads these back, they are for the organizer
+  // reconciling against a cron that fired late.
+  registrationClosedAt: string; // ISO datetime registration actually closed,
+  // '' if it has not.
 }
 
 export interface Signup {
@@ -153,6 +167,8 @@ export const SESSION_HEADERS = [
   'practicePollStatus',
   'practicePollClosesAt',
   'practicePollThreshold',
+  'registrationOpenedAt',
+  'registrationClosedAt',
 ] as const satisfies readonly (keyof Session)[];
 
 export const SIGNUP_HEADERS = [
@@ -250,6 +266,10 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     practicePollStatus: (row.practicePollStatus || '') as PracticePollStatus,
     practicePollClosesAt: row.practicePollClosesAt || '',
     practicePollThreshold: Number(row.practicePollThreshold) || 0,
+    // Blank on every row written before these existed, which is correct: a
+    // session created before the split has no record of when it opened.
+    registrationOpenedAt: row.registrationOpenedAt || '',
+    registrationClosedAt: row.registrationClosedAt || '',
   };
 }
 

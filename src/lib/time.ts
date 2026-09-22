@@ -45,13 +45,40 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+/**
+ * A session's own schedule, where it overrides the derived default.
+ *
+ * Every field is optional and blank means "use the default", exactly as
+ * `rosterLockAt` has always worked (ADR-0006). A `Session` satisfies this
+ * structurally, so a caller holding one passes it straight through rather
+ * than picking fields out of it.
+ */
+export interface ScheduleOverrides {
+  /** When this session's roster locks. '' = five hours before the game. */
+  rosterLockAt?: string;
+  /** When registration opens. '' = 9am ET the Monday of the game's week. */
+  registrationOpensAt?: string;
+  /** When registration closes. '' = 12am ET that Tuesday. */
+  registrationClosesAt?: string;
+}
+
+/** An override that parses, or null so the caller falls back. An unreadable
+ * value is deliberately not an error: a hand-edited cell should not be able to
+ * take a session's whole schedule out. */
+function parsedOverride(value: string | undefined): Date | null {
+  if (!value) return null;
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
 export interface WeeklyMilestones {
-  /** Monday 9am ET — when registration is scheduled to open. */
+  /** When registration opens: the session's own `registrationOpensAt` if it
+   * has one, otherwise 9am ET on the Monday of the game's week. */
   registrationOpensAt: Date;
-  /** Tuesday 12am ET (midnight, i.e. right at the end of Monday) — when
-   * registration is scheduled to close. Deliberately short (~15 hours):
-   * gives the organizer the rest of the week to book a permit sized to
-   * the actual headcount before Friday's game. */
+  /** When registration closes: the session's own `registrationClosesAt` if it
+   * has one, otherwise 12am ET that Tuesday. The default is deliberately
+   * short (~15 hours), giving the organizer the rest of the week to book a
+   * permit sized to the actual headcount. */
   registrationClosesAt: Date;
   /** The game's actual start instant. */
   gameStart: Date;
@@ -61,28 +88,36 @@ export interface WeeklyMilestones {
 }
 
 /**
- * The four dates a player might want to see on a weekly timeline,
- * derived purely from the game date/time — not from the session's own
- * registrationOpensAt/registrationClosesAt fields, which are often
- * blank (closesAt stays '' until the Tuesday-midnight cron actually
- * runs) or reflect an admin manually opening things early rather than
- * the intended schedule. This computes the *schedule*, independent of
- * whether it's actually been hit yet — pairs with the session's own
- * `status` field rather than replacing it. Since 2026-09-07 the signup
- * gate requires BOTH (see signupFlow's requireOpenSessionAndProfile):
- * status alone was a single point of failure, because anything that set a
- * session open accepted signups immediately, whatever the calendar said. No server-only APIs
- * used, safe to import from a client component too.
+ * The four dates a player might want to see on a weekly timeline: what the
+ * schedule *intends*, independent of whether it has been hit yet.
  *
- * Game day can be Friday, Saturday, or Sunday (validateGameDate
- * enforces this) — registration always opens the Monday and closes the
- * following Tuesday at midnight of that same calendar week, regardless
- * of which of the three days the game itself falls on.
+ * Each one is the session's own value where it has one and a value derived
+ * from the game date where it does not. Until 2026-09-22 only the lock could
+ * be overridden and the window was always derived — the session's
+ * `registrationOpensAt`/`registrationClosesAt` columns existed but held
+ * timestamps of when the crons ran, so this deliberately ignored them. Those
+ * columns are now the settings their names always claimed to be, and the
+ * stamps moved to `registrationOpenedAt`/`registrationClosedAt`.
+ *
+ * Pairs with the session's own `status` field rather than replacing it. Since
+ * 2026-09-07 the signup gate requires BOTH (see signupFlow's
+ * requireOpenSessionAndProfile): status alone was a single point of failure,
+ * because anything that set a session open accepted signups immediately,
+ * whatever the calendar said. No server-only APIs used, safe to import from a
+ * client component too.
+ *
+ * Game day can be any day of the week. The *derived* window always opens the
+ * Monday and closes the Tuesday of the game's own calendar week, whichever day
+ * the game falls on — which is coherent for every weekday except Monday, where
+ * it would close after the game has been played. A Monday game therefore has
+ * to carry its own window; `assertScheduleOrdering` in adminFlow is what
+ * refuses to save one that does not, and the same check catches a hand-typed
+ * window in the wrong order on any other day.
  */
 export function getWeeklyMilestones(
   gameDate: string,
   gameTime: string,
-  rosterLockAt: string = ''
+  overrides: ScheduleOverrides = {}
 ): WeeklyMilestones {
   const [year, month, day] = gameDate.split('-').map(Number);
   // Anchored at noon UTC so subtracting whole days never crosses a
@@ -98,19 +133,19 @@ export function getWeeklyMilestones(
   const mondayNoonUtc = gameNoonUtc - daysSinceMonday * 24 * 60 * 60 * 1000;
   const tuesdayNoonUtc = mondayNoonUtc + 1 * 24 * 60 * 60 * 1000;
 
-  const registrationOpensAt = zonedTimeToUtc(toDateStr(mondayNoonUtc), '09:00');
-  const registrationClosesAt = zonedTimeToUtc(toDateStr(tuesdayNoonUtc), '00:00');
+  // Each milestone is the session's own value where it has one, and the
+  // derived default where it does not — the ADR-0006 pattern, now covering the
+  // whole window rather than the lock alone. This stays the only place the
+  // arithmetic happens, so every consumer follows an override without knowing
+  // it exists.
+  const registrationOpensAt =
+    parsedOverride(overrides.registrationOpensAt) ?? zonedTimeToUtc(toDateStr(mondayNoonUtc), '09:00');
+  const registrationClosesAt =
+    parsedOverride(overrides.registrationClosesAt) ?? zonedTimeToUtc(toDateStr(tuesdayNoonUtc), '00:00');
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
-  // Five hours before the game is the default, not the rule. A session may
-  // carry its own lock instant, which is what lets an early game lock the
-  // night before instead of at 5am (see docs/adr/0006). An unparseable value
-  // falls back rather than throwing: a hand-edited cell should not be able to
-  // take the week's whole schedule out.
-  const override = rosterLockAt ? new Date(rosterLockAt) : null;
   const cutoffStart =
-    override && !Number.isNaN(override.getTime())
-      ? override
-      : new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
+    parsedOverride(overrides.rosterLockAt) ??
+    new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
 
   return { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart };
 }

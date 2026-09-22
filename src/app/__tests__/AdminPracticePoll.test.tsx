@@ -19,6 +19,8 @@ const session = (over: Partial<AdminSessionView> = {}): AdminSessionView => ({
   gameDate: '2099-01-02',
   gameTime: '18:00',
   rosterLockAt: '',
+  registrationOpensAt: '',
+  registrationClosesAt: '',
   capacity: 20,
   numFields: 1,
   status: 'open',

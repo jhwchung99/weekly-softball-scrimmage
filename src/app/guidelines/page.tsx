@@ -22,10 +22,11 @@ export default function GuidelinesPage() {
       <p className="mt-1 text-sm text-slate-500">How signups work.</p>
 
       <Section title="When to sign up">
-        <li><strong>Signups open Monday at 9am ET</strong></li>
-        <li><strong>Signups close at midnight on Monday night</strong>, ET</li>
-        <li>Nobody is added after that</li>
-        <li>Games are Friday, Saturday, or Sunday. The homepage says which</li>
+        <li><strong>Signups usually open Monday at 9am ET</strong></li>
+        <li><strong>They usually close at midnight on Monday night</strong>, ET</li>
+        <li>Some games set their own times, so check the ones shown for the game you want</li>
+        <li>Nobody is added after signups close</li>
+        <li>Most games are Friday, Saturday, or Sunday. The homepage says which</li>
       </Section>
 
       <Section title="Signing up">

@@ -10,7 +10,7 @@ import { DEFAULT_GAME_TIME, DEFAULT_CAPACITY, DEFAULT_PRICE_PER_SPOT } from './s
 import { ApiError } from './apiErrors';
 import { validatePlayerProfile, validateInvitedByName, validateSessionCreate, validateReschedule } from './validation';
 import { withMutationLock } from './lock';
-import { getWeeklyMilestones, formatEasternMoment } from './time';
+import { getWeeklyMilestones, formatEasternMoment, formatGameDate, ScheduleOverrides } from './time';
 
 export interface AdminAddSignupInput {
   sessionId: string;
@@ -84,6 +84,12 @@ export interface AdminCreateSessionInput {
   cost?: unknown;
   pricePerSpot?: unknown;
   locationArea?: unknown;
+  /** The session's own schedule. Omitted or '' means the derived default,
+   * which is what almost every session uses — but a Monday game has to supply
+   * a window, because the derived one would close after the game. */
+  rosterLockAt?: unknown;
+  registrationOpensAt?: unknown;
+  registrationClosesAt?: unknown;
   /** Opt in to opening registration immediately; otherwise created closed. */
   openImmediately?: boolean;
 }
@@ -106,11 +112,17 @@ export interface AdminCreateSessionInput {
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
   // Above the lock — see adminAddSignup for why.
-  const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea } = validateSessionCreate(input, {
-    gameTime: DEFAULT_GAME_TIME,
-    capacity: DEFAULT_CAPACITY,
-    pricePerSpot: DEFAULT_PRICE_PER_SPOT,
-  });
+  const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea, rosterLockAt, registrationOpensAt, registrationClosesAt } =
+    validateSessionCreate(input, {
+      gameTime: DEFAULT_GAME_TIME,
+      capacity: DEFAULT_CAPACITY,
+      pricePerSpot: DEFAULT_PRICE_PER_SPOT,
+    });
+
+  // Same rule the edit path applies, for the same reason: a session that can
+  // never lock is as broken created as it is revised into being. This is also
+  // what refuses a Monday game with no window of its own.
+  assertScheduleOrdering(gameDate, gameTime, { rosterLockAt, registrationOpensAt, registrationClosesAt });
 
   return withMutationLock(async () => {
     const existing = await getSession(gameDate);
@@ -120,8 +132,8 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
       sessionId: gameDate,
       gameDate,
       gameTime,
-      registrationOpensAt: '',
-      registrationClosesAt: '',
+      registrationOpensAt,
+      registrationClosesAt,
       capacity,
       cost,
       pricePerSpot,
@@ -129,13 +141,15 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
       locationName: '',
       locationUrl: '',
       numFields: 1,
-      rosterLockAt: '',
+      rosterLockAt,
       teamsStatus: '',
       remindersSentAt: '',
   format: 'game',
       practicePollStatus: '',
       practicePollClosesAt: '',
       practicePollThreshold: 0,
+      registrationOpenedAt: '',
+      registrationClosedAt: '',
       status: input.openImmediately ? 'open' : 'closed',
     });
   });
@@ -298,33 +312,86 @@ export interface SessionRevision {
 }
 
 /**
- * Refuses a roster lock that falls at or after the first pitch.
+ * Refuses a schedule whose milestones do not come in order.
  *
- * `validateRosterLockAt` can only check that the value is a readable date: it
- * is handed the timestamp alone, and whether a lock is sensible depends on the
- * game it belongs to. This is the layer that has both.
+ * The rule is one chain:
  *
- * Only the late end is policed. Locking early is the entire point of the field
- * — an early game locks the evening before — and how early is the organizer's
- * judgement. Locking *after* the game starts has no reading at all: `phaseOf`
- * would never reach 'locked', so payment would never open and the game-day
- * email would refuse to send all day, with nothing on the dashboard saying
- * why. That is the failure this exists to make impossible.
+ *     registrationOpensAt < registrationClosesAt <= rosterLock < gameStart
  *
- * Checked against the game the session will have *after* this revision, so
- * rescheduling a game to before its own lock is caught too.
+ * `validateRegistrationOpensAt` and friends can only check that each value is
+ * a readable date: they are handed one timestamp at a time, and whether a
+ * milestone is sensible depends on the others and on the game. This is the
+ * layer that has all of them.
+ *
+ * It is checked against *effective* milestones — each field's own value where
+ * it has one, the derived default where it does not — which is what lets one
+ * rule cover two failures that look unrelated:
+ *
+ *  - **A hand-typed window in the wrong order.** A close time before its own
+ *    open, or a lock before registration has closed.
+ *  - **A Monday game with no window of its own.** The derived window closes
+ *    12am Tuesday, *after* a Monday game has been played, so `phaseOf` would
+ *    return 'open' straight through game time and never reach 'locked' —
+ *    payment would never open and the game-day email would refuse to send all
+ *    day, with nothing on the dashboard saying why. Until 2026-09-22 this was
+ *    prevented by only allowing Friday, Saturday and Sunday games; the ordering
+ *    check is what replaced that, and it catches the same failure by its cause
+ *    rather than by a proxy.
+ *
+ * Locking early is not policed, because it is the entire point of the field —
+ * an early game locks the evening before — and how early is the organizer's
+ * judgement. Only ordering is.
+ *
+ * Checked against the session as it will be *after* the revision lands, so
+ * moving a game to before its own lock is caught too.
  */
-function assertLockBeforeGame(gameDate: string, gameTime: string, rosterLockAt: string): void {
-  if (!rosterLockAt) return;
-
-  const { gameStart } = getWeeklyMilestones(gameDate, gameTime, rosterLockAt);
-  const lock = new Date(rosterLockAt);
-  if (lock.getTime() < gameStart.getTime()) return;
-
-  throw new ApiError(
-    400,
-    `The roster would lock ${formatEasternMoment(lock)}, which is not before the game starts ${formatEasternMoment(gameStart)}. Payment opens at the lock, so a lock this late would mean it never opens.`
+function assertScheduleOrdering(gameDate: string, gameTime: string, overrides: ScheduleOverrides): void {
+  const { registrationOpensAt, registrationClosesAt, cutoffStart, gameStart } = getWeeklyMilestones(
+    gameDate,
+    gameTime,
+    overrides
   );
+
+  const say = (at: Date) => formatEasternMoment(at);
+  // A blank window on a Monday game is the one failure whose cause is not
+  // visible in the numbers, so it gets told what to do rather than what is
+  // wrong. Checked here and not earlier because it is only a problem when the
+  // derived default is what is being used.
+  const derivedWindow = !overrides.registrationOpensAt && !overrides.registrationClosesAt;
+
+  if (registrationClosesAt.getTime() > gameStart.getTime() && derivedWindow) {
+    throw new ApiError(
+      400,
+      `A game on ${formatGameDate(gameDate)} needs its own registration times. The usual window closes ${say(
+        registrationClosesAt
+      )}, which is after the game starts ${say(gameStart)} — so registration would never close and the roster would never lock.`
+    );
+  }
+
+  if (registrationOpensAt.getTime() >= registrationClosesAt.getTime()) {
+    throw new ApiError(
+      400,
+      `Registration would close ${say(registrationClosesAt)}, which is not after it opens ${say(registrationOpensAt)}.`
+    );
+  }
+
+  if (registrationClosesAt.getTime() > cutoffStart.getTime()) {
+    throw new ApiError(
+      400,
+      `The roster would lock ${say(cutoffStart)}, before registration closes ${say(
+        registrationClosesAt
+      )}. The lock has to come last, because it is what stops the roster moving.`
+    );
+  }
+
+  if (cutoffStart.getTime() >= gameStart.getTime()) {
+    throw new ApiError(
+      400,
+      `The roster would lock ${say(cutoffStart)}, which is not before the game starts ${say(
+        gameStart
+      )}. Payment opens at the lock, so a lock this late would mean it never opens.`
+    );
+  }
 }
 
 /**
@@ -359,11 +426,11 @@ export async function reviseSession(
     // Against the week as it will be once this revision lands: the lock, the
     // date and the time can all move in one request, and it is the resulting
     // combination that has to make sense.
-    assertLockBeforeGame(
-      revision.gameDate ?? existing.gameDate,
-      revision.gameTime ?? existing.gameTime,
-      revision.updates.rosterLockAt ?? existing.rosterLockAt
-    );
+    assertScheduleOrdering(revision.gameDate ?? existing.gameDate, revision.gameTime ?? existing.gameTime, {
+      rosterLockAt: revision.updates.rosterLockAt ?? existing.rosterLockAt,
+      registrationOpensAt: revision.updates.registrationOpensAt ?? existing.registrationOpensAt,
+      registrationClosesAt: revision.updates.registrationClosesAt ?? existing.registrationClosesAt,
+    });
 
     if (revision.gameDate !== undefined || revision.gameTime !== undefined) {
       session = await adminRescheduleSession(

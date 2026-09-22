@@ -139,9 +139,12 @@ describe('a practice week still closes registration on schedule', () => {
 
     const result = await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
 
-    expect(result.skipped).toBe(false);
+    expect(result.changed).toBe(1);
     expect(store.sessions.get('2026-07-12')?.status).toBe('closed');
-    expect(store.sessions.get('2026-07-12')?.registrationClosesAt).not.toBe('');
+    // The stamp, not the setting: registrationClosesAt is now when the
+    // organizer wants it to close, and writing the firing time there would
+    // move the session's schedule every time the cron ran.
+    expect(store.sessions.get('2026-07-12')?.registrationClosedAt).not.toBe('');
     // And the format survived the close.
     expect(store.sessions.get('2026-07-12')?.format).toBe('practice');
   });

@@ -13,6 +13,12 @@ interface WeeklyTimelineProps {
   /** This session's own roster-lock instant, '' to use the default of five
    * hours before game time. */
   rosterLockAt?: string;
+  /** This session's own registration window, '' on either to use the derived
+   * default (9am Monday / 12am Tuesday of the game's week). Named `...Override`
+   * inside the component only because the destructured milestone below already
+   * owns the plain names. */
+  registrationOpensAt?: string;
+  registrationClosesAt?: string;
   status: SessionStatus;
   /**
    * Where the week stands, from the server. The marks used to be decided by
@@ -97,7 +103,15 @@ function Line({ state }: { state: LineState }) {
  * the week is the one you're in. `status` only decides whether this renders
  * at all (a cancelled session shows nothing).
  */
-export function WeeklyTimeline({ gameDate, gameTime, rosterLockAt, status, phase }: WeeklyTimelineProps) {
+export function WeeklyTimeline({
+  gameDate,
+  gameTime,
+  rosterLockAt,
+  registrationOpensAt: registrationOpensAtOverride,
+  registrationClosesAt: registrationClosesAtOverride,
+  status,
+  phase,
+}: WeeklyTimelineProps) {
   // Re-render once a minute so "closes in 2 days" doesn't go stale on a
   // long-open tab, without needing a literal ticking clock.
   const [, setTick] = useState(0);
@@ -114,7 +128,7 @@ export function WeeklyTimeline({ gameDate, gameTime, rosterLockAt, status, phase
   const { registrationOpensAt, registrationClosesAt, gameStart, cutoffStart } = getWeeklyMilestones(
     gameDate,
     gameTime,
-    rosterLockAt
+    { rosterLockAt, registrationOpensAt: registrationOpensAtOverride, registrationClosesAt: registrationClosesAtOverride }
   );
 
   // Which marks are filled comes from the server's phase, so every viewer sees

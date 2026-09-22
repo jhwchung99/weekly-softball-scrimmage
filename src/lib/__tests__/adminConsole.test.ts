@@ -171,6 +171,8 @@ describe('sessionInputsFor', () => {
     locationName: 'Iceland Park Diamond 3',
     locationUrl: 'https://maps.example/x',
     rosterLockAt: '',
+    registrationOpensAt: '',
+    registrationClosesAt: '',
     teamsStatus: '',
     format: 'game' as const,
     practicePollStatus: '' as const,
@@ -181,8 +183,8 @@ describe('sessionInputsFor', () => {
   };
 
   it('fills every editable box from the session', () => {
-    // All nine together: missing one leaves a box showing the previous week's
-    // value, which the organizer would then save.
+    // All eleven together: missing one leaves a box showing the previous
+    // week's value, which the organizer would then save.
     expect(sessionInputsFor(session)).toEqual({
       capacity: '12',
       cost: '240',
@@ -193,7 +195,23 @@ describe('sessionInputsFor', () => {
       fieldName: 'Iceland Park Diamond 3',
       fieldUrl: 'https://maps.example/x',
       rosterLock: '',
+      registrationOpens: '',
+      registrationCloses: '',
     });
+  });
+
+  it('shows a session\u2019s own schedule in league time, not the browser\u2019s', () => {
+    // 1pm UTC on the Monday is 9am Eastern. The organizer thinks in Eastern,
+    // and the input carries no zone, so the conversion has to be to league
+    // time rather than to whatever the laptop is set to.
+    const inputs = sessionInputsFor({
+      ...session,
+      registrationOpensAt: '2026-07-06T13:00:00.000Z',
+      registrationClosesAt: '2026-07-07T04:00:00.000Z',
+    });
+
+    expect(inputs.registrationOpens).toBe('2026-07-06T09:00');
+    expect(inputs.registrationCloses).toBe('2026-07-07T00:00');
   });
 
   it('renders a zero as "0" rather than an empty box', () => {

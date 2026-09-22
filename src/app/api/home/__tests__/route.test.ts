@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getSessionEmail = vi.fn();
 vi.mock('../../../../lib/auth', () => ({ getSessionEmail }));
 
-const getSessionByAnyId = vi.fn();
-vi.mock('../../../../sheets/sessions', () => ({ getSessionByAnyId }));
+const listSessions = vi.fn();
+vi.mock('../../../../sheets/sessions', () => ({ listSessions }));
 
-const listSignupsForSession = vi.fn();
-vi.mock('../../../../sheets/signups', () => ({ listSignupsForSession }));
+// Grouped rather than per-session: the route reads the Signups tab once for
+// every upcoming session, which is what keeps a page load at three reads.
+const listSignupsForSessions = vi.fn();
+vi.mock('../../../../sheets/signups', () => ({ listSignupsForSessions }));
 
 const getPlayer = vi.fn();
 vi.mock('../../../../sheets/players', () => ({ getPlayer }));
@@ -35,12 +37,25 @@ function signup(over: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * The first upcoming session's entry.
+ *
+ * `/api/home` returns one entry per upcoming session as of 2026-09-22, where
+ * it used to return a single session's fields at the top level. Every case
+ * here concerns one session, so this unwraps it rather than restating the
+ * shape in twenty places.
+ */
+// A parsed HTTP body, asserted field by field below; typing it adds nothing.
+function first(body: { sessions: any[] }): any {
+  return body.sessions[0];
+}
+
 beforeEach(() => {
   // This route reads the week through a cache; each case starts cold.
   forgetCurrentWeek();
   vi.clearAllMocks();
-  getSessionByAnyId.mockResolvedValue(SESSION);
-  listSignupsForSession.mockResolvedValue([]);
+  listSessions.mockResolvedValue([SESSION]);
+  listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', []]]));
   getPlayer.mockResolvedValue(null);
 });
 
@@ -51,8 +66,8 @@ describe('GET /api/home', () => {
     await GET();
 
     // The whole point of this endpoint: 3 reads, not 5.
-    expect(getSessionByAnyId).toHaveBeenCalledTimes(1);
-    expect(listSignupsForSession).toHaveBeenCalledTimes(1);
+    expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(listSignupsForSessions).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(1);
   });
 
@@ -61,14 +76,14 @@ describe('GET /api/home', () => {
 
     const body = await (await GET()).json();
 
-    expect(body.session.sessionId).toBe('2099-01-01');
+    expect(first(body).session.sessionId).toBe('2099-01-01');
     expect(body.signedIn).toBe(false);
     expect(body.player).toBeNull();
-    expect(body.signup).toBeNull();
-    expect(body.roster).toBeNull();
+    expect(first(body).signup).toBeNull();
+    expect(first(body).roster).toBeNull();
     expect(body.waiverText).toBeTruthy();
     // Signed out means no reason to read Signups or Players at all.
-    expect(listSignupsForSession).not.toHaveBeenCalled();
+    expect(listSignupsForSessions).not.toHaveBeenCalled();
     expect(getPlayer).not.toHaveBeenCalled();
   });
 
@@ -93,22 +108,22 @@ describe('GET /api/home', () => {
 
   it('skips the extra reads when no session exists for the week', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getSessionByAnyId.mockResolvedValue(null);
+    listSessions.mockResolvedValue([]);
 
     const body = await (await GET()).json();
 
-    expect(body.session).toBeNull();
-    expect(listSignupsForSession).not.toHaveBeenCalled();
+    expect(body.sessions).toEqual([]);
+    expect(listSignupsForSessions).not.toHaveBeenCalled();
   });
 
   it('returns the caller\'s own signup, cost share and roster names', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getSessionByAnyId.mockResolvedValue({ ...SESSION, pricePerSpot: 10 });
+    listSessions.mockResolvedValue([{ ...SESSION, pricePerSpot: 10 }]);
     getPlayer.mockResolvedValue({ email: 'a@dummy.test', fullName: 'A', gender: 'x', savedPositions: '' });
-    listSignupsForSession.mockResolvedValue([
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [
       signup({ email: 'a@dummy.test', fullName: 'A' }),
       signup({ email: 'b@dummy.test', fullName: 'B' }),
-    ]);
+    ]]]));
 
     const body = await (await GET()).json();
 
@@ -116,27 +131,27 @@ describe('GET /api/home', () => {
     expect(body.player.fullName).toBe('A');
     // Not `email`: the caller's own signup is projected too, and the browser
     // already knows who it is signed in as.
-    expect(body.signup.signupId).toBeTruthy();
-    expect(body.signup).not.toHaveProperty('email');
-    expect(body.costOwed).toBe(10); // the fixed price for one spot
-    expect(body.roster.confirmedCount).toBe(2);
-    expect(body.roster.confirmed.map((e: { fullName: string }) => e.fullName)).toEqual(['A', 'B']);
+    expect(first(body).signup.signupId).toBeTruthy();
+    expect(first(body).signup).not.toHaveProperty('email');
+    expect(first(body).costOwed).toBe(10); // the fixed price for one spot
+    expect(first(body).roster.confirmedCount).toBe(2);
+    expect(first(body).roster.confirmed.map((e: { fullName: string }) => e.fullName)).toEqual(['A', 'B']);
   });
 
   it('applies the same roster gate as the standalone route', async () => {
     getSessionEmail.mockResolvedValue('outsider@dummy.test');
-    listSignupsForSession.mockResolvedValue([signup({ email: 'a@dummy.test', fullName: 'A' })]);
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [signup({ email: 'a@dummy.test', fullName: 'A' })]]]));
 
     const body = await (await GET()).json();
 
-    expect(body.roster.confirmedCount).toBe(1);
-    expect(body.roster.confirmed).toBeNull();
+    expect(first(body).roster.confirmedCount).toBe(1);
+    expect(first(body).roster.confirmed).toBeNull();
     expect(JSON.stringify(body)).not.toMatch(/"A"/);
   });
 
   it('surfaces incoming sub requests addressed to the caller', async () => {
     getSessionEmail.mockResolvedValue('target@dummy.test');
-    listSignupsForSession.mockResolvedValue([
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [
       signup({ email: 'target@dummy.test', fullName: 'Target' }),
       signup({
         email: 'asker@dummy.test',
@@ -145,12 +160,12 @@ describe('GET /api/home', () => {
         subRequestStatus: 'pending',
         subRequestTargetEmail: 'target@dummy.test',
       }),
-    ]);
+    ]]]));
 
     const body = await (await GET()).json();
 
     // A member subbing in, not a guest naming their inviter.
-    expect(body.incomingSubRequests).toEqual([
+    expect(first(body).incomingSubRequests).toEqual([
       { fromSignupId: expect.any(String), fromFullName: 'Asker', fromGuestInvite: false },
     ]);
   });
@@ -194,15 +209,15 @@ describe('GET /api/home — the teams payload', () => {
 
   it('sends a teammate only their name, gender, positions and shared-spot id', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getSessionByAnyId.mockResolvedValue(POSTED);
-    listSignupsForSession.mockResolvedValue([
+    listSessions.mockResolvedValue([POSTED]);
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [
       signup({ email: 'a@dummy.test', fullName: 'A', teamName: 'Team 1' }),
       teammate(),
-    ]);
+    ]]]));
 
     const body = await (await GET()).json();
 
-    const mate = body.teams.flatMap((t: { members: unknown[] }) => t.members).find((m: { fullName: string }) => m.fullName === 'Mate');
+    const mate = first(body).teams.flatMap((t: { members: unknown[] }) => t.members).find((m: { fullName: string }) => m.fullName === 'Mate');
     expect(mate).toEqual({
       signupId: 'mate-1',
       fullName: 'Mate',
@@ -214,15 +229,15 @@ describe('GET /api/home — the teams payload', () => {
 
   it('keeps every private field off the wire, so the leak cannot come back one key at a time', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getSessionByAnyId.mockResolvedValue(POSTED);
-    listSignupsForSession.mockResolvedValue([
+    listSessions.mockResolvedValue([POSTED]);
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [
       signup({ email: 'a@dummy.test', fullName: 'A', teamName: 'Team 1' }),
       teammate(),
-    ]);
+    ]]]));
 
     const body = await (await GET()).json();
 
-    const serialized = JSON.stringify(body.teams);
+    const serialized = JSON.stringify(first(body).teams);
     for (const key of [
       'email',
       'paid',
@@ -252,16 +267,16 @@ describe('GET /api/home — the teams payload', () => {
 
   it('still tells a player who they are playing with and what they cover', async () => {
     getSessionEmail.mockResolvedValue('a@dummy.test');
-    getSessionByAnyId.mockResolvedValue(POSTED);
-    listSignupsForSession.mockResolvedValue([
+    listSessions.mockResolvedValue([POSTED]);
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [
       signup({ signupId: 'me-1', email: 'a@dummy.test', fullName: 'A', positions: 'Rover', teamName: 'Team 1' }),
       teammate({ pairId: 'pair-9' }),
       teammate({ signupId: 'mate-2', email: 'mate2@dummy.test', fullName: 'Mate Two', pairId: 'pair-9' }),
-    ]);
+    ]]]));
 
     const body = await (await GET()).json();
 
-    const teamOne = body.teams.find((t: { name: string }) => t.name === 'Team 1');
+    const teamOne = first(body).teams.find((t: { name: string }) => t.name === 'Team 1');
     expect(teamOne.members.map((m: { fullName: string }) => m.fullName)).toEqual(['A', 'Mate', 'Mate Two']);
     expect(teamOne.members.map((m: { positions: string }) => m.positions)).toEqual(['Rover', 'Catcher, SS', 'Catcher, SS']);
     // Sharing a spot still reads correctly on the lineup.
@@ -270,21 +285,21 @@ describe('GET /api/home — the teams payload', () => {
 
   it('sends no teams to a signed-in caller who has no signup for the week', async () => {
     getSessionEmail.mockResolvedValue('outsider@dummy.test');
-    getSessionByAnyId.mockResolvedValue(POSTED);
-    listSignupsForSession.mockResolvedValue([teammate()]);
+    listSessions.mockResolvedValue([POSTED]);
+    listSignupsForSessions.mockResolvedValue(new Map([['2099-01-01', [teammate()]]]));
 
     const body = await (await GET()).json();
 
-    expect(body.teams).toBeNull();
+    expect(first(body).teams).toBeNull();
     expect(JSON.stringify(body)).not.toMatch(/Mate/);
   });
 
   it('sends no teams to a signed-out visitor', async () => {
     getSessionEmail.mockResolvedValue(null);
-    getSessionByAnyId.mockResolvedValue(POSTED);
+    listSessions.mockResolvedValue([POSTED]);
 
     const body = await (await GET()).json();
 
-    expect(body.teams).toBeNull();
+    expect(first(body).teams).toBeNull();
   });
 });
