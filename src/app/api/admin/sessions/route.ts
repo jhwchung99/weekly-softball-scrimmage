@@ -18,6 +18,13 @@ export async function POST(request: Request) {
         cost: body?.cost,
         pricePerSpot: body?.pricePerSpot,
         locationArea: body?.locationArea,
+        // The session's own schedule. Forwarded explicitly, like every other
+        // field here: the create form has sent these since 2026-09-22 and they
+        // were dropped on the floor, so a midweek game could not be given the
+        // window it needs at the moment it was created.
+        rosterLockAt: body?.rosterLockAt,
+        registrationOpensAt: body?.registrationOpensAt,
+        registrationClosesAt: body?.registrationClosesAt,
         openImmediately: Boolean(body?.openImmediately),
       });
     return NextResponse.json({ session: adminSessionView(session) }, { status: 201 });

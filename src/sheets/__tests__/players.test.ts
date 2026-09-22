@@ -60,7 +60,7 @@ describe('upsertPlayer', () => {
     await upsertPlayer(KEVIN);
 
     expect(updateRow).not.toHaveBeenCalled();
-    expect(appendValues).toHaveBeenCalledWith('sheet', 'Players!A:D', [
+    expect(appendValues).toHaveBeenCalledWith('sheet', 'Players', [
       PLAYER_HEADERS.map((h) => (h === 'email' ? 'kevin.kim@dummy.test' : KEVIN[h])),
     ]);
   });

@@ -20,14 +20,15 @@ process.env.GOOGLE_SERVICE_ACCOUNT_KEY = JSON.stringify({
 
 const valuesGet = vi.fn();
 const valuesUpdate = vi.fn(async () => ({}));
+const valuesAppend = vi.fn(async () => ({}));
 vi.mock('googleapis', () => ({
   google: {
-    sheets: () => ({ spreadsheets: { values: { get: valuesGet, update: valuesUpdate } } }),
+    sheets: () => ({ spreadsheets: { values: { get: valuesGet, update: valuesUpdate, append: valuesAppend } } }),
   },
 }));
 vi.mock('google-auth-library', () => ({ GoogleAuth: class {} }));
 
-const { columnLetter, getRowObjects, updateRow, SPREADSHEET_ID, RATE_LIMIT_RETRY_DELAYS_MS } = await import('../client');
+const { columnLetter, getRowObjects, updateRow, appendValues, SPREADSHEET_ID, RATE_LIMIT_RETRY_DELAYS_MS } = await import('../client');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -207,5 +208,42 @@ describe('rate-limit retry', () => {
 
     await expect(read()).rejects.toMatchObject({ status: 429 });
     expect(valuesGet).toHaveBeenCalledTimes(RATE_LIMIT_RETRY_DELAYS_MS.length + 1);
+  });
+});
+
+describe('appendValues', () => {
+  /**
+   * The bug this locks down cost three session rows on 2026-09-22.
+   *
+   * `values.append` does not write at the range it is given: it searches that
+   * range for a table and writes after it, **starting at the table's first
+   * column**, which it infers. Call sites passed `Sessions!A:V`, Sheets
+   * inferred the table as beginning at column T, and three rows were written
+   * nineteen columns to the right — `sessionId` into `practicePollThreshold`,
+   * `gameDate` into `registrationOpenedAt`. Their real `sessionId` cell was
+   * blank, so every lookup missed them and the dashboard reported "No session
+   * ... exists yet" for a session it had just created.
+   *
+   * Anchoring at A1 states where the table starts rather than leaving it to be
+   * guessed.
+   */
+  it('anchors the append at A1 rather than an open column range', async () => {
+    await appendValues('sheet', 'Sessions', [['a', 'b']]);
+
+    expect(valuesAppend).toHaveBeenCalledWith(expect.objectContaining({ range: 'Sessions!A1' }));
+  });
+
+  it('writes RAW, so a leading "=" never becomes a live formula', async () => {
+    await appendValues('sheet', 'Sessions', [['=1+1']]);
+
+    expect(valuesAppend).toHaveBeenCalledWith(
+      expect.objectContaining({ valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values: [['=1+1']] } })
+    );
+  });
+
+  it('does nothing surprising with an empty batch', async () => {
+    await appendValues('sheet', 'Sessions', []);
+
+    expect(valuesAppend).toHaveBeenCalledWith(expect.objectContaining({ requestBody: { values: [] } }));
   });
 });

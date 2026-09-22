@@ -40,8 +40,39 @@ describe('POST /api/admin/sessions', () => {
       cost: undefined,
       pricePerSpot: undefined,
       locationArea: undefined,
+      rosterLockAt: undefined,
+      registrationOpensAt: undefined,
+      registrationClosesAt: undefined,
       openImmediately: false,
     });
+  });
+
+  it('forwards the session\u2019s own schedule, which the form has always sent', async () => {
+    // These were dropped on the floor between the create form and the flow, so
+    // a midweek game could not be given the window it needs at the moment it
+    // was created — and a Monday game is refused without one.
+    requireAdmin.mockResolvedValue('admin@dummy.test');
+    adminCreateSession.mockResolvedValue({ sessionId: '2026-07-06', gameDate: '2026-07-06', gameTime: '18:00' });
+
+    await POST(
+      new Request('http://x', {
+        method: 'POST',
+        body: JSON.stringify({
+          gameDate: '2026-07-06',
+          registrationOpensAt: '2026-06-29T13:00:00.000Z',
+          registrationClosesAt: '2026-07-04T04:00:00.000Z',
+          rosterLockAt: '2026-07-06T17:00:00.000Z',
+        }),
+      })
+    );
+
+    expect(adminCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrationOpensAt: '2026-06-29T13:00:00.000Z',
+        registrationClosesAt: '2026-07-04T04:00:00.000Z',
+        rosterLockAt: '2026-07-06T17:00:00.000Z',
+      })
+    );
   });
 
   it('propagates a validation error from adminCreateSession', async () => {
