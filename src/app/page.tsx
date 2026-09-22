@@ -2,15 +2,15 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck, Lock, AlertTriangle } from 'lucide-react';
+import { Loader2, Users, CheckCircle2, Clock3, ListChecks, ShieldCheck, Lock, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { POSITIONS } from '../lib/positions';
 import { GENDERS, normalizeGender } from '../lib/genders';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
-import { WeeklyTimeline } from '../components/WeeklyTimeline';
 import { paymentStateOf, paymentOpensAt } from '../lib/payments';
-import { formatEasternMoment, formatGameDay, formatGameDate } from '../lib/time';
+import { formatEasternMoment } from '../lib/time';
+import { dayLabel, standingLabel, spotsLabel, scheduleNote } from '../lib/sessionSummary';
 import { requestFor, type PlayerAction } from '../lib/homeConsole';
 import { sendApiRequest, asJson } from '../lib/apiRequest';
 import { SessionLocation } from '../components/SessionLocation';
@@ -251,6 +251,9 @@ export default function Home() {
             )}
             <SessionCard
               entry={e}
+              /* The soonest game is open; the rest are a tap away. With one
+                 game that is the whole page, as it has always been. */
+              defaultOpen={i === 0}
               authStatus={authStatus}
               myPlayer={myPlayer}
               waiverText={waiverText}
@@ -316,10 +319,14 @@ export function SessionCard(props: {
   setError: (e: string | null) => void;
   onRefresh: () => Promise<void> | void;
   runAction: (action: PlayerAction) => void;
+  /** Open on first render. The soonest game is; the rest are a tap away. */
+  defaultOpen: boolean;
 }) {
-  const { entry, authStatus, myPlayer, waiverText, paymentInstructions, playerDataLoaded, busy, setBusy, setError, onRefresh, runAction } =
+  const { entry, authStatus, myPlayer, waiverText, paymentInstructions, playerDataLoaded, busy, setBusy, setError, onRefresh, runAction, defaultOpen } =
     props;
   const { session, phase, signup: mySignup, incomingSubRequests, costOwed, waitlistPosition, roster, teams } = entry;
+
+  const [open, setOpen] = useState(defaultOpen);
 
   // Bound to this card's signup rather than to "the" signup: with several
   // games open at once there is no single one to act on.
@@ -329,151 +336,203 @@ export function SessionCard(props: {
   const handleCancelSubRequest = () =>
     mySignup ? runAction({ kind: 'cancelSubRequest', signupId: mySignup.signupId }) : undefined;
 
+  const cancelled = session.status === 'cancelled';
+  const standing = cancelled ? 'cancelled' : standingLabel(mySignup, waitlistPosition);
+  const spots = cancelled ? null : spotsLabel(session, roster);
+
+  /**
+   * The things that want an answer from this player, surfaced on the collapsed
+   * row.
+   *
+   * Collapsing is meant to be a change of layout, not of what reaches someone.
+   * Everything below used to be on screen whether they looked for it or not,
+   * and a closed card would hide all three behind a tap nobody knows to take.
+   * So each one gets a badge instead: the card is quiet only when it has
+   * nothing to ask.
+   */
+  const signedIn = authStatus === 'authenticated' && !cancelled;
+  const badges: string[] = [];
+  if (signedIn && incomingSubRequests.length > 0) {
+    badges.push(`${incomingSubRequests.length} request${incomingSubRequests.length === 1 ? '' : 's'}`);
+  }
+  if (signedIn && session.practicePollStatus === 'open' && mySignup && mySignup.practicePollAnswer === '') {
+    badges.push('poll');
+  }
+  if (
+    signedIn &&
+    mySignup?.status === 'confirmed' &&
+    costOwed !== null &&
+    paymentStateOf({ amountOwed: costOwed, paid: mySignup.paid, rosterLocked: phase !== null && isRosterLocked(phase) }) === 'due'
+  ) {
+    badges.push('payment due');
+  }
+
   return (
-    <>
-      <Card className="mt-4">
-        <h2 className="font-semibold text-slate-900">{formatGameDay(session.gameDate, session.gameTime)}</h2>
-        <SessionLocation
-          className="mt-1"
-          locationArea={session.locationArea}
-          locationName={session.locationName}
-          locationUrl={session.locationUrl}
-        />
-        <p className="mt-1 text-sm text-slate-600">
-          {session.capacity} spots
-          {session.pricePerSpot > 0 ? ` · $${session.pricePerSpot.toFixed(2)} each` : ''}
-        </p>
-        {session.status === 'cancelled' && <p className="mt-1 text-red-700">This game has been cancelled.</p>}
-        {session.status !== 'cancelled' && (
-          <WeeklyTimeline
-            gameDate={session.gameDate}
-            gameTime={session.gameTime}
-            rosterLockAt={session.rosterLockAt}
-            registrationOpensAt={session.registrationOpensAt}
-            registrationClosesAt={session.registrationClosesAt}
-            status={session.status}
-            phase={phase}
-          />
-        )}
-        {session.status !== 'cancelled' && authStatus === 'authenticated' && (
-          <PlayerArea
-            scrimmage={session}
-            phase={phase}
-            registrationClosed={session.status === 'closed'}
-            mySignup={mySignup}
-            myPlayer={myPlayer}
-            waiverText={waiverText}
-            costOwed={costOwed}
-            waitlistPosition={waitlistPosition}
-            paymentInstructions={paymentInstructions}
-            loaded={playerDataLoaded}
-            busy={busy}
-            setBusy={setBusy}
-            setError={setError}
-            onCancel={handleCancel}
-            onRefresh={onRefresh}
-            onRequestSub={handleRequestSub}
-            onCancelSubRequest={handleCancelSubRequest}
-            onPollAnswered={onRefresh}
-          />
-        )}
-        {session.status !== 'cancelled' && authStatus === 'unauthenticated' && (
-          <p className="mt-2 text-slate-600">Sign in above to see your status or sign up.</p>
-        )}
-      </Card>
+    <Card className="mt-3">
+      {/* The whole header is the control, so the tap target is the row rather
+          than a chevron the size of a fingernail. */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className={`font-semibold ${cancelled ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+          {dayLabel(session)}
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-sm text-slate-500">
+          {badges.map((badge) => (
+            <span key={badge} className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              {badge}
+            </span>
+          ))}
+          {[spots, standing].filter(Boolean).join(' · ')}
+          {open ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+        </span>
+      </button>
 
-      {authStatus === 'authenticated' && incomingSubRequests.length > 0 && (
-        <Card className="mt-4 border-amber-300 bg-amber-50">
-          <h2 className="font-semibold text-slate-900">
-            Requests to share your spot on {formatGameDate(session.gameDate)}
-          </h2>
-          {busy && <p className="mt-1 text-xs text-slate-500">Processing...</p>}
-          <ul className="mt-2 space-y-2">
-            {incomingSubRequests.map((r) => (
-              <li key={r.fromSignupId} className="flex items-center justify-between gap-2 text-sm text-slate-700">
-                <span>
-                  {r.fromGuestInvite
-                    ? `${r.fromFullName} signed up as your guest and would like to share your spot.`
-                    : `${r.fromFullName} would like to share your spot.`}
-                </span>
-                <span className="flex gap-2">
-                  <Button
-                    variant="success"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => runAction({ kind: 'respondToSubRequest', fromSignupId: r.fromSignupId, accept: true })}
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => runAction({ kind: 'respondToSubRequest', fromSignupId: r.fromSignupId, accept: false })}
-                  >
-                    Decline
-                  </Button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      {open && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <SessionLocation
+            locationArea={session.locationArea}
+            locationName={session.locationName}
+            locationUrl={session.locationUrl}
+          />
+          <p className="mt-1 text-sm text-slate-600">
+            {session.capacity} spots
+            {session.pricePerSpot > 0 ? ` · $${session.pricePerSpot.toFixed(2)} each` : ''}
+          </p>
 
-      {authStatus === 'authenticated' && roster && (
-        <Card className="mt-4">
-          <h2 className="flex items-center gap-1.5 font-semibold text-slate-900">
-            <Users className="h-4 w-4" /> Who&apos;s playing
-          </h2>
-          <div className="mt-2">
-            <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount} of {session.capacity})
-            </h3>
-            {roster.confirmed && (
-              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
-                {roster.confirmed.map((p, i) => (
-                  <li key={i}>
-                    {p.fullName}
-                    {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
-                  </li>
-                ))}
-                {roster.confirmed.length === 0 && <li className="text-slate-400">No one confirmed yet.</li>}
-              </ul>
-            )}
-          </div>
-          <div className="mt-3">
-            <h3 className="flex items-center gap-1 text-sm font-medium text-slate-700">
-              <Clock3 className="h-3.5 w-3.5 text-amber-600" /> Waitlist ({roster.waitlistedCount})
-            </h3>
-            {roster.waitlisted && (
-              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
-                {roster.waitlisted.map((p, i) => (
-                  <li key={i}>
-                    {i + 1}. {p.fullName}
-                    {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
-                  </li>
-                ))}
-                {roster.waitlisted.length === 0 && <li className="text-slate-400">No one on the waitlist.</li>}
-              </ul>
-            )}
-          </div>
-          {!roster.confirmed && (
-            <p className="mt-3 flex items-start gap-1.5 border-t border-slate-100 pt-3 text-sm text-slate-500">
-              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              To view the roster, please sign up.
-            </p>
+          {cancelled ? (
+            <p className="mt-1 text-red-700">This game has been cancelled.</p>
+          ) : (
+            /* The schedule as a sentence. This replaced a card-sized timeline
+               of three dots whose labels said everything the dots did, which
+               cost a card per session on a page that now shows several. */
+            <p className="mt-2 text-sm text-slate-600">{scheduleNote(session, phase)}</p>
           )}
-        </Card>
-      )}
 
-      {/* No teams on a BP/Practice week. There are no sides to pick, and the
-          notes under the rosters are game rules: the rover at eight, the
-          3-girls rule, a team playing short. Showing them would be confident
-          advice about a game nobody is playing. */}
-      {teams && session.format !== 'practice' && (
-        <TeamRosters teams={teams} numFields={session.numFields} highlightSignupId={mySignup?.signupId} />
+          {!cancelled && authStatus === 'authenticated' && (
+            <>
+              {incomingSubRequests.length > 0 && (
+                <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3">
+                  <h3 className="text-sm font-semibold text-slate-900">Requests to share your spot</h3>
+                  {busy && <p className="mt-1 text-xs text-slate-500">Processing...</p>}
+                  <ul className="mt-2 space-y-2">
+                    {incomingSubRequests.map((r) => (
+                      <li key={r.fromSignupId} className="flex items-center justify-between gap-2 text-sm text-slate-700">
+                        <span>
+                          {r.fromGuestInvite
+                            ? `${r.fromFullName} signed up as your guest and would like to share your spot.`
+                            : `${r.fromFullName} would like to share your spot.`}
+                        </span>
+                        <span className="flex gap-2">
+                          <Button
+                            variant="success"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => runAction({ kind: 'respondToSubRequest', fromSignupId: r.fromSignupId, accept: true })}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => runAction({ kind: 'respondToSubRequest', fromSignupId: r.fromSignupId, accept: false })}
+                          >
+                            Decline
+                          </Button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <PlayerArea
+                scrimmage={session}
+                phase={phase}
+                registrationClosed={session.status === 'closed'}
+                mySignup={mySignup}
+                myPlayer={myPlayer}
+                waiverText={waiverText}
+                costOwed={costOwed}
+                waitlistPosition={waitlistPosition}
+                paymentInstructions={paymentInstructions}
+                loaded={playerDataLoaded}
+                busy={busy}
+                setBusy={setBusy}
+                setError={setError}
+                onCancel={handleCancel}
+                onRefresh={onRefresh}
+                onRequestSub={handleRequestSub}
+                onCancelSubRequest={handleCancelSubRequest}
+                onPollAnswered={onRefresh}
+              />
+
+              {roster && (
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    <Users className="h-4 w-4" /> Who&apos;s playing
+                  </h3>
+                  <div className="mt-2">
+                    <h4 className="flex items-center gap-1 text-sm font-medium text-slate-700">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Confirmed ({roster.confirmedCount} of {session.capacity})
+                    </h4>
+                    {roster.confirmed && (
+                      <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                        {roster.confirmed.map((p, i) => (
+                          <li key={i}>
+                            {p.fullName}
+                            {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
+                          </li>
+                        ))}
+                        {roster.confirmed.length === 0 && <li className="text-slate-400">No one confirmed yet.</li>}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    <h4 className="flex items-center gap-1 text-sm font-medium text-slate-700">
+                      <Clock3 className="h-3.5 w-3.5 text-amber-600" /> Waitlist ({roster.waitlistedCount})
+                    </h4>
+                    {roster.waitlisted && (
+                      <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                        {roster.waitlisted.map((p, i) => (
+                          <li key={i}>
+                            {i + 1}. {p.fullName}
+                            {p.pairedWith ? ` & ${p.pairedWith} (sharing a spot)` : ''}
+                          </li>
+                        ))}
+                        {roster.waitlisted.length === 0 && <li className="text-slate-400">No one on the waitlist.</li>}
+                      </ul>
+                    )}
+                  </div>
+                  {!roster.confirmed && (
+                    <p className="mt-3 flex items-start gap-1.5 text-sm text-slate-500">
+                      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      To view the roster, please sign up.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* No teams on a BP/Practice week. There are no sides to pick, and
+                  the notes under the rosters are game rules: the rover at eight,
+                  the 3-girls rule, a team playing short. Showing them would be
+                  confident advice about a game nobody is playing. */}
+              {teams && session.format !== 'practice' && (
+                <TeamRosters teams={teams} numFields={session.numFields} highlightSignupId={mySignup?.signupId} />
+              )}
+            </>
+          )}
+
+          {!cancelled && authStatus === 'unauthenticated' && (
+            <p className="mt-2 text-slate-600">Sign in above to see your status or sign up.</p>
+          )}
+        </div>
       )}
-    </>
+    </Card>
   );
 }
 
