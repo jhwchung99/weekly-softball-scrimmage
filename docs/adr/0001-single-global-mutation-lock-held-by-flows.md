@@ -3,9 +3,20 @@
 Every roster-changing operation runs under one process-wide lock in Redis,
 because two simultaneous changes can otherwise each read "there is room" and
 both confirm, oversubscribing the week. The lock is global rather than
-per-session because there is one game a week: contention is a handful of
-requests at registration open, and a global lock is far easier to reason about
-than a keyed one for no practical loss.
+per-session because contention is a handful of requests at registration open,
+and a global lock is far easier to reason about than a keyed one for no
+practical loss.
+
+**Amended 2026-09-22.** That reasoning originally read "because there is one
+game a week". A week can now hold several sessions, each with its own
+registration window, so two rosters can be filling at once and the sessions no
+longer serialize against each other for free. The conclusion is unchanged — a
+handful of requests times three is still a handful, and the sessions open at
+staggered times rather than all at 9am Monday — but the premise is not the one
+it was. If a week ever holds enough concurrent sessions for the global hold to
+be felt, keying the lock by `sessionId` is the change, and reentrancy (below)
+is what makes it delicate: an outer hold on one session routinely contains an
+inner one on the same session, not on another.
 
 An async queue (Upstash QStash) was the original plan and was rejected. Its
 model is enqueue-and-process-later via a webhook, which would mean today's

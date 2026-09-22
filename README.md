@@ -96,7 +96,7 @@ sequenceDiagram
         App->>Gmail: email each of them what they owe
     end
 
-    Note over Player,Admin: Game day — Friday, Saturday or Sunday
+    Note over Player,Admin: Game day — any day the organizer sets
     Note over Player,Admin: Scrimmage happens, admin records attendance
 ```
 
