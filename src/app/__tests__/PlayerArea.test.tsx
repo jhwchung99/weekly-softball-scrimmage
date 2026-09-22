@@ -255,7 +255,8 @@ describe('the practice poll panel', () => {
   it('carries the recruit line and says nothing about cost', () => {
     render(<PlayerArea {...withPoll({ practicePollStatus: 'open' })} />);
 
-    expect(screen.getByText(/message the organizer and they can add them/i)).toBeInTheDocument();
+    expect(screen.getByText(/message the organizer and they can manually add them/i)).toBeInTheDocument();
+    expect(screen.getByText(/the field will be booked/i)).toBeInTheDocument();
     expect(screen.queryByText(/cheaper|lower cost|cost down/i)).not.toBeInTheDocument();
   });
 
