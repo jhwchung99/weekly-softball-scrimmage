@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Session, Signup } from '../../sheets/schema';
 
 /**
  * The module that decides what every email and push actually says had no test
@@ -21,7 +22,7 @@ vi.mock('../ntfy', () => ({ sendPush }));
 
 const notifications = await import('../notifications');
 
-const SESSION = {
+const SESSION: Session = {
   sessionId: '2026-07-10',
   gameDate: '2026-07-10',
   gameTime: '18:00',
@@ -38,9 +39,13 @@ const SESSION = {
   rosterLockAt: '',
   teamsStatus: '' as const,
   remindersSentAt: '',
+  format: 'game',
+  practicePollStatus: '',
+  practicePollClosesAt: '',
+  practicePollThreshold: 0,
 };
 
-const PLAYER = {
+const PLAYER: Signup = {
   signupId: 's1',
   sessionId: '2026-07-10',
   email: 'kevin@dummy.test',
@@ -63,6 +68,8 @@ const PLAYER = {
   subRequestStatus: '' as const,
   subRequestedAt: '',
   teamName: '',
+  practicePollAnswer: '',
+  practicePollAnsweredAt: '',
 };
 
 /** The single email this send produced, as { to, subject, text }. */
@@ -228,5 +235,112 @@ describe('what the messages say', () => {
     await notifications.sendPaymentNudgeEmail(PLAYER, SESSION, 10, new Date('2026-07-09T12:00:00.000Z'));
 
     expect(lastEmail().text).toMatch(/Payment opens/);
+  });
+});
+
+/**
+ * A BP/Practice week is not a game, and these are the surfaces that would
+ * otherwise say it is. Each one gets a case, because each is a place the
+ * format could be forgotten by a later change.
+ */
+describe('a practice week says so', () => {
+  const PRACTICE: Session = { ...SESSION, format: 'practice' };
+  const NOW = new Date('2026-07-10T12:00:00.000Z');
+
+  it('does not tell a player they are confirmed to play', async () => {
+    await notifications.sendGameDayReminderEmail(PLAYER, PRACTICE, 0, false, NOW);
+
+    const { subject, text } = lastEmail();
+    expect(subject).toMatch(/BP\/Practice/);
+    expect(text).toMatch(/confirmed for BP\/Practice/);
+    expect(text).not.toMatch(/confirmed to play/);
+  });
+
+  it('does not link to suggested teams, even once they are posted', async () => {
+    // There are no sides on a practice week, so a link to them is a link to
+    // advice that does not apply. NEXTAUTH_URL is stubbed so the absence is
+    // attributable to the format and not to the missing base URL.
+    vi.stubEnv('NEXTAUTH_URL', 'https://example.test');
+    await notifications.sendGameDayReminderEmail(
+      PLAYER,
+      { ...PRACTICE, teamsStatus: 'posted' },
+      0,
+      false,
+      NOW
+    );
+
+    expect(lastEmail().text).not.toMatch(/Suggested teams/);
+    vi.unstubAllEnvs();
+  });
+
+  it('still links to teams on an ordinary game week', async () => {
+    // The guard above must not have turned the link off for everyone. The
+    // link is also gated on NEXTAUTH_URL being set, so this stubs it: without
+    // that the control would pass for the wrong reason.
+    vi.stubEnv('NEXTAUTH_URL', 'https://example.test');
+    await notifications.sendGameDayReminderEmail(
+      PLAYER,
+      { ...SESSION, teamsStatus: 'posted' },
+      0,
+      false,
+      NOW
+    );
+
+    expect(lastEmail().text).toMatch(/Suggested teams/);
+    vi.unstubAllEnvs();
+  });
+
+  it('words the session-update email for practice', async () => {
+    await notifications.sendSessionUpdateEmail(PLAYER, PRACTICE, '');
+
+    const { subject, text } = lastEmail();
+    expect(subject).toMatch(/BP\/Practice/);
+    expect(text).toMatch(/where BP\/Practice stands/);
+    expect(text).not.toMatch(/where the game stands/);
+  });
+});
+
+describe('the practice poll email', () => {
+  it('asks the question, carries the recruit line, and claims nothing about cost', async () => {
+    // The organizer's original wording promised a lower cost. It is left out
+    // because the guidelines promise a fixed price that does not move with
+    // headcount, and an email contradicting that is the app telling a player
+    // two different things about money.
+    await notifications.sendPracticePollEmail(PLAYER, { ...SESSION, format: 'practice' });
+
+    const { subject, text } = lastEmail();
+    expect(subject).toMatch(/BP\/Practice/);
+    expect(text).toMatch(/Would you come out for BP\/Practice instead/);
+    expect(text).toMatch(/message the organizer|reply and the organizer can add them/i);
+    expect(text).toMatch(/Nothing is decided yet/);
+    expect(text).not.toMatch(/cheap|cost|\$/i);
+  });
+
+  it('states the deadline only when one was set', async () => {
+    await notifications.sendPracticePollEmail(PLAYER, SESSION);
+    expect(lastEmail().text).not.toMatch(/Please answer by/);
+
+    await notifications.sendPracticePollEmail(PLAYER, {
+      ...SESSION,
+      practicePollClosesAt: '2026-07-09T22:00:00.000Z',
+    });
+    expect(lastEmail().text).toMatch(/Please answer by/);
+  });
+});
+
+describe('the headcount push offers the poll on a light week', () => {
+  it('mentions it under the threshold', async () => {
+    await notifications.sendHeadcountAlert(SESSION, 9, 0);
+    expect(lastPush().message).toMatch(/BP\/Practice poll/);
+  });
+
+  it('stays quiet about it at or above the threshold', async () => {
+    await notifications.sendHeadcountAlert(SESSION, 16, 0);
+    expect(lastPush().message).not.toMatch(/BP\/Practice/);
+  });
+
+  it('uses the session’s own threshold when it has one', async () => {
+    await notifications.sendHeadcountAlert({ ...SESSION, practicePollThreshold: 20 }, 18, 0);
+    expect(lastPush().message).toMatch(/Under 20/);
   });
 });

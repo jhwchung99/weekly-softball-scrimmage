@@ -10,6 +10,7 @@ import {
   sendSessionCancelledEmail,
   sendPaymentNudgeEmail,
   sendPlainMessageEmail,
+  sendPracticePollEmail,
 } from './notifications';
 
 /**
@@ -145,6 +146,31 @@ export async function sendMessageToPlayers(
   }
 
   const result = await fanOut(audience, (signup) => sendPlainMessageEmail(signup, subject, message));
+  return { sessionId, skipped: false, ...result };
+}
+
+/**
+ * Tell the confirmed roster that a practice poll is open.
+ *
+ * Only ever called because the organizer ticked the box when opening it.
+ * Closing a poll and marking a week as practice both send nothing, by
+ * request: the organizer wanted this flexible and manual, and the "Send a
+ * message" button is how they say the rest.
+ *
+ * Confirmed only, matching who can answer. A waitlisted player cannot vote
+ * on a week they are not yet in.
+ */
+export async function notifyPracticePollOpen(sessionId: string): Promise<AnnouncementResult> {
+  const session = await getSession(sessionId);
+  if (!session) return nothingSent(sessionId, `No session "${sessionId}" exists.`);
+
+  const signups = await listSignupsForSession(sessionId);
+  const audience = signups.filter((s) => s.status === 'confirmed');
+  if (audience.length === 0) {
+    return nothingSent(sessionId, 'Nobody is confirmed for this session yet.');
+  }
+
+  const result = await fanOut(audience, (signup) => sendPracticePollEmail(signup, session));
   return { sessionId, skipped: false, ...result };
 }
 

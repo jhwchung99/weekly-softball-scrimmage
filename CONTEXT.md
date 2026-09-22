@@ -40,6 +40,33 @@ early game locks the evening before rather than at dawn (ADR-0006). After the
 lock, a freed spot is the organizer's to fill by hand.
 _Avoid_: cutoff, deadline
 
+**Format**:
+Whether a session is a game or batting practice. Independent of Phase and of
+whether registration is open: a practice week still opens, closes and can be
+rained out. Set by the organizer, usually after reading a practice poll. Its
+own field rather than a fourth Status, because Status already carries both
+the registration lifecycle and cancellation (ADR-0007).
+_Avoid_: type, kind, mode
+
+**Practice**:
+A session run as batting practice rather than a game, because too few people
+signed up. No teams, and the game-day notes about rovers and equal playing
+time do not apply. Player copy calls it **BP/Practice**, which is what the
+league calls it. That divergence is ADR-0005's whole point.
+_Avoid_: BP, BP/Practice, practice session, training
+
+**Practice poll**:
+One question put to a session's confirmed players when turnout is light:
+would they come out for batting practice instead of a game. Open or closed,
+at most one per session, and it decides nothing on its own. The organizer
+reads the answers and sets the Format.
+_Avoid_: survey, vote, BP poll
+
+**Poll answer**:
+One player's yes or no to the practice poll. Absent until they answer,
+changeable while the poll is open, and read-only once it closes.
+_Avoid_: response, reply, RSVP
+
 ## The roster
 
 **Signup**:

@@ -2,9 +2,10 @@ import { sendEmail } from './gmail';
 import { sendPush } from './ntfy';
 import { Signup, Session } from '../sheets/schema';
 import { formatLocation } from './location';
-import { formatGameDate, formatGameDay, formatGameTime, formatEasternClockTime, relativeGameDay } from './time';
+import { formatGameDate, formatGameDay, formatGameTime, formatEasternClockTime, formatEasternMoment, relativeGameDay } from './time';
 import { paymentOpensAt, paymentStateOf } from './payments';
 import { phaseOf, isRosterLocked } from './sessionPhase';
+import { thresholdFor } from './practicePoll';
 
 /**
  * Sends a notification without letting it fail the thing that triggered it.
@@ -122,6 +123,12 @@ export async function sendHeadcountAlert(session: Session, confirmed: number, wa
   const parts = [`${confirmed} of ${session.capacity} spots filled for ${formatGameDate(session.gameDate)}.`];
   if (waitlisted > 0) {
     parts.push(`${waitlisted} on the waitlist. Raise capacity to let them in, and book a second field if you need one.`);
+  }
+  // This push is the moment a light week becomes knowable, so it is where the
+  // practice poll should be offered. Waiting for the organizer to notice the
+  // count on the dashboard is how a feature goes unused.
+  if (confirmed < thresholdFor(session)) {
+    parts.push(`Under ${thresholdFor(session)}: open a BP/Practice poll from the dashboard if you want to ask.`);
   }
   await sendPush(`Registration closed: ${confirmed} playing`, parts.join(' '), { priority: 3, tags: ['clipboard'] });
 }
@@ -263,11 +270,16 @@ export async function sendGameDayReminderEmail(
   // phrase is worked out from `now` instead of assumed. Subject and body share
   // it, so they cannot drift apart.
   const when = `${relativeGameDay(session, now)} at ${formatGameTime(session.gameTime)}`;
-  const subject = `Softball ${when}`;
+  // A practice week is not a game, and this is the email people act on. It
+  // used to say "confirmed to play" and link to suggested teams whatever the
+  // week turned out to be, which on a BP/Practice week is three wrong claims
+  // in the message someone reads in the car.
+  const practice = session.format === 'practice';
+  const subject = practice ? `BP/Practice ${when}` : `Softball ${when}`;
   const lines = [
     `Hi ${signup.fullName},`,
     '',
-    `You're confirmed to play ${when}.`,
+    practice ? `You're confirmed for BP/Practice ${when}.` : `You're confirmed to play ${when}.`,
   ];
 
   // Named, not just linked. This is the email someone opens in the car, and a
@@ -284,7 +296,7 @@ export async function sendGameDayReminderEmail(
   // player nothing. The guard on `base` matters because a missing
   // NEXTAUTH_URL would otherwise email the word "undefined".
   const base = process.env.NEXTAUTH_URL;
-  if (session.teamsStatus === 'posted' && base) {
+  if (!practice && session.teamsStatus === 'posted' && base) {
     lines.push('', `Suggested teams are in the app: ${base}`);
   }
 
@@ -319,7 +331,10 @@ export async function sendGameDayReminderEmail(
  * not a list of edits since Monday.
  */
 export async function sendSessionUpdateEmail(signup: Signup, session: Session, note: string): Promise<void> {
-  const subject = `Updated details: softball on ${formatGameDate(session.gameDate)}`;
+  const practice = session.format === 'practice';
+  const subject = practice
+    ? `Updated details: BP/Practice on ${formatGameDate(session.gameDate)}`
+    : `Updated details: softball on ${formatGameDate(session.gameDate)}`;
   const location = formatLocation({
     area: session.locationArea,
     name: session.locationName,
@@ -337,7 +352,7 @@ export async function sendSessionUpdateEmail(signup: Signup, session: Session, n
   if (note) lines.push(note, '');
 
   lines.push(
-    "Here's where the game stands:",
+    practice ? "Here's where BP/Practice stands:" : "Here's where the game stands:",
     '',
     `When: ${formatGameDay(session.gameDate, session.gameTime)}`,
     `Where: ${location || 'still to be confirmed'}`
@@ -346,7 +361,9 @@ export async function sendSessionUpdateEmail(signup: Signup, session: Session, n
 
   lines.push(
     '',
-    "You're confirmed to play. If you can't make it, please cancel in the app so someone else can take your spot."
+    practice
+      ? "You're confirmed. If you can't make it, please cancel in the app so someone else can take your spot."
+      : "You're confirmed to play. If you can't make it, please cancel in the app so someone else can take your spot."
   );
 
   await sendEmail(signup.email, subject, lines.join('\n'));
@@ -377,6 +394,47 @@ export async function sendSessionCancelledEmail(signup: Signup, session: Session
   // route), so this is a description of what actually happens to their row,
   // not a reassurance invented for the email.
   lines.push('', "Your signup is kept on record in case the game is rescheduled. There's nothing you need to do.");
+
+  await sendEmail(signup.email, subject, lines.join('\n'));
+}
+
+/**
+ * "Would you come out for BP/Practice instead?" — sent when the organizer
+ * opens a practice poll, if they tick the box.
+ *
+ * Says "BP/Practice", which is what the league calls it, rather than the
+ * glossary's Practice. That divergence is deliberate and is what ADR-0005
+ * exists for; docs/voice.md records the player-facing term.
+ *
+ * Carries the recruit line but says nothing about cost. More players may well
+ * mean a cheaper spot, but the guidelines promise a fixed price that does not
+ * move with headcount, and an email contradicting that is the app telling a
+ * player two different things about money. The line sells the game instead.
+ */
+export async function sendPracticePollEmail(signup: Signup, session: Session): Promise<void> {
+  const subject = `BP/Practice on ${formatGameDate(session.gameDate)}?`;
+  const lines = [
+    `Hi ${signup.fullName},`,
+    '',
+    // Fact first: why this landed, before the ask.
+    `Not many people have signed up for ${formatGameDate(session.gameDate)}, so there may not be enough for a game. Would you come out for BP/Practice instead?`,
+  ];
+
+  // The guard matters for the same reason it does in the game-day email: a
+  // missing NEXTAUTH_URL would otherwise email the word "undefined".
+  const base = process.env.NEXTAUTH_URL;
+  if (base) lines.push('', `Answer in the app: ${base}`);
+
+  if (session.practicePollClosesAt) {
+    lines.push('', `Please answer by ${formatEasternMoment(new Date(session.practicePollClosesAt))}.`);
+  }
+
+  lines.push(
+    '',
+    'If you know someone who wants to play, reply and the organizer can add them. A few more people may be enough for a game.',
+    '',
+    'Nothing is decided yet.'
+  );
 
   await sendEmail(signup.email, subject, lines.join('\n'));
 }

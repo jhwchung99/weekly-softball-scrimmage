@@ -40,6 +40,10 @@ describe('Session row round-trip', () => {
       rosterLockAt: '2026-07-09T23:00:00.000Z',
       teamsStatus: 'posted',
       remindersSentAt: '2026-07-10T18:00:00.000Z',
+      format: 'practice',
+      practicePollStatus: 'closed',
+      practicePollClosesAt: '2026-07-09T22:00:00.000Z',
+      practicePollThreshold: 14,
     };
     expect(parseSessionRow(serializeSessionRow(session))).toEqual(session);
   });
@@ -62,6 +66,10 @@ describe('Session row round-trip', () => {
       rosterLockAt: '',
       teamsStatus: '',
       remindersSentAt: '',
+      format: '',
+      practicePollStatus: '',
+      practicePollClosesAt: '',
+      practicePollThreshold: '',
     });
     // Closed, not open: a blank cell is the absence of a decision, and for
     // "are signups accepted" the safe reading of silence is no.
@@ -95,10 +103,48 @@ describe('Session row round-trip', () => {
       rosterLockAt: '',
       teamsStatus: '',
       remindersSentAt: '',
+      format: '',
+      practicePollStatus: '',
+      practicePollClosesAt: '',
+      practicePollThreshold: '',
     });
 
     expect(parsed.rosterLockAt).toBe('');
     expect(parsed.remindersSentAt).toBe('');
+  });
+
+  it('reads a blank format as a game, and a blank threshold as the default', () => {
+    // This is the whole migration for the practice-poll columns: every row
+    // written before they existed comes back blank, and must read as an
+    // ordinary game with no poll rather than as something half-configured.
+    const parsed = parseSessionRow({
+      sessionId: 'x',
+      gameDate: 'x',
+      gameTime: 'x',
+      registrationOpensAt: '',
+      registrationClosesAt: '',
+      capacity: '',
+      status: '',
+      cost: '',
+      pricePerSpot: '',
+      locationArea: '',
+      locationName: '',
+      locationUrl: '',
+      numFields: '',
+      rosterLockAt: '',
+      teamsStatus: '',
+      remindersSentAt: '',
+      format: '',
+      practicePollStatus: '',
+      practicePollClosesAt: '',
+      practicePollThreshold: '',
+    });
+
+    expect(parsed.format).toBe('game');
+    expect(parsed.practicePollStatus).toBe('');
+    // 0 rather than 16: the fallback belongs to thresholdFor, so the stored
+    // value stays honestly "unset" and one module owns the default.
+    expect(parsed.practicePollThreshold).toBe(0);
   });
 });
 
@@ -126,6 +172,8 @@ describe('Signup row round-trip', () => {
     subRequestStatus: '',
     subRequestedAt: '',
     teamName: 'Team 1',
+    practicePollAnswer: 'yes',
+    practicePollAnsweredAt: '2026-07-08T12:00:00.000Z',
   };
 
   it('preserves every field through serialize -> parse', () => {

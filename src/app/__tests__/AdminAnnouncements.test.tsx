@@ -16,6 +16,7 @@ const signup = (overrides: Record<string, unknown> = {}) => ({
   paid: false,
   amountPaid: 0,
   attended: false,
+  practicePollAnswer: '' as const,
   ...overrides,
 });
 

@@ -52,6 +52,11 @@ any of it.
 12. **Oxford comma.** "Friday, Saturday, or Sunday" — five places already did,
     one did not.
 
+13. **"BP/Practice", not "batting practice" and not "BP".** The league says
+    BP/Practice, so player copy does too, while `CONTEXT.md` keeps Practice
+    for the code. A bare "BP" is not enough on its own: the slash is what
+    makes it readable to someone who has not met the abbreviation.
+
 ## What this is not
 
 Neutral means no manufactured cheer. It does not mean cold. "Please cancel so

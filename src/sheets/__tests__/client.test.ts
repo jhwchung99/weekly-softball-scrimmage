@@ -46,8 +46,8 @@ describe('columnLetter', () => {
     expect(columnLetter(53)).toBe('BA');
   });
 
-  it('covers the current widest tab (Signups, 22 columns)', () => {
-    expect(columnLetter(SIGNUP_HEADERS.length)).toBe('V');
+  it('covers the current widest tab (Signups, 24 columns)', () => {
+    expect(columnLetter(SIGNUP_HEADERS.length)).toBe('X');
   });
 });
 

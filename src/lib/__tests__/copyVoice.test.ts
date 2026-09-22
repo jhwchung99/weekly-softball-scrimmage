@@ -21,6 +21,7 @@ const ROOT = join(__dirname, '..', '..');
 const COPY_FILES = [
   'lib/notifications.ts',
   'lib/gameDayNotes.ts',
+  'lib/practicePoll.ts',
   'lib/signupFlow.ts',
   'lib/subRequestFlow.ts',
   // Organizer-facing, but it is still copy this app writes, and it was the

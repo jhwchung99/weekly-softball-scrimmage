@@ -29,6 +29,7 @@ const entry = (over: Partial<AdminRosterEntry> = {}): AdminRosterEntry => ({
   paid: false,
   amountPaid: 0,
   attended: false,
+  practicePollAnswer: '',
   ...over,
 });
 
@@ -171,6 +172,10 @@ describe('sessionInputsFor', () => {
     locationUrl: 'https://maps.example/x',
     rosterLockAt: '',
     teamsStatus: '',
+    format: 'game' as const,
+    practicePollStatus: '' as const,
+    practicePollClosesAt: '',
+    practicePollThreshold: 0,
     remindersSentAt: '',
     cost: 240,
   };

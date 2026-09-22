@@ -91,6 +91,10 @@ async function main() {
     rosterLockAt: '',
     teamsStatus: '',
     remindersSentAt: '',
+    format: 'game',
+    practicePollStatus: '',
+    practicePollClosesAt: '',
+    practicePollThreshold: 0,
     cost: 0,
   });
 

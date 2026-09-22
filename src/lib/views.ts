@@ -167,6 +167,10 @@ export interface AdminRosterEntry {
   paid: boolean;
   amountPaid: number;
   attended: boolean;
+  /** How this player answered the practice poll. Organizer-only, and the
+   * reason it is here rather than derived: the dashboard's tally is counted
+   * in the browser from this list, so the answers have to travel with it. */
+  practicePollAnswer: Signup['practicePollAnswer'];
 }
 
 /**
@@ -189,6 +193,7 @@ export function adminRosterView(signups: Signup[]): AdminRosterEntry[] {
     paid: s.paid,
     amountPaid: s.amountPaid,
     attended: s.attended,
+    practicePollAnswer: s.practicePollAnswer,
   }));
 }
 
@@ -247,6 +252,15 @@ export interface SessionView {
   locationName: string;
   locationUrl: string;
   teamsStatus: Session['teamsStatus'];
+  /** Whether this week is being played as a game or as BP/Practice. Players
+   * need it: it changes what the homepage says and whether teams mean
+   * anything. */
+  format: Session['format'];
+  /** Whether the organizer is asking the roster about BP/Practice. Players
+   * get the status and the deadline, which is what their own panel needs to
+   * render — and nothing about how anyone else answered. */
+  practicePollStatus: Session['practicePollStatus'];
+  practicePollClosesAt: string;
 }
 
 export function sessionView(session: Session): SessionView {
@@ -263,6 +277,9 @@ export function sessionView(session: Session): SessionView {
     locationName: session.locationName,
     locationUrl: session.locationUrl,
     teamsStatus: session.teamsStatus,
+    format: session.format,
+    practicePollStatus: session.practicePollStatus,
+    practicePollClosesAt: session.practicePollClosesAt,
   };
 }
 
@@ -276,10 +293,19 @@ export interface AdminSessionView extends SessionView {
    * the state the send button reads, and no player needs to know whether
    * somebody else's inbox has been written to. */
   remindersSentAt: string;
+  /** The headcount below which the dashboard offers a practice poll.
+   * Organizer-only: it is a dial on their own control, and a player seeing
+   * "we needed 16 and got 11" learns nothing they can act on. */
+  practicePollThreshold: number;
 }
 
 export function adminSessionView(session: Session): AdminSessionView {
-  return { ...sessionView(session), cost: session.cost, remindersSentAt: session.remindersSentAt };
+  return {
+    ...sessionView(session),
+    cost: session.cost,
+    remindersSentAt: session.remindersSentAt,
+    practicePollThreshold: session.practicePollThreshold,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +333,13 @@ export interface MySignupView {
   paid: boolean;
   subRequestTargetEmail: string;
   subRequestStatus: Signup['subRequestStatus'];
+  /** This player's own practice-poll answer, and only their own.
+   *
+   * The tally deliberately does not cross to a player. An open poll showing
+   * "9 yes, 2 no" turns an honest answer into a vote on a decision that looks
+   * already made, and someone who would rather play a game reads the room
+   * instead of saying so. The organizer sees the counts; nobody else does. */
+  practicePollAnswer: Signup['practicePollAnswer'];
 }
 
 export function mySignupView(signup: Signup): MySignupView {
@@ -317,6 +350,7 @@ export function mySignupView(signup: Signup): MySignupView {
     paid: signup.paid,
     subRequestTargetEmail: signup.subRequestTargetEmail,
     subRequestStatus: signup.subRequestStatus,
+    practicePollAnswer: signup.practicePollAnswer,
   };
 }
 

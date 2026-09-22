@@ -132,6 +132,10 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
       rosterLockAt: '',
       teamsStatus: '',
       remindersSentAt: '',
+  format: 'game',
+      practicePollStatus: '',
+      practicePollClosesAt: '',
+      practicePollThreshold: 0,
       status: input.openImmediately ? 'open' : 'closed',
     });
   });

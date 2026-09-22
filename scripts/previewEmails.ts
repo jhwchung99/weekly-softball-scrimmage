@@ -48,6 +48,10 @@ const SESSION: Session = {
   rosterLockAt: '',
   teamsStatus: '',
   remindersSentAt: '',
+  format: 'game',
+  practicePollStatus: '',
+  practicePollClosesAt: '',
+  practicePollThreshold: 0,
 };
 
 function signup(email: string, fullName: string, over: Partial<Signup> = {}): Signup {
@@ -74,6 +78,8 @@ function signup(email: string, fullName: string, over: Partial<Signup> = {}): Si
     subRequestStatus: '',
     subRequestedAt: '',
     teamName: '',
+    practicePollAnswer: '',
+    practicePollAnsweredAt: '',
   };
 }
 
