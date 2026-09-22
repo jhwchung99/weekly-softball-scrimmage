@@ -154,16 +154,38 @@ export async function getValues(spreadsheetId: string, range: string): Promise<s
   return (data.values as string[][]) || [];
 }
 
+/**
+ * Appends rows to the bottom of a tab.
+ *
+ * Takes the **tab name**, not a range, and that is the whole point.
+ *
+ * `spreadsheets.values.append` does not write at the range it is given. It
+ * uses that range to *search for a table*, then writes after the table's last
+ * row **starting at the table's first column** — which it infers. Callers here
+ * used to pass `Sessions!A:V`, and on 2026-09-22 Sheets inferred the table as
+ * starting at column T and wrote three session rows nineteen columns to the
+ * right: `sessionId` landed in `practicePollThreshold`, `gameDate` in
+ * `registrationOpenedAt`, and the rows were invisible to every lookup because
+ * their real `sessionId` cell was blank.
+ *
+ * What made it inferrable was ragged data — the header row stops at column P
+ * while data rows reach V — and the trigger was the Sessions tab growing two
+ * columns, which widened the range being searched. Any tab could have hit it.
+ *
+ * Anchoring at `A1` states where the table begins instead of leaving it to be
+ * guessed, and the range is built here so no call site can reintroduce the
+ * ambiguity. See planner/2026-09-22-multi-session-week-plan.md.
+ */
 export async function appendValues(
   spreadsheetId: string,
-  range: string,
+  tab: string,
   rows: (string | number | boolean)[][]
 ): Promise<void> {
   const sheets = await getSheetsClient();
   await withRateLimitRetry(() =>
     sheets.spreadsheets.values.append({
       spreadsheetId,
-      range,
+      range: `${tab}!A1`,
       // RAW, not USER_ENTERED — values are stored literally, never parsed
       // as formulas. Never change this back: user-supplied fields (names,
       // etc.) flow straight into these rows, and USER_ENTERED lets a

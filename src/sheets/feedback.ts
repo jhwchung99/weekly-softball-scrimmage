@@ -1,4 +1,4 @@
-import { SPREADSHEET_ID, appendValues, columnLetter } from './client';
+import { SPREADSHEET_ID, appendValues } from './client';
 import { Feedback, FEEDBACK_HEADERS, serializeFeedbackRow } from './schema';
 
 const TAB = 'Feedback';
@@ -17,7 +17,7 @@ const TAB = 'Feedback';
  */
 export async function appendFeedback(feedback: Feedback): Promise<void> {
   const row = serializeFeedbackRow(feedback);
-  await appendValues(SPREADSHEET_ID, `${TAB}!A:${columnLetter(FEEDBACK_HEADERS.length)}`, [
+  await appendValues(SPREADSHEET_ID, TAB, [
     FEEDBACK_HEADERS.map((h) => row[h]),
   ]);
 }
