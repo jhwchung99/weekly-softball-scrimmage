@@ -21,14 +21,15 @@ process.env.GOOGLE_SERVICE_ACCOUNT_KEY = JSON.stringify({
 const valuesGet = vi.fn();
 const valuesUpdate = vi.fn(async () => ({}));
 const valuesAppend = vi.fn(async () => ({}));
+const spreadsheetsGet = vi.fn();
 vi.mock('googleapis', () => ({
   google: {
-    sheets: () => ({ spreadsheets: { values: { get: valuesGet, update: valuesUpdate, append: valuesAppend } } }),
+    sheets: () => ({ spreadsheets: { get: spreadsheetsGet, values: { get: valuesGet, update: valuesUpdate, append: valuesAppend } } }),
   },
 }));
 vi.mock('google-auth-library', () => ({ GoogleAuth: class {} }));
 
-const { columnLetter, getRowObjects, updateRow, appendValues, SPREADSHEET_ID, RATE_LIMIT_RETRY_DELAYS_MS } = await import('../client');
+const { columnLetter, getRowObjects, updateRow, appendValues, getSpreadsheetMeta, SPREADSHEET_ID, RATE_LIMIT_RETRY_DELAYS_MS } = await import('../client');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -245,5 +246,21 @@ describe('appendValues', () => {
     await appendValues('sheet', 'Sessions', []);
 
     expect(valuesAppend).toHaveBeenCalledWith(expect.objectContaining({ requestBody: { values: [] } }));
+  });
+});
+
+describe('getSpreadsheetMeta', () => {
+  // A missing id used to read as 0, which is normally the first tab, so
+  // deleteSignup would have removed row N of Sessions instead of Signups.
+  it('refuses a tab with no id rather than guessing the first tab', async () => {
+    spreadsheetsGet.mockResolvedValueOnce({ data: { sheets: [{ properties: { title: 'Signups' } }] } });
+
+    await expect(getSpreadsheetMeta('sheet')).rejects.toThrow(/Signups.*no sheet id/);
+  });
+
+  it('keeps a real id of 0', async () => {
+    spreadsheetsGet.mockResolvedValueOnce({ data: { sheets: [{ properties: { title: 'Sessions', sheetId: 0 } }] } });
+
+    await expect(getSpreadsheetMeta('sheet')).resolves.toMatchObject([{ title: 'Sessions', sheetId: 0 }]);
   });
 });

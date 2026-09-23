@@ -105,7 +105,7 @@ export async function getSpreadsheetMeta(spreadsheetId: string): Promise<SheetTa
   const { data } = await withRateLimitRetry(() => sheets.spreadsheets.get({ spreadsheetId }));
   return (data.sheets ?? []).map((s) => ({
     title: s.properties?.title ?? '',
-    sheetId: s.properties?.sheetId ?? 0,
+    sheetId: requireSheetId(s.properties?.sheetId, s.properties?.title),
     rowCount: s.properties?.gridProperties?.rowCount,
     columnCount: s.properties?.gridProperties?.columnCount,
   }));
@@ -174,7 +174,19 @@ export async function getOrCreateSheet(spreadsheetId: string, title: string): Pr
     })
   );
   const props = res.data.replies?.[0]?.addSheet?.properties;
-  return { title: props?.title ?? title, sheetId: props?.sheetId ?? 0 };
+  return { title: props?.title ?? title, sheetId: requireSheetId(props?.sheetId, title) };
+}
+
+/**
+ * A tab's numeric id, or a throw. It used to fall back to 0, which is normally
+ * the spreadsheet's first tab, so deleteRow aimed at Signups would have removed
+ * a row of whatever tab came first.
+ */
+function requireSheetId(sheetId: number | null | undefined, title: string | null | undefined): number {
+  if (sheetId === null || sheetId === undefined) {
+    throw new Error(`Sheets returned tab "${title ?? '?'}" with no sheet id.`);
+  }
+  return sheetId;
 }
 
 // --- Generic row-object operations, added for Step 3 (a real typed data
