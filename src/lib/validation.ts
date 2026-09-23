@@ -2,6 +2,7 @@ import { ApiError } from './apiErrors';
 import { POSITIONS } from './positions';
 import { GENDERS, normalizeGender } from './genders';
 import { normalizeEmail } from './email';
+import { zonedTimeToUtc } from './time';
 import { FEEDBACK_KINDS, FeedbackKind, MAX_FEEDBACK_LENGTH } from './feedbackKinds';
 
 // These fields were previously accepted as arbitrary, unbounded free text.
@@ -325,11 +326,16 @@ export function validatePracticePoll(body: unknown): ValidatedPracticePoll {
   }
 
   const raw = typeof input.closesAt === 'string' ? input.closesAt.trim() : '';
-  if (raw && Number.isNaN(new Date(raw).getTime())) {
+  // A datetime-local value carries no zone, and new Date() would read it in the
+  // server's (UTC), so "6pm" was emailed as "2pm". Read it as league time. The
+  // dashboard sends an instant now; this covers a tab opened before it did.
+  const zoneless = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(raw);
+  const at = zoneless ? zonedTimeToUtc(raw.slice(0, 10), raw.slice(11, 16)) : new Date(raw);
+  if (raw && Number.isNaN(at.getTime())) {
     throw new ApiError(400, 'closesAt must be an ISO datetime.');
   }
 
-  return { status: input.status, closesAt: raw, notify: input.notify === true };
+  return { status: input.status, closesAt: raw ? at.toISOString() : '', notify: input.notify === true };
 }
 
 /** One player's answer. Yes or no, and nothing else: the poll deliberately

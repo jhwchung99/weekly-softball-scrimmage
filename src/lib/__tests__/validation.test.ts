@@ -10,6 +10,7 @@ import {
   validateSessionCreate,
   validateSignupOverride,
   validateReschedule,
+  validatePracticePoll,
 } from '../validation';
 
 /**
@@ -432,5 +433,21 @@ describe('validatePlayerMessage', () => {
   it('caps both fields', () => {
     expect(() => validatePlayerMessage({ ...OK, subject: 'x'.repeat(151) })).toThrow(/150 characters or fewer/);
     expect(() => validatePlayerMessage({ ...OK, message: 'x'.repeat(2001) })).toThrow(/2000 characters or fewer/);
+  });
+});
+
+describe('validatePracticePoll', () => {
+  // A datetime-local value has no zone. Stored as typed, a UTC server read
+  // "6pm" as 6pm UTC and emailed "answer by 2pm".
+  it('stores the deadline as an instant', () => {
+    expect(validatePracticePoll({ status: 'open', closesAt: '2026-09-25T22:00:00.000Z' }).closesAt).toBe('2026-09-25T22:00:00.000Z');
+  });
+
+  it('reads a deadline with no zone as league time', () => {
+    expect(validatePracticePoll({ status: 'open', closesAt: '2026-09-25T18:00' }).closesAt).toBe('2026-09-25T22:00:00.000Z');
+  });
+
+  it('leaves a blank deadline blank', () => {
+    expect(validatePracticePoll({ status: 'open', closesAt: '' }).closesAt).toBe('');
   });
 });

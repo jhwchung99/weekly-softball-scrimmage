@@ -263,7 +263,7 @@ export default function AdminPage() {
     }
     setNotice(null);
     return runAction(
-      { kind: 'announce', sessionId, path: 'practice-poll', body: { status, closesAt: pollClosesAt, notify: pollNotify } },
+      { kind: 'announce', sessionId, path: 'practice-poll', body: { status, closesAt: localInputToIso(pollClosesAt), notify: pollNotify } },
       async (data) => {
         const announcement = (data as { announcement?: Partial<AnnouncementResult> }).announcement;
         if (announcement) setNotice(announcementNotice(announcement));
