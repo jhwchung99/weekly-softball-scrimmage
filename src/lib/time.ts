@@ -15,6 +15,9 @@ export function zonedTimeToUtc(dateStr: string, timeStr: string, timeZone: strin
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hour, minute] = timeStr.split(':').map(Number);
   const anchor = Date.UTC(year, month - 1, day, hour, minute, 0);
+  // An unreadable date or time gives an Invalid Date rather than letting Intl
+  // throw on it below; callers check for NaN (see getWeeklyMilestones).
+  if (Number.isNaN(anchor)) return new Date(NaN);
 
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -64,11 +67,14 @@ export interface ScheduleOverrides {
 
 /** An override that parses, or null so the caller falls back. An unreadable
  * value is deliberately not an error: a hand-edited cell should not be able to
- * take a session's whole schedule out. */
+ * take a session's whole schedule out. It is logged, though, since the default
+ * it falls back to may be the very schedule the organizer was overriding. */
 function parsedOverride(value: string | undefined): Date | null {
   if (!value) return null;
   const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? null : at;
+  if (!Number.isNaN(at.getTime())) return at;
+  console.warn(`Unreadable schedule override "${value}"; using the default instead.`);
+  return null;
 }
 
 export interface WeeklyMilestones {
@@ -143,6 +149,12 @@ export function getWeeklyMilestones(
   const registrationClosesAt =
     parsedOverride(overrides.registrationClosesAt) ?? zonedTimeToUtc(toDateStr(tuesdayNoonUtc), '00:00');
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
+  // Every comparison with NaN is false, so phaseOf reads such a session as
+  // 'played': promotion stops and payment opens. Writes through the app are
+  // validated, so only a hand-edited cell gets here; name it.
+  if (Number.isNaN(gameStart.getTime())) {
+    console.warn(`Unreadable game date or time for ${gameDate}: "${gameTime}". Its schedule cannot be worked out.`);
+  }
   const cutoffStart =
     parsedOverride(overrides.rosterLockAt) ??
     new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);

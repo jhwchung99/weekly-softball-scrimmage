@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { zonedTimeToUtc, nextMondayEastern, currentWeekFridayEastern, currentWeekGameDayCandidates, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
 
 describe('zonedTimeToUtc', () => {
@@ -293,5 +293,32 @@ describe('nextMondayEastern', () => {
   it('is the following Monday on a Sunday, and never today', () => {
     expect(nextMondayEastern(new Date('2026-07-12T16:00:00.000Z'))).toBe('2026-07-13'); // Sunday noon ET
     expect(nextMondayEastern(new Date('2026-07-13T16:00:00.000Z'))).toBe('2026-07-20'); // Monday noon ET
+  });
+});
+
+// Both used to fall back without a word: a bad override quietly became the
+// default window, and a bad game time made every milestone NaN, which
+// phaseOf reads as 'played'. The fallback stays; the silence does not.
+describe('getWeeklyMilestones with an unreadable cell', () => {
+  it('warns when an override does not parse, and uses the default', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const m = getWeeklyMilestones('2026-07-10', '18:00', { registrationClosesAt: 'Thu 9pm' });
+
+    expect(m.registrationClosesAt.toISOString()).toBe('2026-07-07T04:00:00.000Z');
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/"Thu 9pm"/));
+    warn.mockRestore();
+  });
+
+  // It threw a RangeError, and /api/home works out every upcoming session's
+  // phase, so one bad cell took the whole homepage down. Now only that
+  // session is affected.
+  it('warns when the game time does not parse, rather than throwing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(() => getWeeklyMilestones('2026-07-10', '6pm')).not.toThrow();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/2026-07-10.*"6pm"/));
+    warn.mockRestore();
   });
 });
