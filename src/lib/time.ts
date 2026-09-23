@@ -172,6 +172,16 @@ export function currentWeekFridayEastern(now: Date = new Date(), timeZone: strin
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** The coming Monday in Eastern time, YYYY-MM-DD, which is where "this week"
+ * stops. Never today: on a Monday it is the Monday after. */
+export function nextMondayEastern(now: Date = new Date(), timeZone: string = LEAGUE_TIME_ZONE): string {
+  const [year, month, day] = todayEastern(now, timeZone).split('-').map(Number);
+  const today = new Date(Date.UTC(year, month - 1, day, 12));
+  // getUTCDay: 0 = Sunday. Days until the next Monday, never 0.
+  today.setUTCDate(today.getUTCDate() + ((8 - (today.getUTCDay() || 7)) % 7 || 7));
+  return today.toISOString().slice(0, 10);
+}
+
 /** Today's date as read in Eastern time, YYYY-MM-DD. */
 export function todayEastern(now: Date = new Date(), timeZone: string = LEAGUE_TIME_ZONE): string {
   const dtf = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });

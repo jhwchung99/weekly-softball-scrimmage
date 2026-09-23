@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
+import { zonedTimeToUtc, nextMondayEastern, currentWeekFridayEastern, currentWeekGameDayCandidates, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -278,5 +278,20 @@ describe('relativeGameDay', () => {
 
   it('names the day outright when it is further off than tomorrow', () => {
     expect(relativeGameDay(game, new Date('2026-07-08T13:00:00.000Z'))).toBe('Saturday, July 11');
+  });
+});
+
+describe('nextMondayEastern', () => {
+  // The homepage splits "This week" from "Later" here. It used the browser's
+  // date, so at 10pm Sunday in Pacific time (already Monday in the East) next
+  // week's games were listed as this week's.
+  it('reads today in Eastern time, not the viewer\'s zone', () => {
+    // 2026-07-13T05:00Z: 1am Monday in Eastern, 10pm Sunday in Pacific.
+    expect(nextMondayEastern(new Date('2026-07-13T05:00:00.000Z'))).toBe('2026-07-20');
+  });
+
+  it('is the following Monday on a Sunday, and never today', () => {
+    expect(nextMondayEastern(new Date('2026-07-12T16:00:00.000Z'))).toBe('2026-07-13'); // Sunday noon ET
+    expect(nextMondayEastern(new Date('2026-07-13T16:00:00.000Z'))).toBe('2026-07-20'); // Monday noon ET
   });
 });

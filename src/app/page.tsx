@@ -9,7 +9,7 @@ import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { paymentStateOf, paymentOpensAt } from '../lib/payments';
-import { formatEasternMoment } from '../lib/time';
+import { formatEasternMoment, nextMondayEastern } from '../lib/time';
 import { dayLabel, standingLabel, spotsLabel, scheduleNote } from '../lib/sessionSummary';
 import { requestFor, type PlayerAction } from '../lib/homeConsole';
 import { sendApiRequest, asJson } from '../lib/apiRequest';
@@ -281,20 +281,11 @@ export default function Home() {
  */
 export function groupHeadingFor(entries: SessionEntry[], index: number): string | null {
   const groupOf = (entry: SessionEntry) =>
-    entry.session.gameDate < mondayAfterToday() ? 'This week' : 'Later';
+    entry.session.gameDate < nextMondayEastern() ? 'This week' : 'Later';
 
   const heading = groupOf(entries[index]);
   if (index > 0 && groupOf(entries[index - 1]) === heading) return null;
   return heading;
-}
-
-/** The coming Monday as an ISO date, which is where "this week" stops. */
-function mondayAfterToday(): string {
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12));
-  // getUTCDay: 0 = Sunday. Days until the next Monday, never 0.
-  today.setUTCDate(today.getUTCDate() + ((8 - (today.getUTCDay() || 7)) % 7 || 7));
-  return today.toISOString().slice(0, 10);
 }
 
 /**
