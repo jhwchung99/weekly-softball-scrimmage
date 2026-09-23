@@ -4,12 +4,18 @@
 // scattering `String(x)` / `x === 'TRUE'` conversions through repository
 // code.
 
-import { FeedbackKind } from '../lib/feedbackKinds';
+import { FEEDBACK_KINDS, FeedbackKind } from '../lib/feedbackKinds';
 
-export type SessionStatus = 'open' | 'closed' | 'cancelled';
-export type SignupStatus = 'confirmed' | 'waitlisted' | 'cancelled';
-export type MemberStatus = 'member' | 'guest';
-export type TeamsStatus = '' | 'draft' | 'posted';
+// Each enum is spelled once, as a list, and its type derived from it, so the
+// list the parser checks a cell against cannot drift from the type.
+export const SESSION_STATUSES = ['open', 'closed', 'cancelled'] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+export const SIGNUP_STATUSES = ['confirmed', 'waitlisted', 'cancelled'] as const;
+export type SignupStatus = (typeof SIGNUP_STATUSES)[number];
+export const MEMBER_STATUSES = ['member', 'guest'] as const;
+export type MemberStatus = (typeof MEMBER_STATUSES)[number];
+export const TEAMS_STATUSES = ['', 'draft', 'posted'] as const;
+export type TeamsStatus = (typeof TEAMS_STATUSES)[number];
 
 /**
  * Whether a week is played as a game or as batting practice.
@@ -23,14 +29,17 @@ export type TeamsStatus = '' | 'draft' | 'posted';
  * record registrationClosesAt, and never fire the headcount push. See
  * ADR-0007.
  */
-export type SessionFormat = 'game' | 'practice';
+export const SESSION_FORMATS = ['game', 'practice'] as const;
+export type SessionFormat = (typeof SESSION_FORMATS)[number];
 
 /** Whether the organizer is asking the roster about BP/Practice this week.
  * '' is "never asked", which the dashboard shows differently from 'closed'. */
-export type PracticePollStatus = '' | 'open' | 'closed';
+export const PRACTICE_POLL_STATUSES = ['', 'open', 'closed'] as const;
+export type PracticePollStatus = (typeof PRACTICE_POLL_STATUSES)[number];
 
 /** One player's answer. '' until they give one. */
-export type PracticePollAnswer = '' | 'yes' | 'no';
+export const PRACTICE_POLL_ANSWERS = ['', 'yes', 'no'] as const;
+export type PracticePollAnswer = (typeof PRACTICE_POLL_ANSWERS)[number];
 
 export interface Session {
   sessionId: string;
@@ -122,7 +131,7 @@ export interface Signup {
   // social problem, and the app's job is only to remember what happened.
   subRequestTargetEmail: string; // who this signup is asking to share a
   // spot with; '' when no request is outstanding
-  subRequestStatus: '' | 'pending' | 'declined'; // '' = no active request.
+  subRequestStatus: (typeof SUB_REQUEST_STATUSES)[number]; // '' = no active request.
   // No 'accepted' value: on acceptance the pair is formed via pairId (the
   // permanent record) and these three fields reset back to ''/empty.
   subRequestedAt: string; // ISO datetime, '' when no request is outstanding
@@ -244,6 +253,28 @@ export const FEEDBACK_HEADERS = [
 // Raw row shape as read back from the sheet: same keys, every value a string.
 export type RawRow<T> = { [K in keyof T]: string };
 
+export const SUB_REQUEST_STATUSES = ['', 'pending', 'declined'] as const;
+
+/**
+ * Reads an enum cell, tolerating how a person types: "Confirmed" and
+ * " open " are read as the listed value. Every check downstream is an exact
+ * ===, so an unmatched spelling used to fall through all of them at once (a
+ * signup active enough to block re-signing, yet missing from every count).
+ *
+ * Returns the list's own spelling, not the cell's, so this keeps working if a
+ * value is ever added that is not lowercase, and so the next write through the
+ * app puts the canonical value back in the cell. Anything still unrecognised
+ * reads as a blank cell would, with a warning naming it.
+ */
+function oneOf<T extends string>(field: string, raw: string, allowed: readonly T[], blank: T): T {
+  const cell = (raw ?? '').trim().toLowerCase();
+  if (cell === '') return blank;
+  const match = allowed.find((v) => v.toLowerCase() === cell);
+  if (match !== undefined) return match;
+  console.warn(`Unrecognised ${field} "${raw}" in the sheet; reading it as "${blank}".`);
+  return blank;
+}
+
 export function parseSessionRow(row: RawRow<Session>): Session {
   return {
     ...row,
@@ -252,18 +283,18 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     // open", and for an availability flag the safe reading of silence is no.
     // Defaulting to open meant a hand-edited or half-written row accepted
     // signups on its own.
-    status: (row.status || 'closed') as SessionStatus,
+    status: oneOf('session status', row.status, SESSION_STATUSES, 'closed'),
     cost: Number(row.cost) || 0,
     pricePerSpot: Number(row.pricePerSpot) || 0,
     // A blank cell means one field, the way it has always worked.
     numFields: Number(row.numFields) || 1,
-    teamsStatus: (row.teamsStatus || '') as TeamsStatus,
+    teamsStatus: oneOf('teamsStatus', row.teamsStatus, TEAMS_STATUSES, ''),
     rosterLockAt: row.rosterLockAt || '',
     remindersSentAt: row.remindersSentAt || '',
     // Blank means a game. Every row written before the format existed is
     // blank, so this is the whole migration.
-    format: (row.format || 'game') as SessionFormat,
-    practicePollStatus: (row.practicePollStatus || '') as PracticePollStatus,
+    format: oneOf('format', row.format, SESSION_FORMATS, 'game'),
+    practicePollStatus: oneOf('practicePollStatus', row.practicePollStatus, PRACTICE_POLL_STATUSES, ''),
     practicePollClosesAt: row.practicePollClosesAt || '',
     practicePollThreshold: Number(row.practicePollThreshold) || 0,
     // Blank on every row written before these existed, which is correct: a
@@ -288,13 +319,13 @@ export function parseSignupRow(row: RawRow<Signup>): Signup {
   return {
     ...row,
     willingToShare: row.willingToShare === 'TRUE' || row.willingToShare === 'true',
-    memberStatus: (row.memberStatus || 'guest') as MemberStatus,
-    status: (row.status || 'waitlisted') as SignupStatus,
+    memberStatus: oneOf('memberStatus', row.memberStatus, MEMBER_STATUSES, 'guest'),
+    status: oneOf('signup status', row.status, SIGNUP_STATUSES, 'waitlisted'),
     paid: row.paid === 'TRUE' || row.paid === 'true',
-    subRequestStatus: (row.subRequestStatus || '') as Signup['subRequestStatus'],
+    subRequestStatus: oneOf('subRequestStatus', row.subRequestStatus, SUB_REQUEST_STATUSES, ''),
     amountPaid: Number(row.amountPaid) || 0,
     attended: row.attended === 'TRUE' || row.attended === 'true',
-    practicePollAnswer: (row.practicePollAnswer || '') as PracticePollAnswer,
+    practicePollAnswer: oneOf('practicePollAnswer', row.practicePollAnswer, PRACTICE_POLL_ANSWERS, ''),
     practicePollAnsweredAt: row.practicePollAnsweredAt || '',
   };
 }
@@ -324,7 +355,7 @@ export function serializePlayerRow(player: Player): RawRow<Player> {
 /** Like Player's, near-identity transforms — `kind` is the one field with a
  * narrower type than the string the sheet hands back. */
 export function parseFeedbackRow(row: RawRow<Feedback>): Feedback {
-  return { ...row, kind: (row.kind || 'feedback') as FeedbackKind };
+  return { ...row, kind: oneOf('feedback kind', row.kind, FEEDBACK_KINDS, 'feedback') };
 }
 
 export function serializeFeedbackRow(feedback: Feedback): RawRow<Feedback> {
