@@ -355,7 +355,7 @@ export function SessionCard(props: {
   if (signedIn && incomingSubRequests.length > 0) {
     badges.push(`${incomingSubRequests.length} request${incomingSubRequests.length === 1 ? '' : 's'}`);
   }
-  if (signedIn && session.practicePollStatus === 'open' && mySignup && mySignup.practicePollAnswer === '') {
+  if (signedIn && session.practicePollStatus === 'open' && mySignup?.status === 'confirmed' && mySignup.practicePollAnswer === '') {
     badges.push('poll');
   }
   if (

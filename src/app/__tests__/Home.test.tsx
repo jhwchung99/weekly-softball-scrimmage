@@ -170,6 +170,30 @@ describe('Home', () => {
     expect(row).toHaveTextContent('poll');
   });
 
+  // The panel shows waitlisted and cancelled players nothing, and the server
+  // refuses their answers, so a badge pointed at a poll they could not see.
+  it('flags the poll only for a confirmed player', async () => {
+    const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '14:00', practicePollStatus: 'open' };
+    const base = home();
+    respondWith({
+      ...base,
+      sessions: [
+        base.sessions[0],
+        {
+          ...base.sessions[0],
+          session: sunday,
+          signup: { signupId: 's2', status: 'waitlisted', memberStatus: 'member', paid: false, subRequestStatus: '', subRequestTargetEmail: '', practicePollAnswer: '' },
+          incomingSubRequests: [],
+        },
+      ],
+    });
+
+    render(<Home />);
+    const row = await screen.findByRole('button', { name: /Sun, Jul 12 · 2pm/ });
+
+    expect(row).not.toHaveTextContent('poll');
+  });
+
   it('stays quiet on a collapsed game that wants nothing', async () => {
     const sunday = { ...SESSION, sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '14:00' };
     const base = home();
