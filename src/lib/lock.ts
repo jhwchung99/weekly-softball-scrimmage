@@ -85,16 +85,35 @@ export async function withMutationLock<T>(fn: () => Promise<T>): Promise<T> {
       try {
         return await insideHold.run(true, fn);
       } finally {
-        // Only release if we still hold it — a lock that outlived its
-        // TTL and was already reassigned to a new holder shouldn't be
-        // deleted out from under them.
-        const current = await redis.get<string>(LOCK_KEY);
-        if (current === token) {
-          await redis.del(LOCK_KEY);
-        }
+        await release(redis, token);
       }
     }
     await new Promise((resolve) => setTimeout(resolve, ACQUIRE_RETRY_DELAY_MS));
   }
   throw new ApiError(503, 'The server is busy processing other requests. Please try again in a moment.');
+}
+
+/**
+ * Never throws. It runs in a `finally`, where a throw would replace the result
+ * of work that has already been written to the sheet: the player would see an
+ * error for a signup that landed. A failed release only leaves the key to
+ * expire at LOCK_TTL_SECONDS, which the log below makes visible.
+ */
+async function release(redis: NonNullable<ReturnType<typeof getRedis>>, token: string): Promise<void> {
+  try {
+    // Only release if we still hold it — a lock that outlived its TTL and was
+    // already reassigned to a new holder shouldn't be deleted out from under them.
+    const current = await redis.get<string>(LOCK_KEY);
+    if (current === token) {
+      await redis.del(LOCK_KEY);
+    } else {
+      // The only moment the code knows mutual exclusion failed: another
+      // request may have mutated alongside this one.
+      console.error(
+        `Held past LOCK_TTL_SECONDS (${LOCK_TTL_SECONDS}s) and lost the mutation lock; another write may have overlapped this one.`
+      );
+    }
+  } catch (err) {
+    console.error(`Could not release the mutation lock; it stays held until its ${LOCK_TTL_SECONDS}s TTL expires.`, err);
+  }
 }
