@@ -8,7 +8,7 @@ import { sendSubRequestEmail, sendSubRequestAcceptedEmail, deliver } from './not
 import { normalizeEmail } from './email';
 import { withMutationLock } from './lock';
 
-const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
+export const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
 
 /**
  * A waitlisted player proposing to share a specific active player's spot.
@@ -164,28 +164,14 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
   });
 }
 
-/** Cleanup used by cancelMySignup/promoteNextWaitlisted (signupFlow.ts):
- * a signup's own outgoing pending request becomes moot once that signup
- * is cancelled or gets its own spot via normal promotion. */
-export async function clearOwnPendingRequest(signup: Signup): Promise<void> {
-  if (signup.subRequestStatus === 'pending') {
-    await updateSignup(signup.signupId, { ...NO_REQUEST });
-  }
-}
-
-/** Cleanup used by cancelMySignup: if this signup just cancelled, any
- * *other* signup's pending request that was targeting it is now asking a
- * person who's gone — clear those back to no-request (not 'declined',
- * since this isn't a decision the target made). */
-export async function clearPendingRequestsTargeting(
-  email: string,
-  signupsForSession: Signup[],
-  excludeSignupId?: string
-): Promise<void> {
+/** Used by cancelMySignup (signupFlow.ts): once this signup cancels, any
+ * *other* signup's pending request that was targeting it is asking a person
+ * who's gone. The caller clears those back to NO_REQUEST (not 'declined',
+ * since this isn't a decision the target made), in the same write as the
+ * cancellation itself. */
+export function pendingRequestsTargeting(email: string, signupsForSession: Signup[], excludeSignupId?: string): Signup[] {
   const normalized = normalizeEmail(email);
-  const targeting = signupsForSession.filter(
+  return signupsForSession.filter(
     (s) => s.signupId !== excludeSignupId && s.subRequestStatus === 'pending' && normalizeEmail(s.subRequestTargetEmail) === normalized
   );
-  if (targeting.length === 0) return;
-  await batchUpdateSignups(targeting.map((s) => ({ signupId: s.signupId, updates: { ...NO_REQUEST } })));
 }

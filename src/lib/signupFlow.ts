@@ -7,7 +7,6 @@ import {
   getSignupWithSessionSignups,
   listSignupsForSession,
   updateSignup,
-  updateSignupStatus,
   batchUpdateSignups,
 } from '../sheets/signups';
 import { getPlayer } from '../sheets/players';
@@ -22,7 +21,7 @@ import { countConfirmedSpots, computeCostShare } from './payments';
 
 import { sendPromotionEmail, sendLateCancellationAlert, sendGuestPairRequestEmail, deliver } from './notifications';
 import { WAIVER_TEXT } from './waiver';
-import { clearOwnPendingRequest, clearPendingRequestsTargeting } from './subRequestFlow';
+import { NO_REQUEST, pendingRequestsTargeting } from './subRequestFlow';
 import { withMutationLock } from './lock';
 
 function requireWaiver(waiverAccepted: boolean) {
@@ -254,13 +253,10 @@ export async function signUpAsGuestForSession(
   });
 }
 
-async function promoteNextWaitlisted(allSignupsForSession: Signup[]): Promise<Signup[]> {
-  const winner = nextInLine(allSignupsForSession);
-  if (!winner) return [];
-  // One batched call both confirms every row in the winning unit and
-  // returns the updated rows — previously a loop of individual writes
-  // followed by a loop of individual reads.
-  return batchUpdateSignups(winner.signupIds.map((id) => ({ signupId: id, updates: { status: 'confirmed' as const } })));
+/** Confirming someone makes their own outgoing request to share moot: they
+ * have a spot of their own now. */
+function promotion(signup: Signup): Partial<Signup> {
+  return { status: 'confirmed', ...(signup.subRequestStatus === 'pending' ? NO_REQUEST : {}) };
 }
 
 export interface CancelResult {
@@ -307,31 +303,36 @@ export async function cancelMySignup(
     // Captured before the status flips: computeCostShare only counts confirmed
     // rows, so afterwards this person's share would read as 0.
     const owedAtCancellation = computeCostShare(session, sessionSignups)[signupId] ?? 0;
-    await updateSignupStatus(signupId, 'cancelled');
-    const afterSignups = await listSignupsForSession(signup.sessionId);
-    const after = countConfirmedSpots(afterSignups);
 
-    // Sub-request cleanup: this signup's own outgoing request (if any) and
-    // anyone else's pending request that was targeting this now-cancelled
-    // signup's email both become moot.
-    await clearOwnPendingRequest(signup);
-    await clearPendingRequestsTargeting(signup.email, afterSignups, signupId);
+    // The cancellation, the sub-requests it makes moot and the promotion it
+    // frees are worked out here and written in one call. Written one after
+    // another, a failure partway left the player cancelled with the freed
+    // spot never filled, and a retry stopped at "already cancelled".
+    const afterSignups = sessionSignups.map((s) => (s.signupId === signupId ? { ...s, status: 'cancelled' as const } : s));
+    const writes = new Map<string, Partial<Signup>>();
+    const write = (id: string, updates: Partial<Signup>) => writes.set(id, { ...writes.get(id), ...updates });
 
-    if (after >= before) return { promoted: [] }; // no spot actually freed
-    if (isRosterLocked(phaseOf(session))) {
-      // Section 6/7: no auto-promotion this close to game time, but the
-      // organizer needs to know a spot just opened so they can personally
-      // text someone. Same awaited-but-swallowed pattern as the promotion
-      // email below — a failed push shouldn't affect the cancellation.
+    write(signupId, { status: 'cancelled', ...(signup.subRequestStatus === 'pending' ? NO_REQUEST : {}) });
+    // Anyone else's pending request to share this now-cancelled spot is moot.
+    for (const s of pendingRequestsTargeting(signup.email, afterSignups, signupId)) write(s.signupId, NO_REQUEST);
+
+    const spotFreed = countConfirmedSpots(afterSignups) < before;
+    // Section 6/7: no auto-promotion this close to game time.
+    const rosterLocked = isRosterLocked(phaseOf(session));
+    const winner = spotFreed && !rosterLocked ? nextInLine(afterSignups) : null;
+    for (const id of winner?.signupIds ?? []) write(id, promotion(afterSignups.find((s) => s.signupId === id)!));
+
+    const written = await batchUpdateSignups([...writes].map(([id, updates]) => ({ signupId: id, updates })));
+    const promotedSignups = (winner?.signupIds ?? []).map((id) => written.find((s) => s.signupId === id)!);
+
+    if (spotFreed && rosterLocked) {
+      // The organizer needs to know a spot just opened so they can personally
+      // text someone. Awaited but swallowed, like the promotion email below:
+      // a failed push shouldn't affect the cancellation.
       await deliver(`organizer alert for cancelled signup ${signup.signupId}`, () => sendLateCancellationAlert(signup, session, owedAtCancellation));
-      return { promoted: [] };
     }
 
-    const promotedSignups = await promoteNextWaitlisted(afterSignups);
     for (const promoted of promotedSignups) {
-      // A promoted signup's own outstanding outgoing sub request is moot
-      // it just got its own spot.
-      await clearOwnPendingRequest(promoted);
       // Awaited, not fire-and-forget: on Vercel's serverless runtime, an
       // unawaited promise can get killed once the response is sent, so
       // "don't block on this" has to mean "swallow the error," not "don't
@@ -378,12 +379,13 @@ export async function fillOpenSpots(sessionId: string): Promise<Signup[]> {
 
     if (toConfirm.length === 0) return [];
 
+    // Each promotion clears its own pending request in the same write, so no
+    // write can fail between the promotions and the emails telling people.
     const promoted = await batchUpdateSignups(
-      toConfirm.map((signupId) => ({ signupId, updates: { status: 'confirmed' as const } }))
+      toConfirm.map((signupId) => ({ signupId, updates: promotion(signups.find((s) => s.signupId === signupId)!) }))
     );
 
     for (const p of promoted) {
-      await clearOwnPendingRequest(p);
       await deliver(`promotion email to ${p.email}`, () => sendPromotionEmail(p, session));
     }
     return promoted;

@@ -20,6 +20,7 @@ vi.mock('../../lib/ntfy', () => ({ sendPush }));
 const { signUpForSession, signUpAsGuestForSession, cancelMySignup, fillOpenSpots } = await import('../signupFlow');
 const { countConfirmedSpots, computeCostShare, computePaymentSummary } = await import('../payments');
 const { respondToSubRequest } = await import('../subRequestFlow');
+const { batchUpdateSignups, updateSignup, updateSignupStatus } = await import('../../sheets/signups');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -402,6 +403,50 @@ describe('cancelMySignup', () => {
   });
 });
 
+
+/**
+ * A cancellation used to be a run of separate writes: the cancel, then the
+ * sub-request cleanup, then the promotion. A failure after the first left the
+ * player cancelled with the freed spot never filled, and a retry stopped at
+ * "already cancelled". It is one write now, so it lands whole or not at all.
+ */
+describe('cancelMySignup when Sheets fails', () => {
+  async function fullWeekWithWaitlist() {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z')); // 10h before the game
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00', capacity: 1 }));
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    store.players.set('b@dummy.test', makePlayer({ email: 'b@dummy.test' }));
+    const a = await signUpForSession('2026-07-10', 'a@dummy.test', true, DURING_REGISTRATION);
+    const b = await signUpForSession('2026-07-10', 'b@dummy.test', true, DURING_REGISTRATION);
+    return { a, b };
+  }
+
+  it('lands nothing when the write fails, so a retry cancels and promotes', async () => {
+    const { a, b } = await fullWeekWithWaitlist();
+    vi.mocked(batchUpdateSignups).mockRejectedValueOnce(new Error('quota'));
+
+    await expect(cancelMySignup(a.signupId, 'a@dummy.test', false)).rejects.toThrow('quota');
+    expect(store.signups.get(a.signupId)?.status).toBe('confirmed');
+
+    const result = await cancelMySignup(a.signupId, 'a@dummy.test', false);
+    expect(store.signups.get(a.signupId)?.status).toBe('cancelled');
+    expect(result.promoted.map((s) => s.signupId)).toEqual([b.signupId]);
+  });
+
+  it('writes the cancel, its cleanup and the promotion in one call', async () => {
+    const { a } = await fullWeekWithWaitlist();
+    vi.mocked(batchUpdateSignups).mockClear();
+    vi.mocked(updateSignup).mockClear();
+    vi.mocked(updateSignupStatus).mockClear();
+
+    await cancelMySignup(a.signupId, 'a@dummy.test', false);
+
+    expect(batchUpdateSignups).toHaveBeenCalledTimes(1);
+    expect(updateSignup).not.toHaveBeenCalled();
+    expect(updateSignupStatus).not.toHaveBeenCalled();
+  });
+});
 
 /**
  * Raising capacity is how the organizer opens a second field. It used to
