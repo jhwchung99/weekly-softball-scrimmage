@@ -10,6 +10,20 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Agent skills
 
+### Architecture
+
+A Google Sheet is the database, and the app is shaped around its limits: the
+60-reads-a-minute budget, columns mapped by position, the mutation lock living
+in the flows. Read `docs/agents/architecture.md` before changing a route, a
+flow, `sheets/`, or anything that reads a tab.
+
+### Live data
+
+Every `tsx --env-file=.env.local` script in `scripts/` talks to production:
+there is no local database and no staging sheet, and `preview:emails --send`
+puts real mail in a real inbox. `migrate:schedule` and `repair:sessions` take
+`-- --dry-run`; run that first and show the output before writing.
+
 ### Issue tracker
 
 Issues live as GitHub issues in `jhwchung99/weekly-softball-scrimmage`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
