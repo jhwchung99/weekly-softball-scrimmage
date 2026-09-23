@@ -190,6 +190,23 @@ describe('reportMissedJobs', () => {
     expect(sendPush).toHaveBeenCalled();
   });
 
+  it('tries again on the next page load when a push fails, instead of going quiet for 12 hours', async () => {
+    const claimed = new Set<string>();
+    getRedis.mockReturnValue({
+      set: vi.fn(async (key: string) => (claimed.has(key) ? null : (claimed.add(key), 'OK'))),
+      del: vi.fn(async (key: string) => void claimed.delete(key)),
+    } as never);
+    sendPush.mockRejectedValueOnce(new Error('ntfy 502'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const now = past(M.registrationOpensAt, 3);
+    await reportMissedJobs([], now);
+    await reportMissedJobs([], now);
+
+    expect(sendPush).toHaveBeenCalledTimes(2);
+    vi.mocked(console.error).mockRestore();
+  });
+
   it('swallows a push failure rather than failing the page load it runs off', async () => {
     sendPush.mockRejectedValue(new Error('ntfy down'));
 

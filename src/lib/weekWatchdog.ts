@@ -209,12 +209,25 @@ export async function reportMissedJobs(sessions: Session[], now: Date = new Date
     if (!(await shouldReport(key))) continue;
     reportedThisProcess.add(key);
 
-    await deliver(`watchdog alert for ${key}`, () =>
+    const sent = await deliver(`watchdog alert for ${key}`, () =>
       sendPush(`Scheduled job did not run: ${job}`, `${message}\n\nRun the workflow by hand from the repository's Actions tab.`, {
         priority: urgent ? 5 : 4,
         tags: [urgent ? 'rotating_light' : 'warning'],
       })
     );
+    // The claim is taken before sending so concurrent page loads don't all
+    // push. If the push failed, give it back: otherwise one ntfy blip buys
+    // twelve hours of silence about a week nobody can sign up for.
+    if (!sent) await unclaim(key);
+  }
+}
+
+async function unclaim(key: string): Promise<void> {
+  reportedThisProcess.delete(key);
+  try {
+    await getRedis()?.del(`watchdog:${key}`);
+  } catch (err) {
+    console.error(`Could not release the watchdog claim for ${key}; it stays quiet until it expires.`, err);
   }
 }
 
