@@ -42,6 +42,8 @@ export interface ReminderResult {
   reason?: string;
   sent?: number;
   failed?: number;
+  /** Set when the emails went out but recording that they had did not. */
+  warning?: string;
 }
 
 /**
@@ -58,56 +60,73 @@ export interface ReminderResult {
  * before, and `sendGameDayReminderEmail` words itself relative to `now`.
  */
 export async function sendRemindersForSession(sessionId: string, now: Date = new Date()): Promise<ReminderResult> {
-  return withMutationLock(async () => {
-    const session = await getSession(sessionId);
-    if (!session) throw new ApiError(404, 'No such session.');
-    if (session.status === 'cancelled') {
-      throw new ApiError(409, 'This game is cancelled, so there is nothing to remind anyone about.');
+  // Only the stamp takes the mutation lock. Ten to thirty seconds of sends
+  // used to hold it, so a cancellation in that time waited out its acquire and
+  // got a 503. Nothing here needs it: after the roster lock the amounts owed
+  // are final, and the announcement guard is what stops a double send.
+  const session = await getSession(sessionId);
+  if (!session) throw new ApiError(404, 'No such session.');
+  if (session.status === 'cancelled') {
+    throw new ApiError(409, 'This game is cancelled, so there is nothing to remind anyone about.');
+  }
+
+  const phase = phaseOf(session, now);
+  if (!isRosterLocked(phase)) {
+    throw new ApiError(
+      409,
+      `The roster has not locked yet. It locks ${formatEasternMoment(paymentOpensAt(session))}, and the email says what each player owes, which is not final until then.`
+    );
+  }
+  if (hasGameStarted(phase)) {
+    throw new ApiError(409, 'The game has already started.');
+  }
+
+  const signups = await listSignupsForSession(sessionId);
+  const confirmed = signups.filter((s) => s.status === 'confirmed');
+  if (confirmed.length === 0) {
+    return { sessionId, skipped: true, reason: 'Nobody is confirmed.' };
+  }
+
+  const owed = computeCostShare(session, signups);
+  // Decides whether the email closes with the nudge to cancel: that line
+  // only makes sense while somebody is actually waiting for a spot.
+  const hasWaitlist = signups.some((s) => s.status === 'waitlisted');
+
+  let sent = 0;
+  let failed = 0;
+  for (const signup of confirmed) {
+    // `now` is threaded through so "today" versus "tomorrow" is decided by
+    // the same clock the send is running against, not wall time.
+    if (
+      await deliver(`game-day email to ${signup.email}`, () =>
+        sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now)
+      )
+    ) {
+      sent += 1;
+    } else {
+      failed += 1;
     }
+    await new Promise((resolve) => setTimeout(resolve, SEND_GAP_MS));
+  }
 
-    const phase = phaseOf(session, now);
-    if (!isRosterLocked(phase)) {
-      throw new ApiError(
-        409,
-        `The roster has not locked yet. It locks ${formatEasternMoment(paymentOpensAt(session))}, and the email says what each player owes, which is not final until then.`
-      );
+  // Only on a send that reached somebody. A run that failed for all of them
+  // should leave the dashboard saying the email still has to go out.
+  if (sent > 0) {
+    try {
+      await withMutationLock(() => updateSession(sessionId, { remindersSentAt: now.toISOString() }));
+    } catch (err) {
+      // The emails are out. Throwing here returned a bare 500, the dashboard
+      // kept offering the button, and a second press sent them all again.
+      console.error(`Game-day email for ${sessionId} went to ${sent}, but remindersSentAt was not recorded.`, err);
+      return {
+        sessionId,
+        skipped: false,
+        sent,
+        failed,
+        warning: 'The app could not record that it went out, so the dashboard may still offer to send it. Do not send it again.',
+      };
     }
-    if (hasGameStarted(phase)) {
-      throw new ApiError(409, 'The game has already started.');
-    }
+  }
 
-    const signups = await listSignupsForSession(sessionId);
-    const confirmed = signups.filter((s) => s.status === 'confirmed');
-    if (confirmed.length === 0) {
-      return { sessionId, skipped: true, reason: 'Nobody is confirmed.' };
-    }
-
-    const owed = computeCostShare(session, signups);
-    // Decides whether the email closes with the nudge to cancel: that line
-    // only makes sense while somebody is actually waiting for a spot.
-    const hasWaitlist = signups.some((s) => s.status === 'waitlisted');
-
-    let sent = 0;
-    let failed = 0;
-    for (const signup of confirmed) {
-      // `now` is threaded through so "today" versus "tomorrow" is decided by
-      // the same clock the send is running against, not wall time.
-      if (
-        await deliver(`game-day email to ${signup.email}`, () =>
-          sendGameDayReminderEmail(signup, session, owed[signup.signupId] ?? 0, hasWaitlist, now)
-        )
-      ) {
-        sent += 1;
-      } else {
-        failed += 1;
-      }
-      await new Promise((resolve) => setTimeout(resolve, SEND_GAP_MS));
-    }
-
-    // Only on a send that reached somebody. A run that failed for all of them
-    // should leave the dashboard saying the email still has to go out.
-    if (sent > 0) await updateSession(sessionId, { remindersSentAt: now.toISOString() });
-
-    return { sessionId, skipped: false, sent, failed };
-  });
+  return { sessionId, skipped: false, sent, failed };
 }

@@ -13,7 +13,22 @@ vi.mock('../../lib/ntfy', () => ({ sendPush }));
 const sendEmail = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 
+// A pass-through lock that records whether anything was emailed while held.
+const lock = vi.hoisted(() => ({ held: false, emailedWhileHeld: false }));
+vi.mock('../../lib/lock', () => ({
+  withMutationLock: async <T,>(fn: () => Promise<T>) => {
+    const outer = lock.held;
+    lock.held = true;
+    try {
+      return await fn();
+    } finally {
+      lock.held = outer;
+    }
+  },
+}));
+
 const { sendRemindersForSession } = await import('../scheduling');
+const { updateSession } = await import('../../sheets/sessions');
 const { signUpForSession } = await import('../signupFlow');
 
 beforeEach(() => {
@@ -123,6 +138,37 @@ describe('sendRemindersForSession', () => {
     await sendRemindersForSession('2026-07-10', AFTER_LOCK);
 
     expect(store.sessions.get('2026-07-10')?.remindersSentAt).toBe(AFTER_LOCK.toISOString());
+  });
+
+  // It sent twenty emails and then failed to record that it had, so the route
+  // returned a bare 500, the dashboard still offered the button, and a second
+  // press sent all twenty again.
+  it('reports what went out even when recording it fails, and says not to send again', async () => {
+    await seed({ pricePerSpot: 10 });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(updateSession).mockRejectedValueOnce(new Error('quota'));
+
+    const result = await sendRemindersForSession('2026-07-10', AFTER_LOCK);
+
+    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(result.warning).toMatch(/do not send it again/i);
+    vi.mocked(console.error).mockRestore();
+  });
+
+  // Ten to thirty seconds of sends used to hold the one global lock, so a
+  // cancellation in that time waited out its acquire and got a 503.
+  it('does not hold the mutation lock while emailing', async () => {
+    await seed({ pricePerSpot: 10 });
+    lock.emailedWhileHeld = false;
+    sendEmail.mockImplementation(async () => {
+      if (lock.held) lock.emailedWhileHeld = true;
+    });
+
+    await sendRemindersForSession('2026-07-10', AFTER_LOCK);
+
+    expect(sendEmail).toHaveBeenCalled();
+    expect(lock.emailedWhileHeld).toBe(false);
+    sendEmail.mockReset();
   });
 
   it('leaves remindersSentAt alone when every address failed', async () => {
