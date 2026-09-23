@@ -1,3 +1,4 @@
+import { formatGameDate } from './time';
 import { getSession, updateSession } from '../sheets/sessions';
 import { listSignupsForSession, updateSignup } from '../sheets/signups';
 import { Session, Signup, SessionFormat, PracticePollAnswer, PracticePollStatus } from '../sheets/schema';
@@ -88,7 +89,7 @@ export async function answerPracticePoll(
     const normalized = normalizeEmail(email);
     const signups = await listSignupsForSession(sessionId);
     const mine = signups.find((s) => normalizeEmail(s.email) === normalized && s.status !== 'cancelled');
-    if (!mine) throw new ApiError(404, 'You are not signed up for this week.');
+    if (!mine) throw new ApiError(404, `You are not signed up for ${formatGameDate(session.gameDate)}.`);
 
     if (!canAnswerPracticePoll(session, mine, now)) {
       // One message for three causes on purpose. The player does not need to

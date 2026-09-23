@@ -1,3 +1,4 @@
+import { formatGameDate } from './time';
 import { randomUUID } from 'node:crypto';
 import { getSession } from '../sheets/sessions';
 import { getSignup, getSignupWithSessionSignups, updateSignup, batchUpdateSignups } from '../sheets/signups';
@@ -48,7 +49,8 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     }
 
     const target = sessionSignups.find((s) => normalizeEmail(s.email) === normalizedTarget && s.status !== 'cancelled');
-    if (!target) throw new ApiError(400, "That person isn't signed up this week.");
+    // sessionId is the game date, so the day can be named without a read.
+    if (!target) throw new ApiError(400, `That person isn't signed up for ${formatGameDate(signup.sessionId)}.`);
     const targetSharing = alreadySharingReason(target, 'That person is');
     if (targetSharing) throw new ApiError(400, targetSharing);
 

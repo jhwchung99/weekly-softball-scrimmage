@@ -119,6 +119,11 @@ describe('answerPracticePoll', () => {
   const mine = (over = {}) =>
     makeSignup({ signupId: 'mine', sessionId: SESSION_ID, email: ME, status: 'confirmed', ...over });
 
+  it('names the day when refusing someone not signed up (voice.md rule 1)', async () => {
+    seed({ practicePollStatus: 'open' }, []);
+    await expect(answerPracticePoll(SESSION_ID, ME, 'yes')).rejects.toThrow('You are not signed up for Friday, July 10.');
+  });
+
   it('records an answer', async () => {
     seed({ practicePollStatus: 'open' }, [mine()]);
 

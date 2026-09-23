@@ -46,6 +46,13 @@ afterEach(() => {
 });
 
 describe('requestSub', () => {
+  it('names the day when the person asked is not signed up (voice.md rule 1)', async () => {
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
+    await expect(requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'nobody@dummy.test')).rejects.toThrow(
+      "That person isn't signed up for Thursday, January 1."
+    );
+  });
+
   it('sets a pending request and emails the target', async () => {
     const { waitlisted } = await setUpConfirmedAndWaitlisted();
     const updated = await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
