@@ -20,6 +20,7 @@ vi.mock('../../lib/ntfy', () => ({ sendPush }));
 const { signUpForSession, signUpAsGuestForSession, cancelMySignup, fillOpenSpots } = await import('../signupFlow');
 const { countConfirmedSpots, computeCostShare, computePaymentSummary } = await import('../payments');
 const { respondToSubRequest } = await import('../subRequestFlow');
+const { batchUpdateSignups, updateSignup, updateSignupStatus } = await import('../../sheets/signups');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -184,10 +185,10 @@ describe('signUpForSession', () => {
     await expect(signUpForSession('2099-01-01', 'nobody@dummy.test', true)).rejects.toThrow(/player profile/);
   });
 
-  it('rejects signup when the session is not open', async () => {
-    store.sessions.set('2099-01-01', makeSession({ status: 'closed' }));
+  it('rejects signup for a cancelled game', async () => {
+    store.sessions.set('2099-01-01', makeSession({ status: 'cancelled' }));
     store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
-    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
+    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/has been cancelled/);
   });
 
   it('offers the member a pairing when a guest named them, rather than merging silently', async () => {
@@ -268,13 +269,29 @@ describe('signUpForSession: the registration window', () => {
     ).rejects.toThrow(/open Monday/);
   });
 
-  it('still defers to status: an in-window signup on a closed session is refused', async () => {
+  // The window is the whole gate now. A stored 'closed' used to refuse an
+  // in-window signup until a job flipped it open, and the jobs were GitHub
+  // crons that routinely did not run.
+  it('accepts an in-window signup whatever the stored status says', async () => {
     openSessionFor('a@dummy.test');
     store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
     vi.setSystemTime(new Date(WINDOW.opens));
 
-    // The window is a second condition, not a replacement for the first.
-    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).resolves.toBeDefined();
+  });
+
+  it('follows the session\'s own window, and names the day when refusing', async () => {
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    store.sessions.set(
+      '2026-07-08',
+      makeSession({ sessionId: '2026-07-08', gameDate: '2026-07-08', registrationOpensAt: '2026-07-06T22:00:00.000Z', registrationClosesAt: '2026-07-07T22:00:00.000Z' })
+    );
+
+    vi.setSystemTime(new Date('2026-07-06T20:00:00.000Z'));
+    await expect(signUpForSession('2026-07-08', 'a@dummy.test', true)).rejects.toThrow(/^Signups for Wednesday, July 8 open Monday, July 6 at 6pm ET\.$/);
+
+    vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
+    await expect(signUpForSession('2026-07-08', 'a@dummy.test', true)).resolves.toBeDefined();
   });
 
   it('lets an admin add someone outside the window, which is what the open-spots alert asks for', async () => {
@@ -402,6 +419,50 @@ describe('cancelMySignup', () => {
   });
 });
 
+
+/**
+ * A cancellation used to be a run of separate writes: the cancel, then the
+ * sub-request cleanup, then the promotion. A failure after the first left the
+ * player cancelled with the freed spot never filled, and a retry stopped at
+ * "already cancelled". It is one write now, so it lands whole or not at all.
+ */
+describe('cancelMySignup when Sheets fails', () => {
+  async function fullWeekWithWaitlist() {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z')); // 10h before the game
+    store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', gameTime: '18:00', capacity: 1 }));
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    store.players.set('b@dummy.test', makePlayer({ email: 'b@dummy.test' }));
+    const a = await signUpForSession('2026-07-10', 'a@dummy.test', true, DURING_REGISTRATION);
+    const b = await signUpForSession('2026-07-10', 'b@dummy.test', true, DURING_REGISTRATION);
+    return { a, b };
+  }
+
+  it('lands nothing when the write fails, so a retry cancels and promotes', async () => {
+    const { a, b } = await fullWeekWithWaitlist();
+    vi.mocked(batchUpdateSignups).mockRejectedValueOnce(new Error('quota'));
+
+    await expect(cancelMySignup(a.signupId, 'a@dummy.test', false)).rejects.toThrow('quota');
+    expect(store.signups.get(a.signupId)?.status).toBe('confirmed');
+
+    const result = await cancelMySignup(a.signupId, 'a@dummy.test', false);
+    expect(store.signups.get(a.signupId)?.status).toBe('cancelled');
+    expect(result.promoted.map((s) => s.signupId)).toEqual([b.signupId]);
+  });
+
+  it('writes the cancel, its cleanup and the promotion in one call', async () => {
+    const { a } = await fullWeekWithWaitlist();
+    vi.mocked(batchUpdateSignups).mockClear();
+    vi.mocked(updateSignup).mockClear();
+    vi.mocked(updateSignupStatus).mockClear();
+
+    await cancelMySignup(a.signupId, 'a@dummy.test', false);
+
+    expect(batchUpdateSignups).toHaveBeenCalledTimes(1);
+    expect(updateSignup).not.toHaveBeenCalled();
+    expect(updateSignupStatus).not.toHaveBeenCalled();
+  });
+});
 
 /**
  * Raising capacity is how the organizer opens a second field. It used to

@@ -175,9 +175,11 @@ export function announcementNotice(result: Partial<AnnouncementResult>): string 
 
   const who = (result.recipients ?? []).join(', ');
   const sent = result.sent ?? 0;
-  return (result.failed ?? 0) > 0
-    ? `Emailed ${sent}: ${who}. ${result.failed} failed to send — check the logs.`
-    : `Emailed ${sent}: ${who}.`;
+  const notice =
+    (result.failed ?? 0) > 0
+      ? `Emailed ${sent}: ${who}. ${result.failed} failed to send — check the logs.`
+      : `Emailed ${sent}: ${who}.`;
+  return result.warning ? `${notice} ${result.warning}` : notice;
 }
 
 /**

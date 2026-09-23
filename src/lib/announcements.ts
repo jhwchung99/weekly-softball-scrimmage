@@ -40,6 +40,8 @@ export interface AnnouncementResult {
   failed: number;
   /** Who was actually written to, so the dashboard can say more than a count. */
   recipients: string[];
+  /** Something the organizer must know about a send that did go out. */
+  warning?: string;
 }
 
 const nothingSent = (sessionId: string, reason: string): AnnouncementResult => ({

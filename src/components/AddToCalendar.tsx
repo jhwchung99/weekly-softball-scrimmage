@@ -47,7 +47,7 @@ export function AddToCalendar({ gameDate, gameTime, locationArea, locationName, 
         Google Calendar
       </a>
       <span aria-hidden="true">·</span>
-      <a href="/api/calendar" download={`softball-${gameDate}.ics`} className="text-blue-600 hover:underline">
+      <a href={`/api/calendar?sessionId=${encodeURIComponent(gameDate)}`} download={`softball-${gameDate}.ics`} className="text-blue-600 hover:underline">
         .ics
       </a>
     </p>

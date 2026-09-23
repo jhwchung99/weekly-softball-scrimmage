@@ -209,6 +209,19 @@ describe('AdminPage', () => {
    * Written as a rule over the page rather than per button, so a fifth send
    * added later without a confirm fails this instead of shipping.
    */
+  // loadRoster cleared the notice on every run, and marking a week as
+  // practice set one and then reloaded, so the organizer never saw it.
+  it('keeps the notice an action sets through the reload that follows it', async () => {
+    const light = { ...SESSION, format: 'game', practicePollStatus: 'closed', practicePollThreshold: 0, practicePollClosesAt: '' };
+    routes({ '/api/admin/sessions/2026-07-10': () => ({ ok: true, body: { session: light, phase: 'closed' } }) });
+    render(<AdminPage />);
+    await screen.findByText('Kevin Kim');
+
+    await userEvent.click(await screen.findByRole('button', { name: /Mark as BP\/Practice/i }));
+
+    expect(await screen.findByText(/Nobody has been told: a draft is waiting/)).toBeInTheDocument();
+  });
+
   describe('nothing mails players on one click', () => {
     /** The session's capacity box and its Save, not the create-session form's
      * identically-labelled pair. */

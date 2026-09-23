@@ -134,6 +134,12 @@ describe('splitAcrossRoster', () => {
 });
 
 describe('announcementNotice', () => {
+  it('passes on a warning about a send that went out but was not recorded', () => {
+    expect(announcementNotice({ sent: 2, failed: 0, recipients: ['A', 'B'], warning: 'Do not send it again.' })).toBe(
+      'Emailed 2: A, B. Do not send it again.'
+    );
+  });
+
   it('names who was emailed, because a count cannot be checked', () => {
     expect(announcementNotice({ sent: 2, failed: 0, recipients: ['Kevin Kim', 'Jane Doe'] })).toBe(
       'Emailed 2: Kevin Kim, Jane Doe.'

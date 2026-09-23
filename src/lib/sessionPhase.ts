@@ -19,7 +19,9 @@ import { getWeeklyMilestones } from './time';
 export type SessionPhase =
   /** Before registration opens — the week exists but nobody can sign up yet. */
   | 'before'
-  /** Registration is open: Monday 9am ET until Tuesday midnight ET. */
+  /** Registration is open: inside the session's own window, by default Monday
+   * 9am ET until Tuesday midnight ET. This alone decides whether signups are
+   * accepted (ADR-0009). */
   | 'open'
   /** Registration has closed, but the roster is still moving — cancellations
    * still free spots and the waitlist still promotes into them. */

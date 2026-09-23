@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   parseSessionRow,
   serializeSessionRow,
@@ -156,6 +156,40 @@ describe('Session row round-trip', () => {
   });
 });
 
+describe('Session status as typed by hand', () => {
+  it('reads "Open" as open, so the week is not shut with nobody alerted', () => {
+    const row = serializeSessionRow(makeSession({ status: 'open' }));
+    expect(parseSessionRow({ ...row, status: 'Open', format: 'PRACTICE ' })).toMatchObject({ status: 'open', format: 'practice' });
+  });
+});
+
+// Sheets returns a cell's displayed text, so a price column formatted as
+// currency reads "$10.00". Number("$10.00") is NaN, which the old `|| 0` turned
+// into a free week, and the next write put that 0 back over the real price.
+describe('Session numbers as the sheet displays them', () => {
+  const row = serializeSessionRow(makeSession());
+
+  it('reads currency and thousands formatting', () => {
+    expect(parseSessionRow({ ...row, pricePerSpot: '$10.00', cost: '$1,250.50', capacity: ' 20 ' })).toMatchObject({
+      pricePerSpot: 10,
+      cost: 1250.5,
+      capacity: 20,
+    });
+  });
+
+  it('reads an unparseable number as blank, and says so', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(parseSessionRow({ ...row, pricePerSpot: 'ten' }).pricePerSpot).toBe(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/pricePerSpot "ten"/));
+    warn.mockRestore();
+  });
+
+  it('still reads zero fields as the one field it always meant', () => {
+    expect(parseSessionRow({ ...row, numFields: '0' }).numFields).toBe(1);
+  });
+});
+
 describe('Signup row round-trip', () => {
   const signup: Signup = {
     signupId: 'id-1',
@@ -205,6 +239,24 @@ describe('Signup row round-trip', () => {
     expect(parsed.status).toBe('waitlisted');
     expect(parsed.memberStatus).toBe('guest');
     expect(parsed.subRequestStatus).toBe('');
+  });
+
+  // A hand-typed "Confirmed" used to fall through every === check: the player
+  // was active enough to block re-signing but vanished from the roster count.
+  it('reads a status regardless of case or stray spaces', () => {
+    const parsed = parseSignupRow({ ...serializeSignupRow(signup), status: ' Confirmed ', memberStatus: 'MEMBER', subRequestStatus: 'Pending' });
+    expect(parsed.status).toBe('confirmed');
+    expect(parsed.memberStatus).toBe('member');
+    expect(parsed.subRequestStatus).toBe('pending');
+  });
+
+  it('reads an unrecognised status as a blank one would, and says so', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const parsed = parseSignupRow({ ...serializeSignupRow(signup), status: 'maybe' });
+
+    expect(parsed.status).toBe('waitlisted');
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/status "maybe"/));
+    warn.mockRestore();
   });
 
   it('preserves a pending/declined subRequestStatus through the round-trip', () => {

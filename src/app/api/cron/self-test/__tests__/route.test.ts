@@ -12,9 +12,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const requireCronSecret = vi.fn();
 vi.mock('../../../../../lib/cronAuth', () => ({ requireCronSecret }));
 
-const getSessionsByIds = vi.fn(async () => []);
-vi.mock('../../../../../sheets/sessions', () => ({ getSessionsByIds }));
-vi.mock('../../../../../sheets/signups', () => ({ listSignupsForSession: vi.fn(async () => []) }));
+const listSessions = vi.fn(async () => []);
+vi.mock('../../../../../sheets/sessions', () => ({ listSessions }));
+vi.mock('../../../../../sheets/signups', () => ({ listSignupsForSessions: vi.fn(async () => new Map()) }));
 
 const getRedis = vi.fn();
 vi.mock('../../../../../lib/redis', () => ({ getRedis }));

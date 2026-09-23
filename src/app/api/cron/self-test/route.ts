@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireCronSecret } from '../../../../lib/cronAuth';
-import { getSessionsByIds } from '../../../../sheets/sessions';
-import { listSignupsForSession } from '../../../../sheets/signups';
-import { currentWeekGameDayCandidates } from '../../../../lib/time';
+import { listSessions } from '../../../../sheets/sessions';
+import { listSignupsForSessions } from '../../../../sheets/signups';
+import { todayEastern } from '../../../../lib/time';
 import { countConfirmedSpots } from '../../../../lib/payments';
+import { phaseOf } from '../../../../lib/sessionPhase';
 import { getRedis } from '../../../../lib/redis';
 import { sendPush } from '../../../../lib/ntfy';
 import { sendEmail } from '../../../../lib/gmail';
@@ -52,19 +53,20 @@ export async function POST(request: Request) {
     };
 
     await run('sheets', async () => {
-      const sessions = await getSessionsByIds(currentWeekGameDayCandidates(startedAt));
-      if (sessions.length === 0) return 'read Sessions tab; no session for this week';
+      // Every upcoming session, on any weekday. This used to look up only the
+      // Friday to Sunday of the week, so a Wednesday game went unread.
+      const today = todayEastern(startedAt);
+      const sessions = (await listSessions()).filter((s) => s.gameDate >= today);
+      if (sessions.length === 0) return 'read Sessions tab; no upcoming session';
 
-      // Every session the week holds, not just the first: a Sunday game going
-      // unread is precisely the failure this check should surface.
-      const described = await Promise.all(
-        sessions.map(async (session) => {
-          const signups = await listSignupsForSession(session.sessionId);
+      const bySession = await listSignupsForSessions(sessions.map((s) => s.sessionId));
+      return sessions
+        .map((session) => {
+          const signups = bySession.get(session.sessionId) ?? [];
           const confirmed = countConfirmedSpots(signups);
-          return `${session.sessionId} (${session.status}), ${confirmed}/${session.capacity} confirmed, ${signups.length} signup rows`;
+          return `${session.sessionId} (${phaseOf(session, startedAt)}), ${confirmed}/${session.capacity} confirmed, ${signups.length} signup rows`;
         })
-      );
-      return described.join('; ');
+        .join('; ');
     });
 
     /**

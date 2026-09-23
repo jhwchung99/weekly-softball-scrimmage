@@ -3,13 +3,11 @@ import { makeSession } from '../../test/fakeSheets';
 import { getWeeklyMilestones } from '../time';
 
 /**
- * GitHub disables `schedule` triggers on a repository with no commits for 60
- * days. A cron that *fails* emails the last committer; a cron that never
- * *fires* surfaces nowhere. So the app is made to notice for itself, from
- * state it already holds.
+ * The steps left to forget are done by hand, so the app notices for itself,
+ * from state it already holds.
  *
  * Everything below is about the pure half, because that is where the judgement
- * is: what counts as "this job did not run", and — just as important — what
+ * is: what counts as "this was not done", and — just as important — what
  * does not, since a watchdog that cries wolf gets muted and then it is worse
  * than nothing.
  */
@@ -45,11 +43,9 @@ beforeEach(() => {
   getRedis.mockReturnValue(null);
 });
 
-describe('missedJobsFor — open-registration', () => {
+describe('missedJobsForWeek — nothing scheduled', () => {
   it('reports a week with nothing scheduled at all', () => {
-    // The worst case: Monday came, nothing exists, and the first signal
-    // without this is a player asking why they cannot sign up. Reported rather
-    // than fixed by inventing a session — see missedJobsForWeek.
+    // Reported rather than fixed by inventing a session — see missedJobsForWeek.
     expect(weekJobs([], past(M.registrationOpensAt, 3))).toContain('nothing-scheduled');
   });
 
@@ -58,55 +54,26 @@ describe('missedJobsFor — open-registration', () => {
   });
 
   it('checks every session the week holds, not just the first', () => {
-    // A Sunday game stuck closed beside a healthy Friday one is exactly what
-    // a single-session watchdog could not see.
-    const friday = week({ status: 'open' });
-    const sunday = week({ sessionId: '2026-07-12', gameDate: '2026-07-12', status: 'closed', teamsStatus: '' });
+    const SUNDAY = getWeeklyMilestones('2026-07-12', '18:00');
+    const friday = week({ teamsStatus: 'posted', remindersSentAt: '2026-07-10T18:00:00.000Z' });
+    const sunday = week({ sessionId: '2026-07-12', gameDate: '2026-07-12', teamsStatus: '', remindersSentAt: '2026-07-12T17:00:00.000Z' });
 
-    const reported = missedJobsForWeek([friday, sunday], past(M.registrationOpensAt, 3));
+    const reported = missedJobsForWeek([friday, sunday], past(SUNDAY.cutoffStart, 3));
 
-    expect(reported.map((m) => m.sessionId)).toEqual(['2026-07-12']);
-    expect(reported[0].job).toBe('open-registration');
-  });
-
-  it('reports a session still closed inside its own registration window', () => {
-    expect(jobs(week({ status: 'closed' }), past(M.registrationOpensAt, 3))).toContain('open-registration');
-  });
-
-  it('says nothing before registration was due to open', () => {
-    expect(jobs(week({ status: 'closed' }), new Date(M.registrationOpensAt.getTime() - HOUR))).toEqual([]);
-  });
-
-  it('allows the job to be late before calling it missed', () => {
-    // GitHub's scheduled runs are routinely delayed, and open-registration
-    // itself tolerates being up to 59 minutes off its hour. Alerting at one
-    // minute past would make the alert meaningless.
-    expect(jobs(week({ status: 'closed' }), past(M.registrationOpensAt, 1))).toEqual([]);
-  });
-
-  it('says nothing about a week that opened correctly', () => {
-    expect(jobs(week({ status: 'open' }), past(M.registrationOpensAt, 3))).toEqual([]);
-  });
-
-  it('does not call a properly closed week un-opened', () => {
-    // 'closed' is the correct state once the window has passed, and a blank
-    // status row parses as 'closed' — so this check has to be windowed or it
-    // fires every week from Tuesday onward.
-    expect(jobs(week({ status: 'closed', teamsStatus: 'posted' }), past(M.registrationClosesAt, 3))).toEqual([]);
+    expect(reported.map((m) => [m.sessionId, m.job])).toEqual([['2026-07-12', 'generate-teams']]);
   });
 });
 
-describe('missedJobsFor — close-registration', () => {
-  it('reports a week left open past its close', () => {
-    // Signups are already refused: the gate is derived from the clock. What
-    // was lost is the headcount the organizer books a permit from.
-    expect(jobs(week({ status: 'open', teamsStatus: 'posted' }), past(M.registrationClosesAt, 3))).toContain(
-      'close-registration'
-    );
+// Registration follows each session's own window, with nothing to run
+// (ADR-0009), so there is nothing about it to miss. A stored 'closed' inside
+// the window used to be reported as a job that never fired.
+describe('missedJobsFor — registration', () => {
+  it('says nothing about a session stored closed inside its window', () => {
+    expect(jobs(week({ status: 'closed', teamsStatus: '' }), past(M.registrationOpensAt, 3))).toEqual([]);
   });
 
-  it('says nothing while registration is legitimately open', () => {
-    expect(jobs(week({ status: 'open' }), past(M.registrationOpensAt, 3))).toEqual([]);
+  it('says nothing about a session stored open past its close', () => {
+    expect(jobs(week({ status: 'open', teamsStatus: '' }), past(M.registrationClosesAt, 3))).toEqual([]);
   });
 });
 
@@ -119,13 +86,17 @@ describe('missedJobsFor — generate-teams', () => {
     expect(jobs(week({ status: 'closed', teamsStatus: 'draft' }), past(M.cutoffStart, 3))).toEqual([]);
   });
 
+  it('says nothing for a practice week, which has no sides to pick', () => {
+    expect(jobs(week({ format: 'practice', teamsStatus: '' }), past(M.cutoffStart, 3))).not.toContain('generate-teams');
+  });
+
   it('says nothing before the roster locks', () => {
     expect(jobs(week({ status: 'closed', teamsStatus: '' }), past(M.registrationClosesAt, 1))).toEqual([]);
   });
 });
 
 describe('missedJobsFor — a cancelled week', () => {
-  it('reports nothing at all, because no job should have run', () => {
+  it('reports nothing at all, because nothing is owed to it', () => {
     // Cancelling is a decision, not a failure. Alerting on it would train the
     // organizer to ignore this.
     expect(jobs(week({ status: 'cancelled', teamsStatus: '' }), past(M.cutoffStart, 24))).toEqual([]);
@@ -137,13 +108,14 @@ describe('reportMissedJobs', () => {
     await reportMissedJobs([], past(M.registrationOpensAt, 3));
 
     expect(sendPush).toHaveBeenCalledTimes(1);
-    expect(sendPush.mock.calls[0][0]).toContain('nothing-scheduled');
+    expect(sendPush.mock.calls[0][0]).toBe('Nothing scheduled');
   });
 
-  it('says how to fix it, since the recovery is a button someone has to press', async () => {
+  it('says what is missing, with no pointer to a workflow that no longer exists', async () => {
     await reportMissedJobs([], past(M.registrationOpensAt, 3));
 
-    expect(String(sendPush.mock.calls[0][1])).toMatch(/Actions tab/);
+    expect(String(sendPush.mock.calls[0][1])).toMatch(/^Nothing is scheduled\./);
+    expect(String(sendPush.mock.calls[0][1])).not.toMatch(/workflow|Actions/);
   });
 
   it('wakes the phone when players are blocked, and does not otherwise', async () => {
@@ -188,6 +160,23 @@ describe('reportMissedJobs', () => {
     await reportMissedJobs([], past(M.registrationOpensAt, 3));
 
     expect(sendPush).toHaveBeenCalled();
+  });
+
+  it('tries again on the next page load when a push fails, instead of going quiet for 12 hours', async () => {
+    const claimed = new Set<string>();
+    getRedis.mockReturnValue({
+      set: vi.fn(async (key: string) => (claimed.has(key) ? null : (claimed.add(key), 'OK'))),
+      del: vi.fn(async (key: string) => void claimed.delete(key)),
+    } as never);
+    sendPush.mockRejectedValueOnce(new Error('ntfy 502'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const now = past(M.registrationOpensAt, 3);
+    await reportMissedJobs([], now);
+    await reportMissedJobs([], now);
+
+    expect(sendPush).toHaveBeenCalledTimes(2);
+    vi.mocked(console.error).mockRestore();
   });
 
   it('swallows a push failure rather than failing the page load it runs off', async () => {

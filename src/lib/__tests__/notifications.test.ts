@@ -164,20 +164,6 @@ describe('what the messages say', () => {
     expect(message).toMatch(/No refund/);
   });
 
-  it('tells the organizer how many spots are still open after registration closes', async () => {
-    await notifications.sendOpenSpotsAlert(SESSION, 3);
-
-    expect(lastPush().message).toMatch(/3/);
-  });
-
-  it('tells the organizer the headcount when registration closes', async () => {
-    await notifications.sendHeadcountAlert(SESSION, 11, 2);
-
-    const { message } = lastPush();
-    expect(message).toMatch(/11/);
-    expect(message).toMatch(/2/);
-  });
-
   it('names the requester when someone asks to share a spot', async () => {
     const asker = { ...PLAYER, signupId: 's2', email: 'asker@dummy.test', fullName: 'Asker Ann', status: 'waitlisted' as const };
 
@@ -328,22 +314,5 @@ describe('the practice poll email', () => {
       practicePollClosesAt: '2026-07-09T22:00:00.000Z',
     });
     expect(lastEmail().text).toMatch(/Please answer by/);
-  });
-});
-
-describe('the headcount push offers the poll on a light week', () => {
-  it('mentions it under the threshold', async () => {
-    await notifications.sendHeadcountAlert(SESSION, 9, 0);
-    expect(lastPush().message).toMatch(/BP\/Practice poll/);
-  });
-
-  it('stays quiet about it at or above the threshold', async () => {
-    await notifications.sendHeadcountAlert(SESSION, 16, 0);
-    expect(lastPush().message).not.toMatch(/BP\/Practice/);
-  });
-
-  it('uses the session’s own threshold when it has one', async () => {
-    await notifications.sendHeadcountAlert({ ...SESSION, practicePollThreshold: 20 }, 18, 0);
-    expect(lastPush().message).toMatch(/Under 20/);
   });
 });

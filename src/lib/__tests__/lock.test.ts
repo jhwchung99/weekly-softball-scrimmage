@@ -106,6 +106,30 @@ describe('withMutationLock', () => {
     expect(fake.store.get('weekly-softball-scrimmage:mutation-lock')?.value).toBe('someone-elses-token');
   });
 
+  it('logs when the hold outlived its TTL, since two writers may have overlapped', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { withMutationLock } = await import('../lock');
+
+    await withMutationLock(async () => {
+      fake.store.set('weekly-softball-scrimmage:mutation-lock', { value: 'someone-elses-token', expiresAt: Infinity });
+    });
+
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/lost the mutation lock/));
+    error.mockRestore();
+  });
+
+  it('returns the work\'s result when releasing fails, rather than hiding a write that landed', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { withMutationLock } = await import('../lock');
+    const del = vi.spyOn(fake, 'del').mockRejectedValueOnce(new Error('upstash blip'));
+
+    await expect(withMutationLock(async () => 'signed up')).resolves.toBe('signed up');
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/release/), expect.any(Error));
+
+    del.mockRestore();
+    error.mockRestore();
+  });
+
   it('acquires with the configured TTL', async () => {
     const { withMutationLock, LOCK_TTL_SECONDS } = await import('../lock');
     let ttlSeconds = 0;

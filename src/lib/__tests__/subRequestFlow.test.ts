@@ -17,10 +17,8 @@ const sendEmail = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
-const { signUpForSession } = await import('../signupFlow');
-const { requestSub, cancelSubRequest, respondToSubRequest, clearOwnPendingRequest, clearPendingRequestsTargeting } = await import(
-  '../subRequestFlow'
-);
+const { signUpForSession, cancelMySignup } = await import('../signupFlow');
+const { requestSub, cancelSubRequest, respondToSubRequest } = await import('../subRequestFlow');
 
 const SESSION_ID = '2099-01-01';
 
@@ -48,6 +46,13 @@ afterEach(() => {
 });
 
 describe('requestSub', () => {
+  it('names the day when the person asked is not signed up (voice.md rule 1)', async () => {
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
+    await expect(requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'nobody@dummy.test')).rejects.toThrow(
+      "That person isn't signed up for Thursday, January 1."
+    );
+  });
+
   it('sets a pending request and emails the target', async () => {
     const { waitlisted } = await setUpConfirmedAndWaitlisted();
     const updated = await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
@@ -127,6 +132,21 @@ describe('cancelSubRequest', () => {
 });
 
 describe('respondToSubRequest', () => {
+  // Both emails were sent inside one deliver, so a failure on the requester's
+  // left the target never told they now share a spot.
+  it('still tells the target when the requester\'s email fails', async () => {
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
+    await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
+    sendEmail.mockClear();
+    sendEmail.mockRejectedValueOnce(new Error('bad address'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await respondToSubRequest(waitlisted.signupId, 'confirmed@dummy.test', true);
+
+    expect(sendEmail.mock.calls.map((c) => c[0])).toEqual(['waitlisted@dummy.test', 'confirmed@dummy.test']);
+    vi.mocked(console.error).mockRestore();
+  });
+
   it('accept: pairs both signups, mirrors the target status, and clears the request', async () => {
     const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
@@ -179,31 +199,29 @@ describe('respondToSubRequest', () => {
   });
 });
 
-describe('cleanup hooks', () => {
-  it('clearOwnPendingRequest clears a pending request and leaves a non-pending one alone', async () => {
+// A cancellation clears the requests it makes moot, in the same write as the
+// cancel itself (see cancelMySignup).
+describe('cleanup on cancel', () => {
+  it('clears the canceller\'s own pending request', async () => {
     const { waitlisted } = await setUpConfirmedAndWaitlisted();
-    const requested = await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
+    await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
 
-    await clearOwnPendingRequest(requested);
-    expect(store.signups.get(waitlisted.signupId)?.subRequestStatus).toBe('');
+    await cancelMySignup(waitlisted.signupId, 'waitlisted@dummy.test', false);
 
-    // No-op when there's nothing pending (shouldn't throw or touch anything).
-    const cleared = store.signups.get(waitlisted.signupId)!;
-    await clearOwnPendingRequest(cleared);
     expect(store.signups.get(waitlisted.signupId)?.subRequestStatus).toBe('');
   });
 
-  it('clearPendingRequestsTargeting clears every request aimed at a given email, excluding one signup', async () => {
-    const { waitlisted } = await setUpConfirmedAndWaitlisted();
+  it('clears every request aimed at the canceller, and the promoted player\'s own', async () => {
+    const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
     store.players.set('other@dummy.test', makePlayer({ email: 'other@dummy.test' }));
     const other = await signUpForSession(SESSION_ID, 'other@dummy.test', true);
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
     await requestSub(other.signupId, 'other@dummy.test', 'confirmed@dummy.test');
 
-    const allSignups = [...store.signups.values()];
-    await clearPendingRequestsTargeting('confirmed@dummy.test', allSignups, other.signupId);
+    const { promoted } = await cancelMySignup(confirmed.signupId, 'confirmed@dummy.test', false);
 
-    expect(store.signups.get(waitlisted.signupId)?.subRequestStatus).toBe(''); // cleared
-    expect(store.signups.get(other.signupId)?.subRequestStatus).toBe('pending'); // excluded, untouched
+    expect(promoted.map((s) => s.signupId)).toEqual([waitlisted.signupId]);
+    expect(store.signups.get(waitlisted.signupId)).toMatchObject({ status: 'confirmed', subRequestStatus: '' });
+    expect(store.signups.get(other.signupId)).toMatchObject({ status: 'waitlisted', subRequestStatus: '' });
   });
 });

@@ -12,6 +12,8 @@ vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
 const { adminAddSignup, adminCreateSession, adminRescheduleSession, reviseSession } = await import('../adminFlow');
 const { signUpForSession } = await import('../signupFlow');
+const { updateSession } = await import('../../sheets/sessions');
+const { listSignupsForSession, batchUpdateSignups } = await import('../../sheets/signups');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -63,8 +65,8 @@ describe('adminAddSignup', () => {
     expect(signup.invitedByName).toBe('Someone');
   });
 
-  it('still rejects adding to a closed session — admin doesn\'t bypass that rule', async () => {
-    store.sessions.set('2099-01-01', makeSession({ status: 'closed' }));
+  it('still rejects adding to a cancelled game — admin doesn\'t bypass that rule', async () => {
+    store.sessions.set('2099-01-01', makeSession({ status: 'cancelled' }));
     await expect(
       adminAddSignup({
         sessionId: '2099-01-01',
@@ -72,7 +74,7 @@ describe('adminAddSignup', () => {
         profile: { fullName: 'New Player', gender: 'Male', savedPositions: '' },
         waiverAccepted: true,
       })
-    ).rejects.toThrow(/Signups aren't open/);
+    ).rejects.toThrow(/has been cancelled/);
   });
 
   it('requires waiverAccepted even for an admin-added signup', async () => {
@@ -99,7 +101,7 @@ describe('adminCreateSession', () => {
       gameTime: '18:00',
       capacity: 20,
       cost: 0,
-      status: 'closed', // created closed; the Monday cron opens it
+      registrationOpensAt: '', // the derived window, which alone decides when signups start
     });
     expect(store.sessions.get('2026-07-10')).toBeDefined();
   });
@@ -188,6 +190,52 @@ describe('adminRescheduleSession', () => {
   it('rejects rescheduling a session that does not exist', async () => {
     await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '18:00')).rejects.toThrow(/No such session/);
   });
+
+  // A move is two writes, and Sheets can fail between them. Whichever one
+  // fails, pressing save again with the id the dashboard still holds has to
+  // finish the move rather than 404 on a session that already moved.
+  describe('when Sheets fails partway through a move', () => {
+    async function sessionWithSignup() {
+      store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5 }));
+      store.players.set('a@dummy.test', { email: 'a@dummy.test', fullName: 'A', gender: 'Male', savedPositions: '' });
+      return signUpForSession('2026-07-10', 'a@dummy.test', true);
+    }
+
+    it('reading the signups fails: nothing has been written', async () => {
+      const signup = await sessionWithSignup();
+      vi.mocked(listSignupsForSession).mockRejectedValueOnce(new Error('quota'));
+
+      await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '20:00')).rejects.toThrow('quota');
+
+      expect(store.sessions.has('2026-07-10')).toBe(true);
+      expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-10');
+    });
+
+    it('moving the signups fails: the session keeps its id, and a retry finishes', async () => {
+      const signup = await sessionWithSignup();
+      vi.mocked(batchUpdateSignups).mockRejectedValueOnce(new Error('quota'));
+
+      await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '20:00')).rejects.toThrow('quota');
+      expect(store.sessions.has('2026-07-10')).toBe(true);
+
+      await adminRescheduleSession('2026-07-10', '2026-07-11', '20:00');
+      expect(store.sessions.has('2026-07-11')).toBe(true);
+      expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-11');
+    });
+
+    it('rekeying the session fails after the signups moved: a retry finishes', async () => {
+      const signup = await sessionWithSignup();
+      vi.mocked(updateSession).mockRejectedValueOnce(new Error('quota'));
+
+      await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '20:00')).rejects.toThrow('quota');
+      expect(store.sessions.has('2026-07-10')).toBe(true);
+
+      await adminRescheduleSession('2026-07-10', '2026-07-11', '20:00');
+      expect(store.sessions.has('2026-07-10')).toBe(false);
+      expect(store.sessions.get('2026-07-11')?.gameTime).toBe('20:00');
+      expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-11');
+    });
+  });
 });
 
 /**
@@ -196,33 +244,24 @@ describe('adminRescheduleSession', () => {
  * status alone with no date check — so a session created for any future date
  * accepted signups immediately, months early, via a guessable date-shaped id.
  */
-describe('a newly created session does not accept signups until it is opened', () => {
-  it('is created closed, and rejects a signup', async () => {
-    const created = await adminCreateSession({ gameDate: '2027-01-08' }); // a Friday
-    expect(created.status).toBe('closed');
+describe('a newly created session does not accept signups until its window opens', () => {
+  it('refuses a signup months before its window', async () => {
+    await adminCreateSession({ gameDate: '2027-01-08' }); // a Friday
 
     store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
-    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/open Monday, January 4/);
   });
 
-  it('opens on purpose when asked, but still holds players to the registration window', async () => {
+  it('opens now when asked, by starting its window now', async () => {
     const created = await adminCreateSession({ gameDate: '2027-01-08', openImmediately: true });
-    expect(created.status).toBe('open');
+    expect(created.registrationOpensAt).toBe(new Date().toISOString());
 
     store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
-    // Status is no longer the whole gate. Flipping a session open months
-    // early doesn't let players in early — that is the entire point of the
-    // window check, and it can't tell a deliberate open from an accidental
-    // one. An admin who needs someone in early adds them directly.
-    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).rejects.toThrow(/open Monday/);
-
-    await expect(
-      adminAddSignup({ sessionId: '2027-01-08', email: 'p@dummy.test', waiverAccepted: true })
-    ).resolves.toBeDefined();
+    await expect(signUpForSession('2027-01-08', 'p@dummy.test', true)).resolves.toBeDefined();
   });
 
   it('lets a player sign up once the window is actually open', async () => {
-    await adminCreateSession({ gameDate: '2027-01-08', openImmediately: true });
+    await adminCreateSession({ gameDate: '2027-01-08' });
     store.players.set('p@dummy.test', makePlayer({ email: 'p@dummy.test' }));
 
     vi.setSystemTime(duringRegistration('2027-01-08'));
@@ -295,6 +334,48 @@ describe('reviseSession — the schedule must come in order', () => {
     } as Parameters<typeof reviseSession>[2]);
 
     expect(revised.gameDate).toBe('2026-07-06');
+  });
+
+  it('writes a move and its field edits to the row together', async () => {
+    // Two writes let the edits be lost after the row had already rekeyed, and
+    // a retry from the dashboard, still holding the old id, then 404s.
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00' });
+    store.sessions.set(GAME, session);
+
+    await reviseSession(GAME, session, {
+      gameDate: '2026-07-12',
+      gameTime: '18:00',
+      updates: { locationName: 'Field 3' },
+    } as Parameters<typeof reviseSession>[2]);
+
+    expect(updateSession).toHaveBeenCalledTimes(1);
+    expect(store.sessions.get('2026-07-12')?.locationName).toBe('Field 3');
+  });
+
+  // The dashboard's Open and Close send a status. With the window as the only
+  // gate, what they mean is "now": the window's edge moves to this moment, on
+  // the server's clock rather than the organizer's laptop.
+  it('opens now by starting the window now, and closes now by ending it now', async () => {
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00', status: 'closed' });
+    store.sessions.set(GAME, session);
+
+    vi.setSystemTime(new Date('2026-07-05T12:00:00.000Z')); // the Sunday before the window
+    const { session: opened } = await reviseSession(GAME, session, { updates: { status: 'open' } } as Parameters<typeof reviseSession>[2]);
+    expect(opened.registrationOpensAt).toBe('2026-07-05T12:00:00.000Z');
+
+    vi.setSystemTime(new Date('2026-07-06T12:00:00.000Z'));
+    const { session: closed } = await reviseSession(GAME, opened, { updates: { status: 'closed' } } as Parameters<typeof reviseSession>[2]);
+    expect(closed.registrationClosesAt).toBe('2026-07-06T12:00:00.000Z');
+  });
+
+  it('restores a cancelled game without moving its window', async () => {
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00', status: 'cancelled' });
+    store.sessions.set(GAME, session);
+
+    const { session: restored } = await reviseSession(GAME, session, { updates: { status: 'open' } } as Parameters<typeof reviseSession>[2]);
+
+    expect(restored.status).toBe('open');
+    expect(restored.registrationOpensAt).toBe(session.registrationOpensAt);
   });
 
   it('leaves an ordinary weekend session alone', async () => {

@@ -56,18 +56,12 @@ const signups = await import('../../sheets/signups');
 const players = await import('../../sheets/players');
 const signupFlow = await import('../signupFlow');
 const subRequestFlow = await import('../subRequestFlow');
+const playerFlow = await import('../playerFlow');
 const adminFlow = await import('../adminFlow');
 const teamFlow = await import('../teamFlow');
-const scheduling = await import('../scheduling');
 
-// A real Friday. `makeSession()` defaults to a Thursday, which the weekly
-// lookup can never find — game day is Friday, Saturday or Sunday — so the
-// cron flows below would silently do nothing against it.
+// A real Friday, so the default registration window is an ordinary one.
 const SESSION = '2099-01-02';
-/** Sunday of the week the open-registration fixture fires in (2099-07-06 is a
- * Monday). Sunday rather than Friday so it cannot collide with NEXT_WEEK,
- * which adminCreateSession's fixture creates. */
-const OPENABLE = '2099-07-12';
 const NEXT_WEEK = '2099-07-10'; // another Friday, with no session yet
 
 /** Every repository call that changes something. */
@@ -101,12 +95,6 @@ function seedAWeek() {
   store.signups.set('waiting-1', makeSignup({ signupId: 'waiting-1', sessionId: SESSION, email: 'waiting@dummy.test', fullName: 'Wanda Waiting', status: 'waitlisted', timestamp: '2099-01-01T00:00:00.000Z' }));
   // A waitlisted player with a request pending against a confirmed one.
   store.signups.set('asker-1', makeSignup({ signupId: 'asker-1', sessionId: SESSION, email: 'asker@dummy.test', fullName: 'Asker Ann', status: 'waitlisted', subRequestTargetEmail: 'confirmed@dummy.test', subRequestStatus: 'pending', subRequestedAt: '2099-01-01T00:00:00.000Z', timestamp: '2099-01-02T00:00:00.000Z' }));
-
-  // A closed session in the week the open-registration fixture below fires in.
-  // That job no longer creates a session when the week is empty, so without a
-  // row to open it reaches no write and the guard here would fail — which is
-  // the guard doing its job.
-  store.sessions.set(OPENABLE, makeSession({ sessionId: OPENABLE, gameDate: OPENABLE, status: 'closed' }));
 }
 
 /** Each flow, with arguments that reach a write against the seeded week. */
@@ -127,12 +115,7 @@ const flows: [name: string, run: () => Promise<unknown>][] = [
   ['generateTeams', () => teamFlow.generateTeams(SESSION)],
   ['saveTeams', () => teamFlow.saveTeams(SESSION, [{ signupId: 'confirmed-1', teamName: 'Team 2' }])],
   ['postTeams', () => teamFlow.postTeams(SESSION)],
-  // The crons are gated on the clock, so they run at the instant they fire
-  // rather than at the shared "during registration" time.
-  // Monday 9am ET of a week whose Friday session is still closed.
-  ['openRegistrationForUpcomingSession', () => scheduling.openRegistrationForUpcomingSession(new Date('2099-07-06T13:00:00.000Z'))],
-  // After this week's Tuesday-midnight close, with the session still open.
-  ['closeRegistrationForCurrentSession', () => scheduling.closeRegistrationForCurrentSession(new Date('2099-01-02T17:00:00.000Z'))],
+  ['savePlayerProfile', () => playerFlow.savePlayerProfile({ email: 'fresh@dummy.test', fullName: 'Fresh Face', gender: 'Female', savedPositions: '' })],
 ];
 
 beforeEach(() => {

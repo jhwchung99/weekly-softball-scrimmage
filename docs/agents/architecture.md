@@ -52,16 +52,20 @@ reentrant, since flows call each other.
 Validation runs **above** the lock: a request that will 400 should not queue
 behind every other write to find that out.
 
-## Phase is derived; status is stored
+## Phase is the gate; nothing runs on a schedule
 
 `lib/sessionPhase.ts` computes `before | open | closed | locked | played` from
 the session's schedule, on the server (ADR-0003), because the same comparison
 in a browser made the answer depend on the viewer's clock.
 
-`status` is a separate stored field carrying the registration lifecycle and
-cancellation. **The signup gate requires both**: status alone was once the whole
-gate, so anything that flipped a session open accepted signups whatever the
-calendar said.
+**The phase alone decides whether signups are accepted** (ADR-0009). The stored
+`status` only matters when it is `cancelled`; `open` and `closed` are left over
+from GitHub Actions crons that used to flip them, and routinely failed to. The
+dashboard's Open and Close buttons move the window's edge to now instead.
+
+Nothing in the app runs on a timer. Anything that has to happen at a time is
+either derived from the clock when asked, or a button the organizer presses,
+watched for by `weekWatchdog` off ordinary page traffic.
 
 `getWeeklyMilestones` in `lib/time.ts` is the only place milestone arithmetic
 happens. Everything reads its answer, which is what lets a session override its

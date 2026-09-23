@@ -34,17 +34,16 @@ backed by a Google Sheet as its database.
 - **ntfy.sh** — push notifications to the organizer: a cancellation too
   close to game time to auto-promote anyone, and a heads-up whenever
   someone files feedback from the site's feedback button.
-- **GitHub Actions** (`.github/workflows`) — four scheduled jobs:
-  opening registration Monday, closing it Tuesday, the game-day
-  reminder, and team generation. The first three fire at fixed clock
-  times; team generation runs hourly on game days, because the moment it
-  cares about (the roster lock) moves with each session's game time.
+- **GitHub Actions** (`.github/workflows`) — CI, and a manual self-test.
+  Nothing runs on a schedule. Scheduled jobs fired hours late or not at
+  all, so signups now open and close by the clock against each session's
+  own window, and teams and the game-day email are dashboard buttons
+  (`docs/adr/0009`).
 
 ## Typical week
 
 ```mermaid
 sequenceDiagram
-    participant Cron as "GitHub Actions (cron)"
     participant App
     participant Player
     participant Admin
@@ -52,11 +51,7 @@ sequenceDiagram
     participant Gmail
     participant Ntfy as "ntfy.sh (push)"
 
-    Note over Cron,App: Monday 9am ET
-    Cron->>App: POST /api/cron/open-registration
-    App->>Sheet: create/reopen this week's session (status: open)
-
-    Note over Player,App: Monday 9am – Tuesday 12am
+    Note over Player,App: The session's registration window (default Monday 9am – Tuesday 12am ET)
     Player->>App: Sign up (member or guest) + accept waiver
     App->>Sheet: write Signups row (confirmed or waitlisted)
     Player->>App: Cancel signup (optional, any time)
@@ -71,11 +66,7 @@ sequenceDiagram
     Admin->>App: View full roster + waitlist (any time)
     Admin->>App: Adjust capacity / add or move a signup / cancel session
 
-    Note over Cron,App: Tuesday 12am ET
-    Cron->>App: POST /api/cron/close-registration
-    App->>Sheet: session status: closed (self-serve signup now blocked)
-
-    Note over Player,Admin: Tuesday close → game day
+    Note over Player,Admin: Window closed → game day (self-serve signup blocked)
     Admin->>App: Books a permit sized to the headcount, sets the field + map link
     opt Details worth telling people (field booked, rainout, reschedule)
         Admin->>App: Notify players
@@ -83,12 +74,10 @@ sequenceDiagram
     end
     Player->>App: Cancel signup (still allowed, still auto-promotes a replacement)
 
-    Note over Cron,App: Game day, 9am ET
-    Cron->>App: POST /api/cron/game-day-reminder
-    App->>Gmail: remind each confirmed player (time, field, when payment opens)
-
-    Note over Player,Admin: Game day, 5h before start — roster locks
+    Note over Player,Admin: Roster locks (5h before start by default)
     Note over Player,Admin: Cancellations no longer auto-promote, so payment opens
+    Admin->>App: Generate teams, send the game-day email
+    App->>Gmail: email each confirmed player (time, field, what they owe)
     Player->>App: Pays for their spot (outside the app)
     Admin->>Sheet: record the payment
     opt Anyone still unpaid
@@ -102,10 +91,11 @@ sequenceDiagram
 
 ### As a player
 
-1. **Monday, 9am ET** — registration opens automatically for that
-   week's game. No action needed to make this happen; it's just
-   when the app starts accepting signups.
-2. **Sign up any time before Tuesday 12am ET (midnight).** First-time
+1. **Registration opens** at the time the organizer set for that game,
+   Monday 9am ET unless they chose otherwise. Nothing has to happen for
+   it to open; it's just when the app starts accepting signups.
+2. **Sign up any time before registration closes**, Tuesday 12am ET
+   (midnight) unless the organizer chose otherwise. First-time
    players fill out a short profile (name, gender, positions) once
    — after that it's remembered. Every signup requires accepting the
    waiver, every time. You can sign up for yourself, or bring a guest
@@ -131,8 +121,8 @@ sequenceDiagram
    - Within 5 hours of game time: no one is auto-promoted (too last
      minute for an email to reach anyone in time) — the organizer gets a
      push alert instead so they can personally text someone.
-5. **Tuesday, 12am ET** — registration closes automatically. You can no
-   longer sign up fresh for that week, but you can still cancel an
+5. **Registration closes** at its set time. You can no
+   longer sign up fresh for that game, but you can still cancel an
    existing signup.
 6. **Where you're playing** is confirmed during the week. The general
    area is known up front ("Mississauga — specific field TBD"); the
@@ -206,9 +196,9 @@ in addition to the regular player view. Across the same week:
   wait for. Every other change goes to confirmed players only: a
   waitlisted player isn't turning up at the field, and if they're promoted
   later that email carries the current details anyway.
-- **Open or close registration by hand.** New sessions are created
-  **closed** so a future week can't be signed up for early; the Monday
-  cron opens whichever session belongs to the current week.
+- **Set when registration opens and closes**, for any game on any day,
+  or leave it at the default Monday 9am to Tuesday midnight. **Open
+  signups now** and **Close signups now** move that time to the present.
 - **Set the location in two stages** — the general area when the week is
   created, then the specific field and a map link once the permit is
   actually booked.
@@ -231,9 +221,6 @@ in addition to the regular player view. Across the same week:
   blocked, which is how a roster already in that state gets repaired.
 - Gets the **late-cancellation push alert** described above whenever
   anyone cancels within 5 hours of game time.
-- Gets an **open-spots push alert** the moment registration closes
-  Tuesday if the session still has room under capacity — a nudge to
-  manually add someone rather than book a permit for an empty spot.
 - **Reads bug reports and feedback** on the `Feedback` tab. A signed-in
   player uses the feedback button in the site footer; the report lands as
   a row with the time it was submitted, which kind it is, who sent it,
@@ -266,15 +253,12 @@ in addition to the regular player view. Across the same week:
 - **Track attendance.** A per-signup checkbox for who actually turned
   up. Admin-only — nothing is shown to players and nothing happens
   automatically; it's just a record.
-- Gets a **headcount push the moment registration closes**, whatever the
-  numbers are. The open-spots alert above stays quiet when the session
-  filled, which is exactly when a second field is worth considering, so
-  this one always fires.
 - **Set the number of fields** (1 or 2). Two fields means four teams
   instead of two. Raising capacity at the same time promotes everyone it
   can off the waitlist, in order, emailing each of them.
-- **Review and post teams.** After the roster locks, a first pass at
-  teams is generated automatically and the organizer gets a push. The
+- **Review and post teams.** After the roster locks, the organizer
+  generates a first pass at teams from the dashboard, and gets a push if
+  they haven't a couple of hours after the lock. The
   dashboard lets them move players between teams — all local, nothing is
   written until **Save** — and then **Post** publishes them. Under each
   team is a note naming any position nobody on it can cover.

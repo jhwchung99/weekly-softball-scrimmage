@@ -1,3 +1,4 @@
+import { formatGameDate } from './time';
 import { randomUUID } from 'node:crypto';
 import { getSession } from '../sheets/sessions';
 import { getSignup, getSignupWithSessionSignups, updateSignup, batchUpdateSignups } from '../sheets/signups';
@@ -8,7 +9,7 @@ import { sendSubRequestEmail, sendSubRequestAcceptedEmail, deliver } from './not
 import { normalizeEmail } from './email';
 import { withMutationLock } from './lock';
 
-const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
+export const NO_REQUEST = { subRequestTargetEmail: '', subRequestStatus: '' as const, subRequestedAt: '' };
 
 /**
  * A waitlisted player proposing to share a specific active player's spot.
@@ -48,7 +49,8 @@ export async function requestSub(signupId: string, requesterEmail: string, targe
     }
 
     const target = sessionSignups.find((s) => normalizeEmail(s.email) === normalizedTarget && s.status !== 'cancelled');
-    if (!target) throw new ApiError(400, "That person isn't signed up this week.");
+    // sessionId is the game date, so the day can be named without a read.
+    if (!target) throw new ApiError(400, `That person isn't signed up for ${formatGameDate(signup.sessionId)}.`);
     const targetSharing = alreadySharingReason(target, 'That person is');
     if (targetSharing) throw new ApiError(400, targetSharing);
 
@@ -158,34 +160,22 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     ]);
     const updatedRequester = results.find((r) => r.signupId === signupId)!;
 
-    await deliver(`sub-request acceptance email for signup ${signupId}`, () => sendSubRequestAcceptedEmail(updatedRequester, target, session));
+    // One deliver each, so a failure on one still tells the other.
+    await deliver(`sub-request acceptance email to requester ${signupId}`, () => sendSubRequestAcceptedEmail(updatedRequester, target, session));
+    await deliver(`sub-request acceptance email to target ${target.signupId}`, () => sendSubRequestAcceptedEmail(target, updatedRequester, session));
 
     return updatedRequester;
   });
 }
 
-/** Cleanup used by cancelMySignup/promoteNextWaitlisted (signupFlow.ts):
- * a signup's own outgoing pending request becomes moot once that signup
- * is cancelled or gets its own spot via normal promotion. */
-export async function clearOwnPendingRequest(signup: Signup): Promise<void> {
-  if (signup.subRequestStatus === 'pending') {
-    await updateSignup(signup.signupId, { ...NO_REQUEST });
-  }
-}
-
-/** Cleanup used by cancelMySignup: if this signup just cancelled, any
- * *other* signup's pending request that was targeting it is now asking a
- * person who's gone — clear those back to no-request (not 'declined',
- * since this isn't a decision the target made). */
-export async function clearPendingRequestsTargeting(
-  email: string,
-  signupsForSession: Signup[],
-  excludeSignupId?: string
-): Promise<void> {
+/** Used by cancelMySignup (signupFlow.ts): once this signup cancels, any
+ * *other* signup's pending request that was targeting it is asking a person
+ * who's gone. The caller clears those back to NO_REQUEST (not 'declined',
+ * since this isn't a decision the target made), in the same write as the
+ * cancellation itself. */
+export function pendingRequestsTargeting(email: string, signupsForSession: Signup[], excludeSignupId?: string): Signup[] {
   const normalized = normalizeEmail(email);
-  const targeting = signupsForSession.filter(
+  return signupsForSession.filter(
     (s) => s.signupId !== excludeSignupId && s.subRequestStatus === 'pending' && normalizeEmail(s.subRequestTargetEmail) === normalized
   );
-  if (targeting.length === 0) return;
-  await batchUpdateSignups(targeting.map((s) => ({ signupId: s.signupId, updates: { ...NO_REQUEST } })));
 }

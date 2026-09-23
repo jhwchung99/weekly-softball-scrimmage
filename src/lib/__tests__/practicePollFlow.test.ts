@@ -13,10 +13,8 @@ const sendEmail = vi.fn();
 vi.mock('../../lib/gmail', () => ({ sendEmail }));
 
 const { setPracticePollStatus, setSessionFormat, answerPracticePoll } = await import('../practicePollFlow');
-const { closeRegistrationForCurrentSession } = await import('../scheduling');
 
 const SESSION_ID = '2026-07-10';
-const TUESDAY_MIDNIGHT = new Date('2026-07-07T04:00:00.000Z');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -116,44 +114,15 @@ describe('setSessionFormat', () => {
   });
 });
 
-/**
- * The bug the `format` column exists to avoid, named so it cannot be quietly
- * reintroduced by folding practice into `status`.
- *
- * `closeRegistration` skips any session whose status is not 'open'. Had
- * practice been a fourth status value, marking a week on Monday evening would
- * make Tuesday's cron refuse to close it: no registrationClosesAt, no
- * headcount push, and a phase that never advances. See ADR-0007.
- */
-describe('a practice week still closes registration on schedule', () => {
-  it('closes normally after being marked as practice while registration was open', async () => {
-    store.sessions.set(
-      '2026-07-12',
-      makeSession({ sessionId: '2026-07-12', gameDate: '2026-07-12', status: 'open' })
-    );
-
-    await setSessionFormat('2026-07-12', 'practice');
-    // Still open for signups, and still a practice week.
-    expect(store.sessions.get('2026-07-12')?.status).toBe('open');
-    expect(store.sessions.get('2026-07-12')?.format).toBe('practice');
-
-    const result = await closeRegistrationForCurrentSession(TUESDAY_MIDNIGHT);
-
-    expect(result.changed).toBe(1);
-    expect(store.sessions.get('2026-07-12')?.status).toBe('closed');
-    // The stamp, not the setting: registrationClosesAt is now when the
-    // organizer wants it to close, and writing the firing time there would
-    // move the session's schedule every time the cron ran.
-    expect(store.sessions.get('2026-07-12')?.registrationClosedAt).not.toBe('');
-    // And the format survived the close.
-    expect(store.sessions.get('2026-07-12')?.format).toBe('practice');
-  });
-});
-
 describe('answerPracticePoll', () => {
   const ME = 'me@dummy.test';
   const mine = (over = {}) =>
     makeSignup({ signupId: 'mine', sessionId: SESSION_ID, email: ME, status: 'confirmed', ...over });
+
+  it('names the day when refusing someone not signed up (voice.md rule 1)', async () => {
+    seed({ practicePollStatus: 'open' }, []);
+    await expect(answerPracticePoll(SESSION_ID, ME, 'yes')).rejects.toThrow('You are not signed up for Friday, July 10.');
+  });
 
   it('records an answer', async () => {
     seed({ practicePollStatus: 'open' }, [mine()]);

@@ -97,27 +97,23 @@ export interface AdminCreateSessionInput {
 /**
  * "Create a session" (Section 8) — sessionId doubles as gameDate (see
  * sheets/sessions.ts), so this is really just createSession with
- * defaults filled in and gameDate/gameTime validated. Mainly for
- * scheduling a Saturday/Sunday game, or a Friday one ahead of the
- * Monday-open cron so an admin can set a non-default capacity/price from
- * the start rather than editing it in right after.
+ * defaults filled in and gameDate/gameTime validated.
  *
- * Created **closed** by default. Signups are gated on `status` alone with no
- * date check, so creating a future session open meant anyone could
- * immediately sign up for it — months early, since session ids are just dates
- * and therefore guessable. The Monday 9am cron opens whichever session belongs
- * to the current week, which is the intended path; `openImmediately` is the
- * deliberate escape hatch (e.g. the cron failed and this week needs opening
- * now).
+ * Signups follow the session's registration window and nothing else
+ * (ADR-0009), so a session created months ahead takes no signups until its
+ * window opens. `openImmediately` starts that window now.
  */
 export async function adminCreateSession(input: AdminCreateSessionInput): Promise<Session> {
   // Above the lock — see adminAddSignup for why.
-  const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea, rosterLockAt, registrationOpensAt, registrationClosesAt } =
+  const { gameDate, gameTime, capacity, cost, pricePerSpot, locationArea, rosterLockAt, registrationClosesAt, ...validated } =
     validateSessionCreate(input, {
       gameTime: DEFAULT_GAME_TIME,
       capacity: DEFAULT_CAPACITY,
       pricePerSpot: DEFAULT_PRICE_PER_SPOT,
     });
+
+  // Opening now means the window starts now; see windowEdgeNow.
+  const registrationOpensAt = input.openImmediately ? new Date().toISOString() : validated.registrationOpensAt;
 
   // Same rule the edit path applies, for the same reason: a session that can
   // never lock is as broken created as it is revised into being. This is also
@@ -157,9 +153,8 @@ export async function adminCreateSession(input: AdminCreateSessionInput): Promis
 
 /**
  * Moving a session to a new date changes its identity — sessionId
- * *is* gameDate, the lookup key the homepage and the weekly cron jobs
- * use to find "this week's session" (see time.ts's
- * currentWeekGameDayCandidates). Renaming the existing row in place
+ * *is* gameDate, the lookup key every signup row points at.
+ * Renaming the existing row in place
  * (rather than create-new + delete-old) keeps this to one session-row
  * write; every signup referencing the old sessionId is then repointed
  * at the new one in the same pass so nothing orphans. Best-effort, not
@@ -268,8 +263,14 @@ export async function overrideSignup(signupId: string, override: SignupOverride)
           updates.amountPaid = override.amountPaid;
         } else {
           const session = await getSession(existing.sessionId);
-          const signups = await sessionSignups();
-          updates.amountPaid = session ? computeCostShare(session, signups)[signupId] ?? 0 : 0;
+          if (!session) throw new ApiError(404, 'No such session.');
+          // Priced as if this row held its spot. computeCostShare only prices
+          // confirmed rows, so a player who cancelled late and then paid what
+          // the push told the organizer to collect was recorded as paying $0.
+          const holdingSpot = (await sessionSignups()).map((s) =>
+            s.signupId === signupId ? { ...s, status: 'confirmed' as const } : s
+          );
+          updates.amountPaid = computeCostShare(session, holdingSpot)[signupId] ?? 0;
         }
         updates.paidAt = new Date().toISOString();
       }
@@ -404,12 +405,13 @@ function assertScheduleOrdering(gameDate: string, gameTime: string, overrides: S
  * run, and oversubscribe the week. One acquisition has no such window, and a
  * reschedule can no longer be observed half-applied.
  *
- * A gameDate change goes first, because it can rekey the row and cascade every
- * signup's sessionId (see adminRescheduleSession) — so the field updates after
- * it have to land on whatever id the session ends up with.
+ * A gameDate change can rekey the row and cascade every signup's sessionId
+ * (see adminRescheduleSession), so the field updates ride along in the same
+ * row write as the move rather than following it: a second write could fail
+ * after the rekey and leave the dashboard holding an id that no longer exists.
  *
- * The cost is a long critical section: worst case a rekey (~5 Sheets calls),
- * the field write, and the cascade (3 + one per promoted player) under one
+ * The cost is a long critical section: worst case a rekey (~5 Sheets calls,
+ * field edits included) and the cascade (3 + one per promoted player) under one
  * hold. With up to 7s of backoff per call under rate limiting (client.ts,
  * RATE_LIMIT_RETRY_DELAYS_MS), this is the flow most likely to approach
  * LOCK_TTL_SECONDS, and the first place to look if that ceiling needs raising.
@@ -422,6 +424,7 @@ export async function reviseSession(
   return withMutationLock(async () => {
     let session = existing;
     let currentSessionId = sessionId;
+    revision = { ...revision, updates: { ...revision.updates, ...windowEdgeNow(existing, revision.updates.status) } };
 
     // Against the week as it will be once this revision lands: the lock, the
     // date and the time can all move in one request, and it is the resulting
@@ -436,12 +439,11 @@ export async function reviseSession(
       session = await adminRescheduleSession(
         sessionId,
         revision.gameDate ?? existing.gameDate,
-        revision.gameTime ?? existing.gameTime
+        revision.gameTime ?? existing.gameTime,
+        revision.updates
       );
       currentSessionId = session.sessionId;
-    }
-
-    if (Object.keys(revision.updates).length > 0) {
+    } else if (Object.keys(revision.updates).length > 0) {
       session = await updateSession(currentSessionId, revision.updates);
     }
 
@@ -457,7 +459,32 @@ export async function reviseSession(
   });
 }
 
-export async function adminRescheduleSession(sessionId: string, newGameDate: unknown, newGameTime: unknown): Promise<Session> {
+/**
+ * The dashboard's Open and Close buttons. The registration window is the whole
+ * signup gate (ADR-0009), so opening or closing by hand means moving the
+ * window's edge to now, on the server's clock rather than the organizer's
+ * laptop. The status is still written, as a record of the last press, but
+ * nothing reads open or closed any more.
+ *
+ * Restoring a cancelled game goes through the same status, and only restores
+ * it: its window stays where the organizer set it.
+ */
+function windowEdgeNow(existing: Session, status: Session['status'] | undefined): Partial<Session> {
+  if (existing.status === 'cancelled') return {};
+  const now = new Date().toISOString();
+  if (status === 'open') return { registrationOpensAt: now };
+  if (status === 'closed') return { registrationClosesAt: now };
+  return {};
+}
+
+/** `alsoWrite` rides along in the same row write as the move, so a revision's
+ * field edits cannot be lost after the row has already rekeyed. */
+export async function adminRescheduleSession(
+  sessionId: string,
+  newGameDate: unknown,
+  newGameTime: unknown,
+  alsoWrite: Partial<Session> = {}
+): Promise<Session> {
   // Above the lock — see adminAddSignup. Safe under `reviseSession`, which
   // calls this while already holding it: the lock is reentrant, so the
   // validation simply happens a moment earlier inside that hold.
@@ -469,19 +496,22 @@ export async function adminRescheduleSession(sessionId: string, newGameDate: unk
 
     if (gameDate === sessionId) {
       // Same identity — a pure time change (or a no-op date), no rekey needed.
-      return updateSession(sessionId, { gameDate, gameTime });
+      return updateSession(sessionId, { ...alsoWrite, gameDate, gameTime });
     }
 
     const conflict = await getSession(gameDate);
     if (conflict) throw new ApiError(409, `A session for ${gameDate} already exists.`);
 
-    const updated = await updateSession(sessionId, { sessionId: gameDate, gameDate, gameTime });
-
+    // Signups move before the row rekeys. Sheets can fail between the two
+    // writes, and this order leaves the session under the id the dashboard
+    // still holds, so saving again finishes the move: the row rekeys and the
+    // moved signups are already waiting under the new id. Rekeying first left
+    // every signup pointing at a date that no longer existed, and a retry 404ed.
     const signups = await listSignupsForSession(sessionId);
     if (signups.length > 0) {
       await batchUpdateSignups(signups.map((s) => ({ signupId: s.signupId, updates: { sessionId: gameDate } })));
     }
 
-    return updated;
+    return updateSession(sessionId, { ...alsoWrite, sessionId: gameDate, gameDate, gameTime });
   });
 }

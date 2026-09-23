@@ -21,31 +21,12 @@ const confirmed = (over: Partial<AdminRosterEntry> = {}) =>
 
 const messages = (...args: Parameters<typeof agendaFor>) => agendaFor(...args).map((i) => i.message);
 
+// Registration follows each session's window with nothing to run (ADR-0009),
+// so a stored open or closed is no longer something to act on.
 describe('agendaFor — registration', () => {
-  it('leads with players being blocked', () => {
-    // Inside the window and still closed: nobody can sign up right now, which
-    // outranks everything else on the session.
-    const items = agendaFor(session({ status: 'closed' }), null, at(M.registrationOpensAt, 1));
-
-    expect(items[0].message).toMatch(/should be open now/);
-    expect(items[0].urgency).toBe(0);
-  });
-
-  it('says nothing about a session that is open when it should be', () => {
-    expect(messages(session({ status: 'open' }), null, at(M.registrationOpensAt, 1))).toEqual([]);
-  });
-
-  it('reports a session left marked open past its window', () => {
-    // Nobody can actually sign up — the gate is derived from the schedule —
-    // but the headcount the permit is booked from never went out.
-    expect(messages(session({ status: 'open' }), null, at(M.registrationClosesAt, 1))).toEqual([
-      expect.stringMatching(/still marked open/),
-    ]);
-  });
-
-  it('has nothing to say about a cancelled session', () => {
-    expect(messages(session({ status: 'closed' }), null, at(M.registrationOpensAt, 1))).not.toEqual([]);
-    expect(messages(session({ status: 'cancelled' }), null, at(M.registrationOpensAt, 1))).toEqual([]);
+  it('says nothing about the stored status either side of the window', () => {
+    expect(messages(session({ status: 'closed' }), null, at(M.registrationOpensAt, 1))).toEqual([]);
+    expect(messages(session({ status: 'open' }), null, at(M.registrationClosesAt, 1))).toEqual([]);
   });
 });
 
@@ -119,19 +100,25 @@ describe('agendaForAll', () => {
   it('is one list across every session, most urgent first', () => {
     // The whole point: the organizer reads one list rather than opening three
     // dashboards to find out which session needs them.
-    const friday = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00', status: 'open' });
-    const sunday = makeSession({ sessionId: '2026-07-12', gameDate: '2026-07-12', gameTime: '18:00', status: 'closed' });
+    // Both locked by Friday afternoon: Friday has no teams (3), Sunday, which
+    // locks early, has not had its email (4). Given Sunday first, the list
+    // still leads with Friday.
+    const booked = { locationName: 'Field 3', gameTime: '18:00' };
+    const friday = makeSession({ ...booked, sessionId: GAME, gameDate: GAME, teamsStatus: '', remindersSentAt: '2026-07-10T17:30:00.000Z' });
+    const sunday = makeSession({ ...booked, sessionId: '2026-07-12', gameDate: '2026-07-12', teamsStatus: 'posted', remindersSentAt: '', rosterLockAt: '2026-07-10T17:00:00.000Z' });
 
     const items = agendaForAll(
       [
-        { session: friday, roster: null },
         { session: sunday, roster: null },
+        { session: friday, roster: null },
       ],
-      at(M.registrationOpensAt, 1)
+      at(M.cutoffStart, 1)
     );
 
-    // Sunday is blocked (urgency 0); Friday is fine at this instant.
-    expect(items.map((i) => i.sessionId)).toEqual(['2026-07-12']);
+    expect(items.map((i) => [i.sessionId, i.urgency])).toEqual([
+      [GAME, 3],
+      ['2026-07-12', 4],
+    ]);
   });
 
   it('is empty when every session is on track', () => {

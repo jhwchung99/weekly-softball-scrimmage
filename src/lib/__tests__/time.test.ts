@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
+import { describe, it, expect, vi } from 'vitest';
+import { zonedTimeToUtc, nextMondayEastern, currentWeekFridayEastern, currentWeekGameDayCandidates, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -36,39 +36,6 @@ describe('currentWeekFridayEastern', () => {
     // 2026-07-10T03:00:00Z is 2026-07-09T23:00:00 EDT (still Thursday
     // Eastern, even though the UTC calendar date is already Friday).
     expect(currentWeekFridayEastern(new Date('2026-07-10T03:00:00.000Z'))).toBe('2026-07-10');
-  });
-});
-
-describe('isNearEasternTime', () => {
-  it('is true exactly at the target time', () => {
-    // 9:00 AM EDT = 13:00 UTC.
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T13:00:00.000Z'))).toBe(true);
-  });
-
-  it('is true within the tolerance window', () => {
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T13:29:00.000Z'))).toBe(true);
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T12:31:00.000Z'))).toBe(true);
-  });
-
-  it('is false outside the tolerance window', () => {
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T13:31:00.000Z'))).toBe(false);
-  });
-
-  it('rejects the DST-offset duplicate cron firing (1 hour off)', () => {
-    // The whole point of this check: a firing exactly 1 hour off the
-    // real target (the seasonal EST/EDT duplicate) must not pass with a
-    // 30-minute tolerance.
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T14:00:00.000Z'))).toBe(false);
-  });
-
-  it('measures distance circularly around midnight', () => {
-    // 11:45pm ET is 15 minutes from a midnight target, not 1,425. Plain
-    // subtraction got this backwards and rejected everything just before
-    // midnight — which was the entire pre-close window for the Tuesday job.
-    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T03:45:00.000Z'))).toBe(true);
-    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T04:15:00.000Z'))).toBe(true);
-    // Still an hour off, so the seasonal duplicate stays rejected.
-    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T05:00:00.000Z'))).toBe(false);
   });
 });
 
@@ -311,5 +278,47 @@ describe('relativeGameDay', () => {
 
   it('names the day outright when it is further off than tomorrow', () => {
     expect(relativeGameDay(game, new Date('2026-07-08T13:00:00.000Z'))).toBe('Saturday, July 11');
+  });
+});
+
+describe('nextMondayEastern', () => {
+  // The homepage splits "This week" from "Later" here. It used the browser's
+  // date, so at 10pm Sunday in Pacific time (already Monday in the East) next
+  // week's games were listed as this week's.
+  it('reads today in Eastern time, not the viewer\'s zone', () => {
+    // 2026-07-13T05:00Z: 1am Monday in Eastern, 10pm Sunday in Pacific.
+    expect(nextMondayEastern(new Date('2026-07-13T05:00:00.000Z'))).toBe('2026-07-20');
+  });
+
+  it('is the following Monday on a Sunday, and never today', () => {
+    expect(nextMondayEastern(new Date('2026-07-12T16:00:00.000Z'))).toBe('2026-07-13'); // Sunday noon ET
+    expect(nextMondayEastern(new Date('2026-07-13T16:00:00.000Z'))).toBe('2026-07-20'); // Monday noon ET
+  });
+});
+
+// Both used to fall back without a word: a bad override quietly became the
+// default window, and a bad game time made every milestone NaN, which
+// phaseOf reads as 'played'. The fallback stays; the silence does not.
+describe('getWeeklyMilestones with an unreadable cell', () => {
+  it('warns when an override does not parse, and uses the default', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const m = getWeeklyMilestones('2026-07-10', '18:00', { registrationClosesAt: 'Thu 9pm' });
+
+    expect(m.registrationClosesAt.toISOString()).toBe('2026-07-07T04:00:00.000Z');
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/"Thu 9pm"/));
+    warn.mockRestore();
+  });
+
+  // It threw a RangeError, and /api/home works out every upcoming session's
+  // phase, so one bad cell took the whole homepage down. Now only that
+  // session is affected.
+  it('warns when the game time does not parse, rather than throwing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(() => getWeeklyMilestones('2026-07-10', '6pm')).not.toThrow();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/2026-07-10.*"6pm"/));
+    warn.mockRestore();
   });
 });

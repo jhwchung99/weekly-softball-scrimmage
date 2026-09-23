@@ -15,6 +15,9 @@ export function zonedTimeToUtc(dateStr: string, timeStr: string, timeZone: strin
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hour, minute] = timeStr.split(':').map(Number);
   const anchor = Date.UTC(year, month - 1, day, hour, minute, 0);
+  // An unreadable date or time gives an Invalid Date rather than letting Intl
+  // throw on it below; callers check for NaN (see getWeeklyMilestones).
+  if (Number.isNaN(anchor)) return new Date(NaN);
 
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -64,11 +67,14 @@ export interface ScheduleOverrides {
 
 /** An override that parses, or null so the caller falls back. An unreadable
  * value is deliberately not an error: a hand-edited cell should not be able to
- * take a session's whole schedule out. */
+ * take a session's whole schedule out. It is logged, though, since the default
+ * it falls back to may be the very schedule the organizer was overriding. */
 function parsedOverride(value: string | undefined): Date | null {
   if (!value) return null;
   const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? null : at;
+  if (!Number.isNaN(at.getTime())) return at;
+  console.warn(`Unreadable schedule override "${value}"; using the default instead.`);
+  return null;
 }
 
 export interface WeeklyMilestones {
@@ -143,6 +149,12 @@ export function getWeeklyMilestones(
   const registrationClosesAt =
     parsedOverride(overrides.registrationClosesAt) ?? zonedTimeToUtc(toDateStr(tuesdayNoonUtc), '00:00');
   const gameStart = zonedTimeToUtc(gameDate, gameTime);
+  // Every comparison with NaN is false, so phaseOf reads such a session as
+  // 'played': promotion stops and payment opens. Writes through the app are
+  // validated, so only a hand-edited cell gets here; name it.
+  if (Number.isNaN(gameStart.getTime())) {
+    console.warn(`Unreadable game date or time for ${gameDate}: "${gameTime}". Its schedule cannot be worked out.`);
+  }
   const cutoffStart =
     parsedOverride(overrides.rosterLockAt) ??
     new Date(gameStart.getTime() - PROMOTION_CUTOFF_HOURS * 60 * 60 * 1000);
@@ -152,9 +164,8 @@ export function getWeeklyMilestones(
 
 /**
  * The Friday of the calendar week `now` falls in, as read in Eastern
- * time — this is what makes "today" mean the right thing for a
- * Monday/Tuesday cron job regardless of what timezone the server
- * itself happens to run in (e.g. Vercel/GitHub Actions runners are UTC).
+ * time, so "this week" means the league's week whatever timezone the
+ * server runs in (Vercel is UTC).
  * Weekday arithmetic on a Y/M/D triple is timezone-independent once the
  * triple itself is correctly the Eastern one, so a plain local Date is
  * safe to use here — it's never treated as an instant.
@@ -173,6 +184,16 @@ export function currentWeekFridayEastern(now: Date = new Date(), timeZone: strin
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** The coming Monday in Eastern time, YYYY-MM-DD, which is where "this week"
+ * stops. Never today: on a Monday it is the Monday after. */
+export function nextMondayEastern(now: Date = new Date(), timeZone: string = LEAGUE_TIME_ZONE): string {
+  const [year, month, day] = todayEastern(now, timeZone).split('-').map(Number);
+  const today = new Date(Date.UTC(year, month - 1, day, 12));
+  // getUTCDay: 0 = Sunday. Days until the next Monday, never 0.
+  today.setUTCDate(today.getUTCDate() + ((8 - (today.getUTCDay() || 7)) % 7 || 7));
+  return today.toISOString().slice(0, 10);
+}
+
 /** Today's date as read in Eastern time, YYYY-MM-DD. */
 export function todayEastern(now: Date = new Date(), timeZone: string = LEAGUE_TIME_ZONE): string {
   const dtf = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -182,10 +203,9 @@ export function todayEastern(now: Date = new Date(), timeZone: string = LEAGUE_T
 
 /**
  * The Friday, Saturday, and Sunday of the calendar week `now` falls in
- * (Eastern time), in that order. Game day can be any of the three (see
- * getWeeklyMilestones), so "this week's session" is a 3-way id lookup —
- * whichever of these actually has a row — rather than the single fixed
- * key a Friday-only schedule would allow. Built on top of
+ * (Eastern time), in that order. Game day can now be any weekday, so this no
+ * longer finds a week's sessions; the watchdog uses the Friday only as the
+ * reference week for "nothing is scheduled". Built on top of
  * currentWeekFridayEastern rather than re-deriving the Eastern-timezone
  * weekday math a second time.
  */
@@ -197,34 +217,6 @@ export function currentWeekGameDayCandidates(now: Date = new Date(), timeZone: s
     const d = new Date(fridayNoonUtc + offset * 24 * 60 * 60 * 1000);
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   });
-}
-
-/**
- * True if `now`, read in Eastern time, is within `toleranceMinutes` of
- * `targetHour:targetMinute`. Needed because GitHub Actions cron schedules
- * are fixed UTC and don't shift for DST — a cron job meant to fire at a
- * fixed Eastern wall-clock time has to be scheduled at BOTH possible UTC
- * offsets, and the endpoint itself decides which firing is the real one
- * versus the seasonal duplicate to discard.
- *
- * Distance is measured circularly, because minutes-since-midnight wrap:
- * 23:59 is one minute from a 00:00 target, not 1,439. Only a midnight-target
- * caller can hit that, and there is none today (closeRegistration stopped
- * using this), but the arithmetic should be right regardless of target.
- */
-export function isNearEasternTime(
-  targetHour: number,
-  targetMinute: number,
-  toleranceMinutes: number,
-  now: Date = new Date(),
-  timeZone: string = LEAGUE_TIME_ZONE
-): boolean {
-  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false });
-  const parts = Object.fromEntries(dtf.formatToParts(now).map((p) => [p.type, p.value]));
-  const nowMinutes = (Number(parts.hour) % 24) * 60 + Number(parts.minute);
-  const targetMinutes = targetHour * 60 + targetMinute;
-  const diff = Math.abs(nowMinutes - targetMinutes);
-  return Math.min(diff, 24 * 60 - diff) <= toleranceMinutes;
 }
 
 /**
