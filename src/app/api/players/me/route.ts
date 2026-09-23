@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSignedIn } from '../../../../lib/auth';
-import { getPlayer, upsertPlayer } from '../../../../sheets/players';
+import { getPlayer } from '../../../../sheets/players';
+import { savePlayerProfile } from '../../../../lib/playerFlow';
 import { handleApiError } from '../../../../lib/apiErrors';
 import { validatePlayerProfile } from '../../../../lib/validation';
 import { playerView } from '../../../../lib/views';
@@ -25,7 +26,7 @@ export async function PUT(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const profile = validatePlayerProfile(body ?? {});
 
-    await upsertPlayer({ email, ...profile });
+    await savePlayerProfile({ email, ...profile });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

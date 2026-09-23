@@ -56,6 +56,7 @@ const signups = await import('../../sheets/signups');
 const players = await import('../../sheets/players');
 const signupFlow = await import('../signupFlow');
 const subRequestFlow = await import('../subRequestFlow');
+const playerFlow = await import('../playerFlow');
 const adminFlow = await import('../adminFlow');
 const teamFlow = await import('../teamFlow');
 
@@ -114,6 +115,7 @@ const flows: [name: string, run: () => Promise<unknown>][] = [
   ['generateTeams', () => teamFlow.generateTeams(SESSION)],
   ['saveTeams', () => teamFlow.saveTeams(SESSION, [{ signupId: 'confirmed-1', teamName: 'Team 2' }])],
   ['postTeams', () => teamFlow.postTeams(SESSION)],
+  ['savePlayerProfile', () => playerFlow.savePlayerProfile({ email: 'fresh@dummy.test', fullName: 'Fresh Face', gender: 'Female', savedPositions: '' })],
 ];
 
 beforeEach(() => {
