@@ -148,6 +148,25 @@ describe('PATCH /api/admin/signups/[signupId] — recording what happened', () =
     expect(row.paidAt).not.toBe('');
   });
 
+  // The late-cancellation push says "they still owe $10.00, collect from
+  // them". Ticking paid on that cancelled row used to record $0, because only
+  // confirmed rows are priced, so the collected total came out short.
+  it('records what a cancelled player owed while they held the spot', async () => {
+    seed({ status: 'cancelled' });
+
+    await patch('old', { paid: true });
+
+    expect(store.signups.get('old')?.amountPaid).toBe(10);
+  });
+
+  it('refuses rather than recording $0 when the session is gone', async () => {
+    seed({ status: 'confirmed' });
+    store.sessions.clear();
+
+    expect((await patch('old', { paid: true })).status).toBe(404);
+    expect(store.signups.get('old')?.paid).toBe(false);
+  });
+
   it('takes an explicit amount over the computed one', async () => {
     seed({ status: 'confirmed' });
 

@@ -263,8 +263,14 @@ export async function overrideSignup(signupId: string, override: SignupOverride)
           updates.amountPaid = override.amountPaid;
         } else {
           const session = await getSession(existing.sessionId);
-          const signups = await sessionSignups();
-          updates.amountPaid = session ? computeCostShare(session, signups)[signupId] ?? 0 : 0;
+          if (!session) throw new ApiError(404, 'No such session.');
+          // Priced as if this row held its spot. computeCostShare only prices
+          // confirmed rows, so a player who cancelled late and then paid what
+          // the push told the organizer to collect was recorded as paying $0.
+          const holdingSpot = (await sessionSignups()).map((s) =>
+            s.signupId === signupId ? { ...s, status: 'confirmed' as const } : s
+          );
+          updates.amountPaid = computeCostShare(session, holdingSpot)[signupId] ?? 0;
         }
         updates.paidAt = new Date().toISOString();
       }
