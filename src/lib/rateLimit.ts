@@ -12,6 +12,12 @@ import { getRedis } from './redis';
  * exposure that leaves is bounded by the endpoint still requiring a
  * signed-in Google account, so it is never anonymous.
  */
+/** Forgets `key`'s count, for a caller that spent it on something that then
+ * did not happen. */
+export async function resetRateLimit(key: string): Promise<void> {
+  await getRedis()?.del(`weekly-softball-scrimmage:ratelimit:${key}`);
+}
+
 export async function checkRateLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return true;

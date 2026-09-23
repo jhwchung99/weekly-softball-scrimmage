@@ -1,4 +1,4 @@
-import { checkRateLimit } from './rateLimit';
+import { checkRateLimit, resetRateLimit } from './rateLimit';
 import { ApiError } from './apiErrors';
 
 /**
@@ -42,5 +42,20 @@ export async function guardAnnouncement(kind: AnnouncementKind, sessionId: strin
       429,
       `That was just sent. Wait a minute before sending it again, so nobody gets it twice.`
     );
+  }
+}
+
+/**
+ * Gives the minute back, for a send that failed before anyone was emailed.
+ * Otherwise the organizer's retry is refused with "That was just sent" when
+ * nothing was. Only for a caller that knows no email went out: giving it back
+ * after a partial send is the duplicate this guard exists to stop. Never
+ * throws, since it runs while another error is on its way out.
+ */
+export async function releaseAnnouncement(kind: AnnouncementKind, sessionId: string): Promise<void> {
+  try {
+    await resetRateLimit(`announce:${kind}:${sessionId}`);
+  } catch (err) {
+    console.error(`Could not release the ${kind} cooldown for ${sessionId}; it expires in a minute.`, err);
   }
 }

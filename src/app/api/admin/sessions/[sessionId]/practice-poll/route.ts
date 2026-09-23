@@ -3,7 +3,7 @@ import { requireAdmin } from '../../../../../../lib/auth';
 import { setPracticePollStatus } from '../../../../../../lib/practicePollFlow';
 import { notifyPracticePollOpen } from '../../../../../../lib/announcements';
 import { validatePracticePoll } from '../../../../../../lib/validation';
-import { guardAnnouncement } from '../../../../../../lib/announcementGuard';
+import { guardAnnouncement, releaseAnnouncement } from '../../../../../../lib/announcementGuard';
 import { handleApiError } from '../../../../../../lib/apiErrors';
 
 type Params = { params: Promise<{ sessionId: string }> };
@@ -32,14 +32,23 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
     const { status, closesAt, notify } = validatePracticePoll(body);
 
-    const session = await setPracticePollStatus(sessionId, status, closesAt);
-
     if (status === 'open' && notify) {
+      // Before anything is written: a refused send used to leave the poll open
+      // with nobody told, and the dashboard saying only that it failed.
       await guardAnnouncement('practice-poll', sessionId);
-      const announcement = await notifyPracticePollOpen(sessionId);
-      return NextResponse.json({ session, announcement });
+      try {
+        const session = await setPracticePollStatus(sessionId, status, closesAt);
+        const announcement = await notifyPracticePollOpen(sessionId);
+        return NextResponse.json({ session, announcement });
+      } catch (err) {
+        // Both steps throw only before the first email (each send is caught on
+        // its own), so nobody was mailed and the minute can be given back.
+        await releaseAnnouncement('practice-poll', sessionId);
+        throw err;
+      }
     }
 
+    const session = await setPracticePollStatus(sessionId, status, closesAt);
     return NextResponse.json({ session });
   } catch (err) {
     return handleApiError(err);
