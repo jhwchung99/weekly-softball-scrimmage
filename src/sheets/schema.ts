@@ -265,6 +265,23 @@ export const SUB_REQUEST_STATUSES = ['', 'pending', 'declined'] as const;
  * app puts the canonical value back in the cell. Anything still unrecognised
  * reads as a blank cell would, with a warning naming it.
  */
+/**
+ * Reads a number cell as the sheet displays it. Reads return formatted text,
+ * so a column formatted as currency gives "$10.00", and `Number()` of that is
+ * NaN: the old `|| 0` read a priced week as free, and the next write of the
+ * row put that 0 back over the real price. Currency symbols, thousands
+ * separators and spaces are ignored; anything still unreadable reads as blank,
+ * with a warning naming it.
+ */
+function numberCell(field: string, raw: string): number {
+  const cell = (raw ?? '').trim();
+  if (cell === '') return 0;
+  const n = Number(cell.replace(/[$,\s]/g, ''));
+  if (Number.isFinite(n)) return n;
+  console.warn(`Unrecognised ${field} "${raw}" in the sheet; reading it as blank.`);
+  return 0;
+}
+
 function oneOf<T extends string>(field: string, raw: string, allowed: readonly T[], blank: T): T {
   const cell = (raw ?? '').trim().toLowerCase();
   if (cell === '') return blank;
@@ -277,16 +294,16 @@ function oneOf<T extends string>(field: string, raw: string, allowed: readonly T
 export function parseSessionRow(row: RawRow<Session>): Session {
   return {
     ...row,
-    capacity: Number(row.capacity) || 0,
+    capacity: numberCell('capacity', row.capacity),
     // Defaults CLOSED, not open: a blank cell means "nobody has said this is
     // open", and for an availability flag the safe reading of silence is no.
     // Defaulting to open meant a hand-edited or half-written row accepted
     // signups on its own.
     status: oneOf('session status', row.status, SESSION_STATUSES, 'closed'),
-    cost: Number(row.cost) || 0,
-    pricePerSpot: Number(row.pricePerSpot) || 0,
+    cost: numberCell('cost', row.cost),
+    pricePerSpot: numberCell('pricePerSpot', row.pricePerSpot),
     // A blank cell means one field, the way it has always worked.
-    numFields: Number(row.numFields) || 1,
+    numFields: numberCell('numFields', row.numFields) || 1,
     teamsStatus: oneOf('teamsStatus', row.teamsStatus, TEAMS_STATUSES, ''),
     rosterLockAt: row.rosterLockAt || '',
     remindersSentAt: row.remindersSentAt || '',
@@ -295,7 +312,7 @@ export function parseSessionRow(row: RawRow<Session>): Session {
     format: oneOf('format', row.format, SESSION_FORMATS, 'game'),
     practicePollStatus: oneOf('practicePollStatus', row.practicePollStatus, PRACTICE_POLL_STATUSES, ''),
     practicePollClosesAt: row.practicePollClosesAt || '',
-    practicePollThreshold: Number(row.practicePollThreshold) || 0,
+    practicePollThreshold: numberCell('practicePollThreshold', row.practicePollThreshold),
     // Blank on every row written before these existed, which is correct: a
     // session created before the split has no record of when it opened.
     registrationOpenedAt: row.registrationOpenedAt || '',
@@ -322,7 +339,7 @@ export function parseSignupRow(row: RawRow<Signup>): Signup {
     status: oneOf('signup status', row.status, SIGNUP_STATUSES, 'waitlisted'),
     paid: row.paid === 'TRUE' || row.paid === 'true',
     subRequestStatus: oneOf('subRequestStatus', row.subRequestStatus, SUB_REQUEST_STATUSES, ''),
-    amountPaid: Number(row.amountPaid) || 0,
+    amountPaid: numberCell('amountPaid', row.amountPaid),
     attended: row.attended === 'TRUE' || row.attended === 'true',
     practicePollAnswer: oneOf('practicePollAnswer', row.practicePollAnswer, PRACTICE_POLL_ANSWERS, ''),
     practicePollAnsweredAt: row.practicePollAnsweredAt || '',

@@ -163,6 +163,33 @@ describe('Session status as typed by hand', () => {
   });
 });
 
+// Sheets returns a cell's displayed text, so a price column formatted as
+// currency reads "$10.00". Number("$10.00") is NaN, which the old `|| 0` turned
+// into a free week, and the next write put that 0 back over the real price.
+describe('Session numbers as the sheet displays them', () => {
+  const row = serializeSessionRow(makeSession());
+
+  it('reads currency and thousands formatting', () => {
+    expect(parseSessionRow({ ...row, pricePerSpot: '$10.00', cost: '$1,250.50', capacity: ' 20 ' })).toMatchObject({
+      pricePerSpot: 10,
+      cost: 1250.5,
+      capacity: 20,
+    });
+  });
+
+  it('reads an unparseable number as blank, and says so', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(parseSessionRow({ ...row, pricePerSpot: 'ten' }).pricePerSpot).toBe(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/pricePerSpot "ten"/));
+    warn.mockRestore();
+  });
+
+  it('still reads zero fields as the one field it always meant', () => {
+    expect(parseSessionRow({ ...row, numFields: '0' }).numFields).toBe(1);
+  });
+});
+
 describe('Signup row round-trip', () => {
   const signup: Signup = {
     signupId: 'id-1',
