@@ -6,37 +6,26 @@ import { currentWeekGameDayCandidates, getWeeklyMilestones, formatEasternMoment,
 import { DEFAULT_GAME_TIME } from './scheduling';
 
 /**
- * Noticing that a scheduled job never ran.
+ * Noticing that something the week needs has not been done.
  *
- * Four operational jobs run as GitHub Actions `schedule` triggers, and GitHub
- * **disables those on a repository with no commits for 60 days**. A cron that
- * *fails* emails the last committer. A cron that never *fires* surfaces
- * nowhere at all — and the worst case is `open-registration`: Monday comes,
- * registration silently never opens, and the first signal is a player asking
- * why they cannot sign up.
+ * Nothing here runs on a schedule. GitHub Actions crons used to open and close
+ * registration, and they routinely fired hours late or not at all, so
+ * registration now follows each session's own window with nothing to run
+ * (ADR-0009). What is left to forget is done by hand: generating teams and
+ * sending the game-day email. And a week can have no game at all.
  *
- * A watchdog on a schedule of its own would be disabled by the same rule that
- * disabled what it watches, so this is not on a schedule. It runs on ordinary
- * web traffic, off the same read the homepage already makes, and asks a
- * question the app can answer from state it already has: *given the time, does
- * this week look like the jobs ran?*
+ * So this runs on ordinary web traffic, off the same read the homepage already
+ * makes, and asks a question the app can answer from state it already has:
+ * *given the time, does this week look like those steps were taken?*
  *
  * That it needs a visitor is a real limitation and an acceptable one: the
- * failure that matters most is the one where people are arriving to sign up
- * and cannot. Nobody visiting all Monday morning is a different problem.
- *
- * `sendGameDayReminders` is deliberately absent. It leaves no trace in the
- * sheet, so there is nothing here to check it by — knowing that is better than
- * a check that looks like coverage and is not.
+ * steps it watches matter most in the hours when people are looking at the
+ * game.
  */
 
 /**
- * How late a job may be before this counts it missed.
- *
- * GitHub's scheduled runs are routinely delayed under load, and
- * `open-registration` itself tolerates being up to 59 minutes off its hour. Two
- * hours is comfortably past both, and still leaves most of a Monday morning to
- * fix it by hand.
+ * How long after a step was due before this reports it, so an organizer who is
+ * a little late is not nagged on the minute.
  */
 const GRACE_MS = 2 * 60 * 60 * 1000;
 
@@ -46,11 +35,10 @@ const GRACE_MS = 2 * 60 * 60 * 1000;
 const REPEAT_AFTER_SECONDS = 12 * 60 * 60;
 
 export interface MissedJob {
-  /** What did not happen, so the alert names it. Two of these are still
-   * scheduled workflows; the other two are steps the organizer takes by hand
-   * on game day, which is exactly why they need watching. `nothing-scheduled`
+  /** What did not happen, so the alert names it. Two are steps the organizer
+   * takes by hand, which is exactly why they need watching. `nothing-scheduled`
    * is the week having no games at all. */
-  job: 'open-registration' | 'close-registration' | 'generate-teams' | 'game-day-email' | 'nothing-scheduled';
+  job: 'generate-teams' | 'game-day-email' | 'nothing-scheduled';
   /** Which session this is about, '' for `nothing-scheduled`. Part of the
    * alert-suppression key, so two sessions with the same problem do not
    * silence each other. */
@@ -62,16 +50,13 @@ export interface MissedJob {
 }
 
 /**
- * Which jobs look like they never ran, given the clock and what is in the sheet.
+ * Which steps look like they were never taken, given the clock and the sheet.
  *
  * Pure, and free: no I/O, so the read path can ask on every cache miss and pay
  * nothing in the overwhelmingly common case where the answer is "none".
  *
- * Each check is written against the *observable consequence* of a job, not
- * against whether it was invoked — nothing records that. So these hold equally
- * when the workflow was disabled, when it fired and errored, and when the
- * endpoint returned 200 having quietly done nothing, which is the case a
- * dead-man's-switch ping would miss.
+ * Each check is written against the *observable consequence* of a step, in
+ * the sheet, not against whether a button was pressed.
  */
 export function missedJobsFor(session: Session, now: Date = new Date()): MissedJob[] {
   const missed: MissedJob[] = [];
@@ -79,36 +64,12 @@ export function missedJobsFor(session: Session, now: Date = new Date()): MissedJ
   const milestones = getWeeklyMilestones(session.gameDate, session.gameTime, session);
   const overdue = (at: Date) => now.getTime() > at.getTime() + GRACE_MS;
 
-  // A cancelled session is a decision, not a failure: no job should have run.
+  // A cancelled session is a decision, not a failure: nothing is owed to it.
   if (session.status === 'cancelled') return missed;
 
-  if (overdue(milestones.registrationOpensAt) && session.status === 'closed' && now < milestones.registrationClosesAt) {
-    // Windowed on purpose. A blank status row parses as 'closed', and
-    // 'closed' is the *correct* state once the window has passed — so this
-    // only means a missed job while the session is one people should be able
-    // to sign up for right now.
-    missed.push({
-      job: 'open-registration',
-      message: `Nobody can sign up: ${formatGameDate(session.gameDate)} is still closed. Registration should have opened ${formatEasternMoment(milestones.registrationOpensAt)} and does not close until ${formatEasternMoment(milestones.registrationClosesAt)}.`,
-      urgent: true,
-    });
-  }
-
-  // Only that the *alerts* never went out: the signup gate is derived from the
-  // clock, so a session left "open" past its window still refuses signups. The
-  // organizer just never got the headcount they book a permit from.
-  if (session.status === 'open' && overdue(milestones.registrationClosesAt)) {
-    missed.push({
-      job: 'close-registration',
-      message: `No headcount was sent for ${formatGameDate(session.gameDate)}. It is still marked open past ${formatEasternMoment(milestones.registrationClosesAt)}.`,
-      urgent: false,
-    });
-  }
-
-  // No longer "the hourly cron did not fire" — teams are generated by a button
-  // now. The observable consequence is the same and still worth reporting: the
-  // lock has passed and there are no teams.
-  if (session.teamsStatus === '' && overdue(milestones.cutoffStart)) {
+  // Teams are generated by a button. The lock has passed and there are none.
+  // Not for a practice week, which has no sides to pick (see adminAgenda).
+  if (session.format !== 'practice' && session.teamsStatus === '' && overdue(milestones.cutoffStart)) {
     missed.push({
       job: 'generate-teams',
       message: `No teams for ${formatGameDate(session.gameDate)}. The roster locked ${formatEasternMoment(milestones.cutoffStart)}.`,
@@ -190,6 +151,14 @@ async function shouldReport(key: string): Promise<boolean> {
 
 const reportedThisProcess = new Set<string>();
 
+// Read at a glance on a lock screen (voice.md rule 8), so each says what is
+// missing rather than naming an internal job.
+const PUSH_TITLES: Record<MissedJob['job'], string> = {
+  'nothing-scheduled': 'Nothing scheduled',
+  'generate-teams': 'No teams yet',
+  'game-day-email': 'Game-day email not sent',
+};
+
 /**
  * Pushes one alert per missed job to the organizer's phone.
  *
@@ -210,7 +179,7 @@ export async function reportMissedJobs(sessions: Session[], now: Date = new Date
     reportedThisProcess.add(key);
 
     const sent = await deliver(`watchdog alert for ${key}`, () =>
-      sendPush(`Scheduled job did not run: ${job}`, `${message}\n\nRun the workflow by hand from the repository's Actions tab.`, {
+      sendPush(PUSH_TITLES[job], message, {
         priority: urgent ? 5 : 4,
         tags: [urgent ? 'rotating_light' : 'warning'],
       })

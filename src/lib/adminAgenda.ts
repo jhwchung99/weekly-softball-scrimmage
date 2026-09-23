@@ -1,6 +1,6 @@
 import { Session } from '../sheets/schema';
 import { AdminRosterEntry } from './views';
-import { phaseOf, isRegistrationOpen, hasRegistrationClosed, isRosterLocked, hasGameStarted } from './sessionPhase';
+import { phaseOf, hasRegistrationClosed, isRosterLocked, hasGameStarted } from './sessionPhase';
 import { countConfirmedSpots } from './payments';
 import { thresholdFor } from './practicePoll';
 import { formatGameDate } from './time';
@@ -21,8 +21,8 @@ import { formatGameDate } from './time';
  * which is the same split `adminConsole.ts` draws for the console's other
  * decisions.
  *
- * Deliberately **not** the same thing as `weekWatchdog`. That answers "did a
- * job that should have run silently fail", pushes to a phone, and is about
+ * Deliberately **not** the same thing as `weekWatchdog`. That answers "was a
+ * step the week needs never taken", pushes to a phone, and is about
  * things going wrong. This answers "what is the next thing to press", is read
  * on a screen the organizer is already looking at, and is mostly about things
  * going right in order.
@@ -61,46 +61,34 @@ export function agendaFor(session: Session, roster: Countable[] | null, now: Dat
   const phase = phaseOf(session, now);
   const day = formatGameDate(session.gameDate);
 
-  // 1. Players are blocked. Nothing else on this session matters more.
-  if (isRegistrationOpen(phase) && session.status === 'closed') {
-    add(0, `${day} — registration should be open now, but the session is still closed`);
-  }
-
-  // 2. The window has passed and it is still marked open. The signup gate is
-  //    derived from the schedule so nobody can actually sign up, but the
-  //    headcount alert the permit is booked from never fired.
-  if (hasRegistrationClosed(phase) && session.status === 'open') {
-    add(1, `${day} — registration has closed, but the session is still marked open`);
-  }
-
   if (roster) {
     const confirmed = countConfirmedSpots(roster);
 
-    // 3. Light turnout, and the poll has not been asked. Only while it could
+    // 1. Light turnout, and the poll has not been asked. Only while it could
     //    still change anything — after the lock the format is settled.
     if (!isRosterLocked(phase) && hasRegistrationClosed(phase) && session.practicePollStatus === '' && confirmed < thresholdFor(session)) {
       add(2, `${day} — only ${confirmed} confirmed, under the ${thresholdFor(session)} you set for a BP/Practice poll`);
     }
 
-    // 6. Money, once it is final and therefore askable for.
+    // 4. Money, once it is final and therefore askable for.
     if (isRosterLocked(phase) && session.pricePerSpot > 0) {
       const unpaid = roster.filter((s) => s.status === 'confirmed' && !s.paid).length;
       if (unpaid > 0) add(5, `${day} — ${unpaid} player${unpaid === 1 ? '' : 's'} still unpaid`);
     }
   }
 
-  // 4. The roster has locked and there are no teams. Not on a practice week:
+  // 2. The roster has locked and there are no teams. Not on a practice week:
   //    there are no sides to pick.
   if (isRosterLocked(phase) && !hasGameStarted(phase) && session.format !== 'practice' && session.teamsStatus === '') {
     add(3, `${day} — the roster has locked and teams have not been generated`);
   }
 
-  // 5. The one email that has to go out, and the only thing that records it.
+  // 3. The one email that has to go out, and the only thing that records it.
   if (isRosterLocked(phase) && !hasGameStarted(phase) && session.remindersSentAt === '') {
     add(4, `${day} — nobody has been sent the game-day email`);
   }
 
-  // 7. The permit. Quiet until the lock, because "TBD" is a normal state for
+  // 5. The permit. Quiet until the lock, because "TBD" is a normal state for
   //    most of the week and nagging about it would train the organizer to
   //    ignore this list.
   if (isRosterLocked(phase) && !hasGameStarted(phase) && session.locationName === '') {

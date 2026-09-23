@@ -152,9 +152,8 @@ export function getWeeklyMilestones(
 
 /**
  * The Friday of the calendar week `now` falls in, as read in Eastern
- * time — this is what makes "today" mean the right thing for a
- * Monday/Tuesday cron job regardless of what timezone the server
- * itself happens to run in (e.g. Vercel/GitHub Actions runners are UTC).
+ * time, so "this week" means the league's week whatever timezone the
+ * server runs in (Vercel is UTC).
  * Weekday arithmetic on a Y/M/D triple is timezone-independent once the
  * triple itself is correctly the Eastern one, so a plain local Date is
  * safe to use here — it's never treated as an instant.
@@ -182,10 +181,9 @@ export function todayEastern(now: Date = new Date(), timeZone: string = LEAGUE_T
 
 /**
  * The Friday, Saturday, and Sunday of the calendar week `now` falls in
- * (Eastern time), in that order. Game day can be any of the three (see
- * getWeeklyMilestones), so "this week's session" is a 3-way id lookup —
- * whichever of these actually has a row — rather than the single fixed
- * key a Friday-only schedule would allow. Built on top of
+ * (Eastern time), in that order. Game day can now be any weekday, so this no
+ * longer finds a week's sessions; the watchdog uses the Friday only as the
+ * reference week for "nothing is scheduled". Built on top of
  * currentWeekFridayEastern rather than re-deriving the Eastern-timezone
  * weekday math a second time.
  */
@@ -197,34 +195,6 @@ export function currentWeekGameDayCandidates(now: Date = new Date(), timeZone: s
     const d = new Date(fridayNoonUtc + offset * 24 * 60 * 60 * 1000);
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   });
-}
-
-/**
- * True if `now`, read in Eastern time, is within `toleranceMinutes` of
- * `targetHour:targetMinute`. Needed because GitHub Actions cron schedules
- * are fixed UTC and don't shift for DST — a cron job meant to fire at a
- * fixed Eastern wall-clock time has to be scheduled at BOTH possible UTC
- * offsets, and the endpoint itself decides which firing is the real one
- * versus the seasonal duplicate to discard.
- *
- * Distance is measured circularly, because minutes-since-midnight wrap:
- * 23:59 is one minute from a 00:00 target, not 1,439. Only a midnight-target
- * caller can hit that, and there is none today (closeRegistration stopped
- * using this), but the arithmetic should be right regardless of target.
- */
-export function isNearEasternTime(
-  targetHour: number,
-  targetMinute: number,
-  toleranceMinutes: number,
-  now: Date = new Date(),
-  timeZone: string = LEAGUE_TIME_ZONE
-): boolean {
-  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false });
-  const parts = Object.fromEntries(dtf.formatToParts(now).map((p) => [p.type, p.value]));
-  const nowMinutes = (Number(parts.hour) % 24) * 60 + Number(parts.minute);
-  const targetMinutes = targetHour * 60 + targetMinute;
-  const diff = Math.abs(nowMinutes - targetMinutes);
-  return Math.min(diff, 24 * 60 - diff) <= toleranceMinutes;
 }
 
 /**

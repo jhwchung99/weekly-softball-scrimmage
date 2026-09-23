@@ -4,6 +4,10 @@ A week that turns out to be batting practice is recorded in its own
 `Session.format` column, `'game' | 'practice'`, and not as a fourth value of
 `Session.status`.
 
+> Since ADR-0009 no cron reads `status`, so the failure argued from below can
+> no longer happen. The decision stands: format and cancellation are still
+> independent.
+
 The request was for "a fourth session state", and the capability is exactly
 that. The column differs for one concrete reason.
 

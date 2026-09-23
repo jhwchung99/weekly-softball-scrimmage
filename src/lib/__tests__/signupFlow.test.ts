@@ -185,10 +185,10 @@ describe('signUpForSession', () => {
     await expect(signUpForSession('2099-01-01', 'nobody@dummy.test', true)).rejects.toThrow(/player profile/);
   });
 
-  it('rejects signup when the session is not open', async () => {
-    store.sessions.set('2099-01-01', makeSession({ status: 'closed' }));
+  it('rejects signup for a cancelled game', async () => {
+    store.sessions.set('2099-01-01', makeSession({ status: 'cancelled' }));
     store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
-    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
+    await expect(signUpForSession('2099-01-01', 'a@dummy.test', true)).rejects.toThrow(/has been cancelled/);
   });
 
   it('offers the member a pairing when a guest named them, rather than merging silently', async () => {
@@ -269,13 +269,29 @@ describe('signUpForSession: the registration window', () => {
     ).rejects.toThrow(/open Monday/);
   });
 
-  it('still defers to status: an in-window signup on a closed session is refused', async () => {
+  // The window is the whole gate now. A stored 'closed' used to refuse an
+  // in-window signup until a job flipped it open, and the jobs were GitHub
+  // crons that routinely did not run.
+  it('accepts an in-window signup whatever the stored status says', async () => {
     openSessionFor('a@dummy.test');
     store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', status: 'closed' }));
     vi.setSystemTime(new Date(WINDOW.opens));
 
-    // The window is a second condition, not a replacement for the first.
-    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).rejects.toThrow(/Signups aren't open/);
+    await expect(signUpForSession('2026-07-10', 'a@dummy.test', true)).resolves.toBeDefined();
+  });
+
+  it('follows the session\'s own window, and names the day when refusing', async () => {
+    store.players.set('a@dummy.test', makePlayer({ email: 'a@dummy.test' }));
+    store.sessions.set(
+      '2026-07-08',
+      makeSession({ sessionId: '2026-07-08', gameDate: '2026-07-08', registrationOpensAt: '2026-07-06T22:00:00.000Z', registrationClosesAt: '2026-07-07T22:00:00.000Z' })
+    );
+
+    vi.setSystemTime(new Date('2026-07-06T20:00:00.000Z'));
+    await expect(signUpForSession('2026-07-08', 'a@dummy.test', true)).rejects.toThrow(/^Signups for Wednesday, July 8 open Monday, July 6 at 6pm ET\.$/);
+
+    vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
+    await expect(signUpForSession('2026-07-08', 'a@dummy.test', true)).resolves.toBeDefined();
   });
 
   it('lets an admin add someone outside the window, which is what the open-spots alert asks for', async () => {

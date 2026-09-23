@@ -18,7 +18,7 @@ import { AddToCalendar } from '../components/AddToCalendar';
 import { TeamRosters, TeamView } from '../components/TeamRosters';
 import type { Signup } from '../sheets/schema';
 import type { RosterEntry, RosterView, SessionView, MySignupView, PlayerView } from '../lib/views';
-import { isRosterLocked, type SessionPhase } from '../lib/sessionPhase';
+import { isRosterLocked, isRegistrationOpen, type SessionPhase } from '../lib/sessionPhase';
 
 /** The week as the projection module sends it. */
 export type SessionInfo = SessionView;
@@ -453,7 +453,7 @@ export function SessionCard(props: {
               <PlayerArea
                 scrimmage={session}
                 phase={phase}
-                registrationClosed={session.status === 'closed'}
+                registrationClosed={phase !== null && !isRegistrationOpen(phase)}
                 mySignup={mySignup}
                 myPlayer={myPlayer}
                 waiverText={waiverText}

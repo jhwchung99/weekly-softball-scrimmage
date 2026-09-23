@@ -5,7 +5,6 @@ import { formatLocation } from './location';
 import { formatGameDate, formatGameDay, formatGameTime, formatEasternClockTime, formatEasternMoment, relativeGameDay } from './time';
 import { paymentOpensAt, paymentStateOf } from './payments';
 import { phaseOf, isRosterLocked } from './sessionPhase';
-import { thresholdFor } from './practicePoll';
 
 /**
  * Sends a notification without letting it fail the thing that triggered it.
@@ -92,45 +91,6 @@ export async function sendLateCancellationAlert(signup: Signup, session: Session
   }
 
   await sendPush(title, parts.join(' '));
-}
-
-/**
- * Registration just closed but the session still has open spots — not in
- * the original guidelines, added so the organizer knows to consider
- * manually adding someone (Section 8's "manually add a signup") rather
- * than discovering unused capacity only once it's too late to fill it.
- */
-export async function sendOpenSpotsAlert(session: Session, openSpots: number): Promise<void> {
-  const title = `${openSpots} open spot${openSpots === 1 ? '' : 's'} for ${formatGameDate(session.gameDate)}`;
-  // Number first: this is read at a glance on a lock screen. "Consider
-  // manually adding someone" told the organizer to think about it, when the
-  // point of sending it is that they should act.
-  const message = `${openSpots} of ${session.capacity} spots unfilled for ${formatGameDay(session.gameDate, session.gameTime)}. Registration has closed. Add people by hand if you want them.`;
-
-  await sendPush(title, message);
-}
-
-
-/**
- * How many people got in, pushed the moment registration closes.
- *
- * Separate from sendOpenSpotsAlert, which stays silent when the session
- * filled up — which is exactly the case where a second field is worth
- * considering. This one always fires, because it is the signal to decide
- * whether to book one.
- */
-export async function sendHeadcountAlert(session: Session, confirmed: number, waitlisted: number): Promise<void> {
-  const parts = [`${confirmed} of ${session.capacity} spots filled for ${formatGameDate(session.gameDate)}.`];
-  if (waitlisted > 0) {
-    parts.push(`${waitlisted} on the waitlist. Raise capacity to let them in, and book a second field if you need one.`);
-  }
-  // This push is the moment a light week becomes knowable, so it is where the
-  // practice poll should be offered. Waiting for the organizer to notice the
-  // count on the dashboard is how a feature goes unused.
-  if (confirmed < thresholdFor(session)) {
-    parts.push(`Under ${thresholdFor(session)}: open a BP/Practice poll from the dashboard if you want to ask.`);
-  }
-  await sendPush(`Registration closed: ${confirmed} playing`, parts.join(' '), { priority: 3, tags: ['clipboard'] });
 }
 
 /** A waitlisted player has asked a specific signed-up player to share

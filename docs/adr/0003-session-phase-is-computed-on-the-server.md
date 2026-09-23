@@ -3,6 +3,9 @@
 The server decides what phase a session is in and sends the answer; the client
 renders it rather than working it out again.
 
+> Amended by ADR-0009: the phase is now the whole signup gate. The stored
+> status is no longer checked alongside it, except for a cancelled week.
+
 The milestone arithmetic — Eastern time, daylight saving, the Monday/Tuesday
 schedule — was already in one place. The comparison against *now* was not: it
 was written out in eight places, three of them in the browser. So whether the

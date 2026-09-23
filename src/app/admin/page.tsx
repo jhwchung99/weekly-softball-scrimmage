@@ -56,6 +56,16 @@ type SessionInfo = AdminSessionView;
  * of settings and used to run them together with only a hairline rule
  * between, so a heading is what tells the organizer where pricing stops and
  * location starts. */
+/** The header badge. The phase, not the stored status: signups follow the
+ * window, and a stored open or closed no longer says anything (ADR-0009). */
+const PHASE_LABELS: Record<SessionPhase, string> = {
+  before: 'signups not open yet',
+  open: 'signups open',
+  closed: 'signups closed',
+  locked: 'roster locked',
+  played: 'played',
+};
+
 function AdminSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-4 border-t border-slate-100 pt-3">
@@ -399,7 +409,8 @@ export default function AdminPage() {
                       {/* ISO here, not a human date: on this page the date *is*
                           the session's id, and the organizer matches it against
                           the spreadsheet (voice.md rule 2). */}
-                      {s.sessionId} · {s.status}
+                      {s.sessionId}
+                      {s.status === 'cancelled' ? ' · cancelled' : ''}
                     </button>
                   );
                 })}
@@ -433,7 +444,11 @@ export default function AdminPage() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <h2 className="flex items-center gap-2 font-semibold text-slate-900">
                   {scrimmage.gameDate} at {scrimmage.gameTime}
-                  <Badge status={scrimmage.status}>{scrimmage.status}</Badge>
+                  {scrimmage.status === 'cancelled' ? (
+                    <Badge status="cancelled">cancelled</Badge>
+                  ) : (
+                    phase && <Badge status={phase === 'open' ? 'open' : 'closed'}>{PHASE_LABELS[phase]}</Badge>
+                  )}
                 </h2>
                 {scrimmage.status !== 'cancelled' && (
                   <Button
@@ -451,27 +466,36 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Registration open/close. Sessions are created closed so nobody
-                  can sign up for a future week early; this is how one gets
-                  opened outside the Monday 9am cron. */}
+              {/* Signups follow the session's own window, with nothing to run
+                  (ADR-0009). These move the window's open or close time to
+                  now, and a cancelled game is restored the same way. */}
               <AdminSection title="Registration">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={scrimmage.status === 'open' ? 'secondary' : 'success'}
-                    disabled={busy || scrimmage.status === 'open'}
-                    onClick={() => updateSession({ status: 'open' })}
-                  >
-                    Open
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={scrimmage.status === 'closed' ? 'secondary' : 'danger'}
-                    disabled={busy || scrimmage.status === 'closed'}
-                    onClick={() => updateSession({ status: 'closed' })}
-                  >
-                    Close
-                  </Button>
+                  {scrimmage.status === 'cancelled' ? (
+                    <Button size="sm" variant="success" disabled={busy} onClick={() => updateSession({ status: 'open' })}>
+                      Restore game
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        size="sm"
+                        variant={phase === 'before' ? 'success' : 'secondary'}
+                        disabled={busy || phase !== 'before'}
+                        onClick={() => updateSession({ status: 'open' })}
+                      >
+                        Open signups now
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={phase === 'open' ? 'danger' : 'secondary'}
+                        disabled={busy || phase !== 'open'}
+                        onClick={() => updateSession({ status: 'closed' })}
+                      >
+                        Close signups now
+                      </Button>
+                      <span className="text-xs text-slate-500">Sets the open or close time below to now.</span>
+                    </>
+                  )}
                 </div>
               </AdminSection>
 
@@ -1495,10 +1519,9 @@ export function CreateSessionForm(props: {
       <form onSubmit={handleSubmit} className="space-y-2">
         <h2 className="font-semibold text-slate-900">Create a new session</h2>
         <p className="text-xs text-slate-500">
-          Game day can be any day. Created with registration <strong>closed</strong>. The Monday 9am job opens
-          whichever session belongs to that week, so nobody can sign up early. Leave the registration times blank for
-          the usual Monday 9am to Tuesday midnight — a Monday game needs its own, because the usual window would close
-          after it had been played.
+          Game day can be any day. Signups open and close on their own at the registration times, so nobody can sign
+          up early. Leave them blank for the usual Monday 9am to Tuesday midnight — a Monday game needs its own, because
+          the usual window would close after it had been played.
         </p>
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Date" htmlFor="create-session-date">

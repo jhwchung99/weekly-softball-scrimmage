@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, isNearEasternTime, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
+import { zonedTimeToUtc, currentWeekFridayEastern, currentWeekGameDayCandidates, getWeeklyMilestones, formatGameDate, formatGameTime, formatGameDay, formatEasternMoment, formatEasternClockTime, relativeGameDay } from '../time';
 
 describe('zonedTimeToUtc', () => {
   it('converts an EDT (summer) wall-clock time to the correct UTC instant', () => {
@@ -36,39 +36,6 @@ describe('currentWeekFridayEastern', () => {
     // 2026-07-10T03:00:00Z is 2026-07-09T23:00:00 EDT (still Thursday
     // Eastern, even though the UTC calendar date is already Friday).
     expect(currentWeekFridayEastern(new Date('2026-07-10T03:00:00.000Z'))).toBe('2026-07-10');
-  });
-});
-
-describe('isNearEasternTime', () => {
-  it('is true exactly at the target time', () => {
-    // 9:00 AM EDT = 13:00 UTC.
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T13:00:00.000Z'))).toBe(true);
-  });
-
-  it('is true within the tolerance window', () => {
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T13:29:00.000Z'))).toBe(true);
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T12:31:00.000Z'))).toBe(true);
-  });
-
-  it('is false outside the tolerance window', () => {
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T13:31:00.000Z'))).toBe(false);
-  });
-
-  it('rejects the DST-offset duplicate cron firing (1 hour off)', () => {
-    // The whole point of this check: a firing exactly 1 hour off the
-    // real target (the seasonal EST/EDT duplicate) must not pass with a
-    // 30-minute tolerance.
-    expect(isNearEasternTime(9, 0, 30, new Date('2026-07-06T14:00:00.000Z'))).toBe(false);
-  });
-
-  it('measures distance circularly around midnight', () => {
-    // 11:45pm ET is 15 minutes from a midnight target, not 1,425. Plain
-    // subtraction got this backwards and rejected everything just before
-    // midnight — which was the entire pre-close window for the Tuesday job.
-    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T03:45:00.000Z'))).toBe(true);
-    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T04:15:00.000Z'))).toBe(true);
-    // Still an hour off, so the seasonal duplicate stays rejected.
-    expect(isNearEasternTime(0, 0, 30, new Date('2026-07-07T05:00:00.000Z'))).toBe(false);
   });
 });
 

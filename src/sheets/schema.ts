@@ -20,14 +20,12 @@ export type TeamsStatus = (typeof TEAMS_STATUSES)[number];
 /**
  * Whether a week is played as a game or as batting practice.
  *
- * Its own field rather than a fourth `SessionStatus`, because status already
- * carries two unrelated things: the registration lifecycle (open then closed,
- * written by the Monday and Tuesday crons) and whether the week is off at all
- * (cancelled). A fourth value would have to displace one of them, and
- * closeRegistration skips any session whose status is not 'open' — so a week
- * marked practice while registration was still open would never close, never
- * record registrationClosesAt, and never fire the headcount push. See
- * ADR-0007.
+ * Its own field rather than a fourth `SessionStatus`, because the two are
+ * independent: a practice week can still be cancelled. See ADR-0007.
+ *
+ * Of `SessionStatus`, only 'cancelled' is read any more. Registration follows
+ * the session's window (ADR-0009); 'open' and 'closed' record the last time
+ * the organizer pressed Open or Close, and decide nothing.
  */
 export const SESSION_FORMATS = ['game', 'practice'] as const;
 export type SessionFormat = (typeof SESSION_FORMATS)[number];
@@ -95,8 +93,9 @@ export interface Session {
   registrationOpenedAt: string; // ISO datetime registration actually opened,
   // '' if it has not. The stamp that registrationOpensAt used to hold before
   // that column became a setting. Past tense for what happened, present for
-  // what is intended — nothing reads these back, they are for the organizer
-  // reconciling against a cron that fired late.
+  // what is intended. Written by the registration crons, which are gone
+  // (ADR-0009); nothing writes or reads these now. Kept because columns are
+  // mapped by position, and removing one would shift every column after it.
   registrationClosedAt: string; // ISO datetime registration actually closed,
   // '' if it has not.
 }

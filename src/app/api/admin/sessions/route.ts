@@ -4,9 +4,8 @@ import { adminCreateSession } from '../../../../lib/adminFlow';
 import { handleApiError } from '../../../../lib/apiErrors';
 import { adminSessionView } from '../../../../lib/views';
 
-/** Create a new session (Section 8) — mainly for scheduling a
- * Saturday/Sunday game, or setting up Friday's ahead of the Monday-open
- * cron with a non-default capacity/cost from the start. */
+/** Create a new session (Section 8), on any day, with its own capacity, cost
+ * and registration window. */
 export async function POST(request: Request) {
   try {
     await requireAdmin();

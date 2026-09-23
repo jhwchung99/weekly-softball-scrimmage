@@ -39,6 +39,9 @@ Eastern, **by default**; a session may set either end itself, the way it may
 set its own roster lock (ADR-0008). Deliberately short, so the organizer can
 book a permit sized to the actual headcount.
 
+The window alone decides whether signups are accepted: nothing has to open or
+close it (ADR-0009). Opening or closing by hand moves one end of it to now.
+
 The default is derived from the game date, so it is coherent for every game
 day except Monday, where it would close after the game had been played. A
 Monday game therefore has to carry its own window, and the app refuses to save
@@ -62,8 +65,8 @@ _Avoid_: cutoff, deadline
 Whether a session is a game or batting practice. Independent of Phase and of
 whether registration is open: a practice week still opens, closes and can be
 rained out. Set by the organizer, usually after reading a practice poll. Its
-own field rather than a fourth Status, because Status already carries both
-the registration lifecycle and cancellation (ADR-0007).
+own field rather than a fourth Status, because the two are independent: a
+practice week can still be cancelled (ADR-0007).
 _Avoid_: type, kind, mode
 
 **Practice**:

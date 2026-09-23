@@ -63,30 +63,27 @@ export interface SignupOptions {
 async function requireOpenSessionAndProfile(sessionId: string, email: string, options: SignupOptions = {}) {
   const session = await getSession(sessionId);
   if (!session) throw new ApiError(404, 'No such session.');
-  if (session.status !== 'open') {
-    // Names the day. A week can hold more than one game, so "this week" no
-    // longer picks one out — and a player refused for Sunday while Friday is
-    // open has to be told which is which (voice.md, ADR-0005).
-    throw new ApiError(409, `Signups aren't open for ${formatGameDate(session.gameDate)}.`);
-  }
+  const day = formatGameDate(session.gameDate);
+  if (session.status === 'cancelled') throw new ApiError(409, `The game on ${day} has been cancelled.`);
 
-  // `status` alone used to be the entire gate, which made it a single point
-  // of failure: anything that set a session open — a stray script run, a
-  // hand-edited cell, a mistimed cron — accepted signups immediately, and
-  // sessionIds are guessable dates. The schedule is computed from the game
-  // date, so it can disagree with a wrong status and win. See the 2026-09-07
-  // "was registration open before Monday 9am" investigation.
+  // The session's own window is the whole gate (ADR-0009). `status` alone was
+  // once the gate, so anything that flipped it open accepted signups whatever
+  // the calendar said. Then both were required, which left registration shut
+  // whenever the job that flipped status failed to run, and those jobs were
+  // GitHub crons that routinely did not. The window needs nothing to run: it
+  // is computed from the session, including the times the organizer set.
   if (!options.bypassRegistrationWindow) {
     const now = options.now ?? new Date();
     if (!isRegistrationOpen(phaseOf(session, now))) {
       // The milestones are still read here, but only to say *when* — the
-      // decision itself is the phase module's.
-      const { registrationOpensAt, registrationClosesAt } = getWeeklyMilestones(session.gameDate, session.gameTime);
+      // decision itself is the phase module's. Names the day, since a week can
+      // hold more than one game (voice.md rule 1).
+      const { registrationOpensAt, registrationClosesAt } = getWeeklyMilestones(session.gameDate, session.gameTime, session);
       throw new ApiError(
         409,
         now < registrationOpensAt
-          ? `Signups for this week open ${formatEasternMoment(registrationOpensAt)} ET.`
-          : `Signups for this week closed ${formatEasternMoment(registrationClosesAt)} ET.`
+          ? `Signups for ${day} open ${formatEasternMoment(registrationOpensAt)} ET.`
+          : `Signups for ${day} closed ${formatEasternMoment(registrationClosesAt)} ET.`
       );
     }
   }
