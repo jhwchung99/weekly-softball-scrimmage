@@ -404,12 +404,13 @@ function assertScheduleOrdering(gameDate: string, gameTime: string, overrides: S
  * run, and oversubscribe the week. One acquisition has no such window, and a
  * reschedule can no longer be observed half-applied.
  *
- * A gameDate change goes first, because it can rekey the row and cascade every
- * signup's sessionId (see adminRescheduleSession) — so the field updates after
- * it have to land on whatever id the session ends up with.
+ * A gameDate change can rekey the row and cascade every signup's sessionId
+ * (see adminRescheduleSession), so the field updates ride along in the same
+ * row write as the move rather than following it: a second write could fail
+ * after the rekey and leave the dashboard holding an id that no longer exists.
  *
- * The cost is a long critical section: worst case a rekey (~5 Sheets calls),
- * the field write, and the cascade (3 + one per promoted player) under one
+ * The cost is a long critical section: worst case a rekey (~5 Sheets calls,
+ * field edits included) and the cascade (3 + one per promoted player) under one
  * hold. With up to 7s of backoff per call under rate limiting (client.ts,
  * RATE_LIMIT_RETRY_DELAYS_MS), this is the flow most likely to approach
  * LOCK_TTL_SECONDS, and the first place to look if that ceiling needs raising.
@@ -436,12 +437,11 @@ export async function reviseSession(
       session = await adminRescheduleSession(
         sessionId,
         revision.gameDate ?? existing.gameDate,
-        revision.gameTime ?? existing.gameTime
+        revision.gameTime ?? existing.gameTime,
+        revision.updates
       );
       currentSessionId = session.sessionId;
-    }
-
-    if (Object.keys(revision.updates).length > 0) {
+    } else if (Object.keys(revision.updates).length > 0) {
       session = await updateSession(currentSessionId, revision.updates);
     }
 
@@ -457,7 +457,14 @@ export async function reviseSession(
   });
 }
 
-export async function adminRescheduleSession(sessionId: string, newGameDate: unknown, newGameTime: unknown): Promise<Session> {
+/** `alsoWrite` rides along in the same row write as the move, so a revision's
+ * field edits cannot be lost after the row has already rekeyed. */
+export async function adminRescheduleSession(
+  sessionId: string,
+  newGameDate: unknown,
+  newGameTime: unknown,
+  alsoWrite: Partial<Session> = {}
+): Promise<Session> {
   // Above the lock — see adminAddSignup. Safe under `reviseSession`, which
   // calls this while already holding it: the lock is reentrant, so the
   // validation simply happens a moment earlier inside that hold.
@@ -469,19 +476,22 @@ export async function adminRescheduleSession(sessionId: string, newGameDate: unk
 
     if (gameDate === sessionId) {
       // Same identity — a pure time change (or a no-op date), no rekey needed.
-      return updateSession(sessionId, { gameDate, gameTime });
+      return updateSession(sessionId, { ...alsoWrite, gameDate, gameTime });
     }
 
     const conflict = await getSession(gameDate);
     if (conflict) throw new ApiError(409, `A session for ${gameDate} already exists.`);
 
-    const updated = await updateSession(sessionId, { sessionId: gameDate, gameDate, gameTime });
-
+    // Signups move before the row rekeys. Sheets can fail between the two
+    // writes, and this order leaves the session under the id the dashboard
+    // still holds, so saving again finishes the move: the row rekeys and the
+    // moved signups are already waiting under the new id. Rekeying first left
+    // every signup pointing at a date that no longer existed, and a retry 404ed.
     const signups = await listSignupsForSession(sessionId);
     if (signups.length > 0) {
       await batchUpdateSignups(signups.map((s) => ({ signupId: s.signupId, updates: { sessionId: gameDate } })));
     }
 
-    return updated;
+    return updateSession(sessionId, { ...alsoWrite, sessionId: gameDate, gameDate, gameTime });
   });
 }

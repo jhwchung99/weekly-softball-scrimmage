@@ -12,6 +12,8 @@ vi.mock('../../lib/ntfy', () => ({ sendPush: vi.fn() }));
 
 const { adminAddSignup, adminCreateSession, adminRescheduleSession, reviseSession } = await import('../adminFlow');
 const { signUpForSession } = await import('../signupFlow');
+const { updateSession } = await import('../../sheets/sessions');
+const { listSignupsForSession, batchUpdateSignups } = await import('../../sheets/signups');
 
 beforeEach(() => {
   resetFakeStore(store);
@@ -188,6 +190,52 @@ describe('adminRescheduleSession', () => {
   it('rejects rescheduling a session that does not exist', async () => {
     await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '18:00')).rejects.toThrow(/No such session/);
   });
+
+  // A move is two writes, and Sheets can fail between them. Whichever one
+  // fails, pressing save again with the id the dashboard still holds has to
+  // finish the move rather than 404 on a session that already moved.
+  describe('when Sheets fails partway through a move', () => {
+    async function sessionWithSignup() {
+      store.sessions.set('2026-07-10', makeSession({ sessionId: '2026-07-10', gameDate: '2026-07-10', capacity: 5 }));
+      store.players.set('a@dummy.test', { email: 'a@dummy.test', fullName: 'A', gender: 'Male', savedPositions: '' });
+      return signUpForSession('2026-07-10', 'a@dummy.test', true);
+    }
+
+    it('reading the signups fails: nothing has been written', async () => {
+      const signup = await sessionWithSignup();
+      vi.mocked(listSignupsForSession).mockRejectedValueOnce(new Error('quota'));
+
+      await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '20:00')).rejects.toThrow('quota');
+
+      expect(store.sessions.has('2026-07-10')).toBe(true);
+      expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-10');
+    });
+
+    it('moving the signups fails: the session keeps its id, and a retry finishes', async () => {
+      const signup = await sessionWithSignup();
+      vi.mocked(batchUpdateSignups).mockRejectedValueOnce(new Error('quota'));
+
+      await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '20:00')).rejects.toThrow('quota');
+      expect(store.sessions.has('2026-07-10')).toBe(true);
+
+      await adminRescheduleSession('2026-07-10', '2026-07-11', '20:00');
+      expect(store.sessions.has('2026-07-11')).toBe(true);
+      expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-11');
+    });
+
+    it('rekeying the session fails after the signups moved: a retry finishes', async () => {
+      const signup = await sessionWithSignup();
+      vi.mocked(updateSession).mockRejectedValueOnce(new Error('quota'));
+
+      await expect(adminRescheduleSession('2026-07-10', '2026-07-11', '20:00')).rejects.toThrow('quota');
+      expect(store.sessions.has('2026-07-10')).toBe(true);
+
+      await adminRescheduleSession('2026-07-10', '2026-07-11', '20:00');
+      expect(store.sessions.has('2026-07-10')).toBe(false);
+      expect(store.sessions.get('2026-07-11')?.gameTime).toBe('20:00');
+      expect(store.signups.get(signup.signupId)?.sessionId).toBe('2026-07-11');
+    });
+  });
 });
 
 /**
@@ -295,6 +343,22 @@ describe('reviseSession — the schedule must come in order', () => {
     } as Parameters<typeof reviseSession>[2]);
 
     expect(revised.gameDate).toBe('2026-07-06');
+  });
+
+  it('writes a move and its field edits to the row together', async () => {
+    // Two writes let the edits be lost after the row had already rekeyed, and
+    // a retry from the dashboard, still holding the old id, then 404s.
+    const session = makeSession({ sessionId: GAME, gameDate: GAME, gameTime: '18:00' });
+    store.sessions.set(GAME, session);
+
+    await reviseSession(GAME, session, {
+      gameDate: '2026-07-12',
+      gameTime: '18:00',
+      updates: { locationName: 'Field 3' },
+    } as Parameters<typeof reviseSession>[2]);
+
+    expect(updateSession).toHaveBeenCalledTimes(1);
+    expect(store.sessions.get('2026-07-12')?.locationName).toBe('Field 3');
   });
 
   it('leaves an ordinary weekend session alone', async () => {
