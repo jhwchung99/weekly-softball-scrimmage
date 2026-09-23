@@ -143,10 +143,13 @@ export default function AdminPage() {
     setSessionId((current) => current || sessions[0]?.sessionId || '');
   }
 
-  async function loadRoster(id: string) {
+  /** `keepNotice` is for the reload that finishes an action: runAction has
+   * already cleared the old notice, and the one the action just set has to
+   * survive the reload or the organizer never sees it. */
+  async function loadRoster(id: string, { keepNotice = false } = {}) {
     if (!id) return;
     setError(null);
-    setNotice(null);
+    if (!keepNotice) setNotice(null);
     setForbidden(false);
     setScrimmage(null);
     try {
@@ -206,6 +209,7 @@ export default function AdminPage() {
   async function runAction(action: AdminAction, onDone?: (data: Record<string, unknown>) => void) {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const data = await sendApiRequest(adminRequestFor(action));
       if (onDone) onDone(data);
@@ -217,7 +221,7 @@ export default function AdminPage() {
     }
   }
 
-  function updateSession(updates: Record<string, unknown>) {
+  function updateSession(updates: Record<string, unknown>, afterSave?: () => void) {
     return runAction({ kind: 'reviseSession', sessionId, updates }, async (data) => {
       // A gameDate change rekeys the session (its id IS the date) — follow it
       // to the new id rather than re-fetching the now-stale old one.
@@ -227,7 +231,8 @@ export default function AdminPage() {
       // action that can change either — a reschedule rekeys the row, and
       // opening, closing or cancelling moves the status. Without this the
       // picker keeps showing what the week looked like before the edit.
-      await Promise.all([loadRoster(newSessionId), loadSessions()]);
+      await Promise.all([loadRoster(newSessionId, { keepNotice: true }), loadSessions()]);
+      afterSave?.();
     });
   }
 
@@ -239,7 +244,6 @@ export default function AdminPage() {
    */
   function sendAnnouncement(path: string, confirmMessage: string, body: Record<string, unknown> = {}) {
     if (!window.confirm(confirmMessage)) return;
-    setNotice(null);
     // `data` is a parsed HTTP body, so it is typed as unknown fields; the
     // notice builder takes the announcement shape as Partial for that reason.
     return runAction({ kind: 'announce', sessionId, path, body }, (data) =>
@@ -261,13 +265,12 @@ export default function AdminPage() {
     if (willEmail && !window.confirm(`Email ${confirmed} confirmed player${confirmed === 1 ? '' : 's'} asking about BP/Practice?`)) {
       return;
     }
-    setNotice(null);
     return runAction(
       { kind: 'announce', sessionId, path: 'practice-poll', body: { status, closesAt: localInputToIso(pollClosesAt), notify: pollNotify } },
       async (data) => {
         const announcement = (data as { announcement?: Partial<AnnouncementResult> }).announcement;
         if (announcement) setNotice(announcementNotice(announcement));
-        await loadRoster(sessionId);
+        await loadRoster(sessionId, { keepNotice: true });
       }
     );
   }
@@ -280,12 +283,14 @@ export default function AdminPage() {
    * organizer presses send.
    */
   function setFormat(format: 'game' | 'practice', session: SessionInfo) {
-    if (format === 'practice') {
+    // After the save, not before: said first, the notice was cleared by the
+    // reload that follows the save, and claimed success when the save failed.
+    return updateSession({ format }, () => {
+      if (format !== 'practice') return;
       setSubjectInput(practiceMessageSubject(session));
       setMessageInput(practiceMessageBody(session));
       setNotice('Marked as BP/Practice. Nobody has been told: a draft is waiting in Send a message below.');
-    }
-    return updateSession({ format });
+    });
   }
 
   function updateSignupFields(signupId: string, updates: Record<string, unknown>) {
