@@ -160,7 +160,9 @@ export async function respondToSubRequest(signupId: string, responderEmail: stri
     ]);
     const updatedRequester = results.find((r) => r.signupId === signupId)!;
 
-    await deliver(`sub-request acceptance email for signup ${signupId}`, () => sendSubRequestAcceptedEmail(updatedRequester, target, session));
+    // One deliver each, so a failure on one still tells the other.
+    await deliver(`sub-request acceptance email to requester ${signupId}`, () => sendSubRequestAcceptedEmail(updatedRequester, target, session));
+    await deliver(`sub-request acceptance email to target ${target.signupId}`, () => sendSubRequestAcceptedEmail(target, updatedRequester, session));
 
     return updatedRequester;
   });

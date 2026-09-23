@@ -132,6 +132,21 @@ describe('cancelSubRequest', () => {
 });
 
 describe('respondToSubRequest', () => {
+  // Both emails were sent inside one deliver, so a failure on the requester's
+  // left the target never told they now share a spot.
+  it('still tells the target when the requester\'s email fails', async () => {
+    const { waitlisted } = await setUpConfirmedAndWaitlisted();
+    await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');
+    sendEmail.mockClear();
+    sendEmail.mockRejectedValueOnce(new Error('bad address'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await respondToSubRequest(waitlisted.signupId, 'confirmed@dummy.test', true);
+
+    expect(sendEmail.mock.calls.map((c) => c[0])).toEqual(['waitlisted@dummy.test', 'confirmed@dummy.test']);
+    vi.mocked(console.error).mockRestore();
+  });
+
   it('accept: pairs both signups, mirrors the target status, and clears the request', async () => {
     const { confirmed, waitlisted } = await setUpConfirmedAndWaitlisted();
     await requestSub(waitlisted.signupId, 'waitlisted@dummy.test', 'confirmed@dummy.test');

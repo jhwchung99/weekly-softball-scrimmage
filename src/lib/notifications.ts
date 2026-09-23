@@ -136,22 +136,20 @@ export async function sendGuestPairRequestEmail(member: Signup, guest: Signup, s
   await sendEmail(member.email, subject, text);
 }
 
-/** Sent to both parties once a sub request is accepted and they're
- * sharing a spot. */
-export async function sendSubRequestAcceptedEmail(a: Signup, b: Signup, session: Session): Promise<void> {
+/** Sent to each party once a sub request is accepted and they're sharing a
+ * spot, one call each so the caller can deliver them independently. */
+export async function sendSubRequestAcceptedEmail(self: Signup, other: Signup, session: Session): Promise<void> {
   const subject = `You're sharing a spot on ${formatGameDate(session.gameDate)}`;
-  const build = (self: Signup, other: Signup) =>
-    [
-      `Hi ${self.fullName},`,
-      '',
-      `You and ${other.fullName} are now sharing a spot for ${formatGameDay(session.gameDate, session.gameTime)}.`,
-      '',
-      // The one email whose reader may not know what sharing means on the day.
-      'You take turns, so only one of you is on the field at a time.',
-    ].join('\n');
+  const text = [
+    `Hi ${self.fullName},`,
+    '',
+    `You and ${other.fullName} are now sharing a spot for ${formatGameDay(session.gameDate, session.gameTime)}.`,
+    '',
+    // The one email whose reader may not know what sharing means on the day.
+    'You take turns, so only one of you is on the field at a time.',
+  ].join('\n');
 
-  await sendEmail(a.email, subject, build(a, b));
-  await sendEmail(b.email, subject, build(b, a));
+  await sendEmail(self.email, subject, text);
 }
 
 /** Where and when, in the one form every email should describe it. */
